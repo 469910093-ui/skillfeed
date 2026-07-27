@@ -1,0 +1,392 @@
+{
+  "material_note": "材料来自本机已同步的 HelloGitHub 官方仓库镜像 (~/.hellogithub/HelloGitHub，源：github.com/521xueweihan/HelloGitHub)，覆盖第 1–123 期正文。未对 hellogithub.com 逐期网页抓取（内容同源）；分类按各期「### 栏目名」统计。",
+  "issues": 123,
+  "range": [
+    "HelloGitHub01.md",
+    "HelloGitHub123.md"
+  ],
+  "categories": [
+    {
+      "name": "JavaScript 项目",
+      "issues_present": 123,
+      "items_total": 570,
+      "first_issue": 1,
+      "last_issue": 123
+    },
+    {
+      "name": "Python 项目",
+      "issues_present": 123,
+      "items_total": 506,
+      "first_issue": 1,
+      "last_issue": 123
+    },
+    {
+      "name": "Go 项目",
+      "issues_present": 119,
+      "items_total": 444,
+      "first_issue": 3,
+      "last_issue": 123
+    },
+    {
+      "name": "人工智能",
+      "issues_present": 104,
+      "items_total": 328,
+      "first_issue": 9,
+      "last_issue": 123
+    },
+    {
+      "name": "Java 项目",
+      "issues_present": 114,
+      "items_total": 307,
+      "first_issue": 3,
+      "last_issue": 120
+    },
+    {
+      "name": "C++ 项目",
+      "issues_present": 106,
+      "items_total": 240,
+      "first_issue": 7,
+      "last_issue": 123
+    },
+    {
+      "name": "C 项目",
+      "issues_present": 96,
+      "items_total": 181,
+      "first_issue": 7,
+      "last_issue": 123
+    },
+    {
+      "name": "C# 项目",
+      "issues_present": 94,
+      "items_total": 176,
+      "first_issue": 5,
+      "last_issue": 123
+    },
+    {
+      "name": "开源书籍",
+      "issues_present": 87,
+      "items_total": 165,
+      "first_issue": 1,
+      "last_issue": 121
+    },
+    {
+      "name": "Swift 项目",
+      "issues_present": 94,
+      "items_total": 148,
+      "first_issue": 6,
+      "last_issue": 123
+    },
+    {
+      "name": "Rust 项目",
+      "issues_present": 61,
+      "items_total": 140,
+      "first_issue": 26,
+      "last_issue": 123
+    },
+    {
+      "name": "Kotlin 项目",
+      "issues_present": 54,
+      "items_total": 67,
+      "first_issue": 17,
+      "last_issue": 123
+    },
+    {
+      "name": "CSS 项目",
+      "issues_present": 50,
+      "items_total": 62,
+      "first_issue": 1,
+      "last_issue": 110
+    },
+    {
+      "name": "PHP 项目",
+      "issues_present": 42,
+      "items_total": 54,
+      "first_issue": 5,
+      "last_issue": 117
+    },
+    {
+      "name": "Objective-C 项目",
+      "issues_present": 35,
+      "items_total": 45,
+      "first_issue": 7,
+      "last_issue": 111
+    },
+    {
+      "name": "Ruby 项目",
+      "issues_present": 28,
+      "items_total": 30,
+      "first_issue": 8,
+      "last_issue": 99
+    },
+    {
+      "name": "Skills",
+      "issues_present": 3,
+      "items_total": 11,
+      "first_issue": 121,
+      "last_issue": 123
+    }
+  ],
+  "by_era_top": {
+    "01-40": [
+      [
+        "JavaScript 项目",
+        157
+      ],
+      [
+        "Python 项目",
+        132
+      ],
+      [
+        "Go 项目",
+        99
+      ],
+      [
+        "Java 项目",
+        89
+      ],
+      [
+        "人工智能",
+        60
+      ],
+      [
+        "开源书籍",
+        49
+      ],
+      [
+        "C++ 项目",
+        30
+      ],
+      [
+        "Objective-C 项目",
+        26
+      ],
+      [
+        "CSS 项目",
+        23
+      ],
+      [
+        "C# 项目",
+        21
+      ],
+      [
+        "C 项目",
+        21
+      ],
+      [
+        "Swift 项目",
+        19
+      ],
+      [
+        "PHP 项目",
+        15
+      ],
+      [
+        "Ruby 项目",
+        10
+      ],
+      [
+        "Kotlin 项目",
+        6
+      ],
+      [
+        "Rust 项目",
+        2
+      ]
+    ],
+    "111-123": [
+      [
+        "人工智能",
+        65
+      ],
+      [
+        "JavaScript 项目",
+        64
+      ],
+      [
+        "Python 项目",
+        61
+      ],
+      [
+        "Go 项目",
+        52
+      ],
+      [
+        "Rust 项目",
+        34
+      ],
+      [
+        "C++ 项目",
+        33
+      ],
+      [
+        "C# 项目",
+        31
+      ],
+      [
+        "Swift 项目",
+        29
+      ],
+      [
+        "C 项目",
+        22
+      ],
+      [
+        "Java 项目",
+        22
+      ],
+      [
+        "Kotlin 项目",
+        19
+      ],
+      [
+        "Skills",
+        11
+      ],
+      [
+        "开源书籍",
+        7
+      ],
+      [
+        "PHP 项目",
+        2
+      ],
+      [
+        "Objective-C 项目",
+        1
+      ]
+    ],
+    "41-80": [
+      [
+        "JavaScript 项目",
+        199
+      ],
+      [
+        "Python 项目",
+        163
+      ],
+      [
+        "Go 项目",
+        159
+      ],
+      [
+        "Java 项目",
+        130
+      ],
+      [
+        "人工智能",
+        91
+      ],
+      [
+        "C++ 项目",
+        85
+      ],
+      [
+        "C 项目",
+        67
+      ],
+      [
+        "C# 项目",
+        56
+      ],
+      [
+        "Swift 项目",
+        55
+      ],
+      [
+        "开源书籍",
+        53
+      ],
+      [
+        "CSS 项目",
+        29
+      ],
+      [
+        "PHP 项目",
+        27
+      ],
+      [
+        "Rust 项目",
+        27
+      ],
+      [
+        "Ruby 项目",
+        15
+      ],
+      [
+        "Kotlin 项目",
+        15
+      ],
+      [
+        "Objective-C 项目",
+        14
+      ]
+    ],
+    "81-110": [
+      [
+        "JavaScript 项目",
+        150
+      ],
+      [
+        "Python 项目",
+        150
+      ],
+      [
+        "Go 项目",
+        134
+      ],
+      [
+        "人工智能",
+        112
+      ],
+      [
+        "C++ 项目",
+        92
+      ],
+      [
+        "Rust 项目",
+        77
+      ],
+      [
+        "C 项目",
+        71
+      ],
+      [
+        "C# 项目",
+        68
+      ],
+      [
+        "Java 项目",
+        66
+      ],
+      [
+        "开源书籍",
+        56
+      ],
+      [
+        "Swift 项目",
+        45
+      ],
+      [
+        "Kotlin 项目",
+        27
+      ],
+      [
+        "CSS 项目",
+        10
+      ],
+      [
+        "PHP 项目",
+        10
+      ],
+      [
+        "Ruby 项目",
+        5
+      ],
+      [
+        "Objective-C 项目",
+        4
+      ]
+    ]
+  },
+  "raw_unmerged_count": 17
+}

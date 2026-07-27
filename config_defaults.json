@@ -1,0 +1,31 @@
+{
+  "min_stars": 20,
+  "min_rel": 0.15,
+  "since": "daily",
+  "ttl_hours": 6,
+  "gate_profile": "standard",
+  "interest_from": "~/.skill-picker/catalog.json",
+  "hellogithub_repo": "~/.hellogithub/HelloGitHub",
+  "hg_max_issues": 12,
+  "hg_max_issues_corpus": 0,
+  "corpus_feed_limit": 400,
+  "soft_skill_limit": 40,
+  "github_token": "",
+  "search_enabled": true,
+  "search_ttl_hours": 12,
+  "search_max_repos": 40,
+  "search_per_page": 25,
+  "search_probe_limit": 15,
+  "allowed_sources": [
+    "github.com/trending",
+    "hellogithub",
+    "github-search",
+    "corpus"
+  ],
+  "star_exempt_sources": [
+    "hellogithub",
+    "corpus",
+    "github-search"
+  ],
+  "user_agent": "skill-feed/0.3 (+local; recommend-only)"
+}
