@@ -22,6 +22,32 @@ python skillfeed.py publish-site --out site
 # 把 site/ 丢到任意静态托管即可
 ```
 
+## 云端 API（登录 + UGC）
+
+第二步：用户可 **GitHub 登录并发布自己的 skill**，与官方发现流混排。
+
+```bash
+pip install -r requirements-server.txt
+cp .env.example .env   # 填入 GitHub OAuth App 的 Client ID/Secret
+# 本地无 OAuth 时可先：
+#   set SKILLFEED_DEV_AUTH=1   (Windows) 或 export SKILLFEED_DEV_AUTH=1
+python skillfeed.py api --port 8787
+```
+
+| 地址 | 作用 |
+|---|---|
+| http://127.0.0.1:8787/ | API 首页 |
+| /publish | 发布页（登录后贴 SKILL.md） |
+| /api/feed | UGC + Pages 官方索引混排 |
+| /api/feed?source=ugc | 仅用户发布 |
+| /docs | OpenAPI |
+
+GitHub OAuth App 回调填：`{SKILLFEED_PUBLIC_URL}/auth/callback`  
+（例如 `http://127.0.0.1:8787/auth/callback`）
+
+部署到 Railway / Fly / Render：设置同样的环境变量，进程  
+`uvicorn server.app:app --host 0.0.0.0 --port $PORT`。
+
 ## 一键打开信息流（本机）
 
 ```bash

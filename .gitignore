@@ -10,3 +10,6 @@ venv/
 .cache/
 site/
 .skill-feed-data/
+.env
+*.db
+.server-data/

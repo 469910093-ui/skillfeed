@@ -9,12 +9,14 @@ skill-picker 继续只做 100% 本地扫描/匹配。
   python skillfeed.py build [--intent TEXT]   # 用已有 feed/corpus 重生信息流 HTML
   python skillfeed.py corpus [--max-issues N]
   python skillfeed.py publish-site [--out DIR]  # 导出静态站（GitHub Pages）
+  python skillfeed.py api [--host HOST] [--port N]  # 云端 API：登录 + UGC
   python skillfeed.py serve [--port N]
   python skillfeed.py check
   python skillfeed.py feedback
 
 环境变量:
   SKILLFEED_HOME  数据目录（默认 ~/.skill-feed；CI 可设为仓库内路径）
+  详见 .env.example（OAuth / DB / 官方 feed URL）
 """
 
 from __future__ import annotations
@@ -499,6 +501,44 @@ def cmd_publish_site(argv: list[str]) -> int:
     return 0
 
 
+def cmd_api(argv: list[str]) -> int:
+    """启动 FastAPI：GitHub 登录 + UGC 发布 + 混排 Feed。"""
+    root = Path(__file__).resolve().parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    host = "127.0.0.1"
+    port = 8787
+    reload = False
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--host" and i + 1 < len(argv):
+            host = argv[i + 1]
+            i += 2
+            continue
+        if argv[i] == "--port" and i + 1 < len(argv):
+            port = int(argv[i + 1])
+            i += 2
+            continue
+        if argv[i] == "--reload":
+            reload = True
+            i += 1
+            continue
+        print(f"unknown arg: {argv[i]}", file=sys.stderr)
+        return 2
+    try:
+        import uvicorn
+    except ImportError:
+        print(
+            "缺少服务端依赖。请先安装：\n  pip install -r requirements-server.txt",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"[api] skill-feed API → http://{host}:{port}/")
+    print("[api] publish UI → /publish · docs → /docs")
+    uvicorn.run("server.app:app", host=host, port=port, reload=reload)
+    return 0
+
+
 def cmd_check(_: list[str]) -> int:
     refresh_paths()
     cfg = load_config()
@@ -667,6 +707,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_feedback(rest)
     if cmd == "publish-site":
         return cmd_publish_site(rest)
+    if cmd == "api":
+        return cmd_api(rest)
     if cmd == "serve":
         return cmd_serve(rest)
     if cmd == "install":
