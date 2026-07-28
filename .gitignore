@@ -8,3 +8,5 @@ venv/
 .cursor/
 *.html.bak
 .cache/
+site/
+.skill-feed-data/

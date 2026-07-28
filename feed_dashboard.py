@@ -625,14 +625,15 @@ function initials(name) {{
 
 function fmtGeneratedAt() {{
   const g = FEED.generated_at;
-  if (!g) return '更新 —';
+  const host = (FEED.ui && FEED.ui.hosting === 'pages') ? ' · 网站' : '';
+  if (!g) return '更新 —' + host;
   try {{
     const d = new Date(g);
-    if (Number.isNaN(d.getTime())) return '更新 ' + String(g).slice(0, 16);
+    if (Number.isNaN(d.getTime())) return '更新 ' + String(g).slice(0, 16) + host;
     const s = d.toLocaleString('zh-CN', {{ month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }});
-    return '更新 ' + s;
+    return '更新 ' + s + host;
   }} catch (e) {{
-    return '更新 ' + String(g).slice(0, 16);
+    return '更新 ' + String(g).slice(0, 16) + host;
   }}
 }}
 

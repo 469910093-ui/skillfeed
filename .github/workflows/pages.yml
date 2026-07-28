@@ -1,0 +1,120 @@
+# 定时刷新远程 skill 索引并部署到 GitHub Pages
+name: Refresh & Pages
+
+on:
+  schedule:
+    # 每 6 小时（UTC）
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "skillfeed.py"
+      - "feed_dashboard.py"
+      - "feed_pack.py"
+      - "gates.py"
+      - "rank.py"
+      - "scene.py"
+      - "corpus.py"
+      - "trending.py"
+      - "github_search.py"
+      - "hellogithub.py"
+      - "skill_detect.py"
+      - "config_defaults.json"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout skillfeed
+        uses: actions/checkout@v4
+
+      - name: Checkout HelloGitHub (content)
+        uses: actions/checkout@v4
+        with:
+          repository: 521xueweihan/HelloGitHub
+          path: _hellogithub
+          sparse-checkout: |
+            content
+          sparse-checkout-cone-mode: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache skill-feed data
+        uses: actions/cache@v4
+        with:
+          path: .skill-feed-data
+          key: skillfeed-data-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            skillfeed-data-${{ runner.os }}-
+
+      - name: Prepare data dir & config
+        env:
+          SKILLFEED_HOME: ${{ github.workspace }}/.skill-feed-data
+        run: |
+          mkdir -p "$SKILLFEED_HOME"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          home = Path(os.environ["SKILLFEED_HOME"])
+          home.mkdir(parents=True, exist_ok=True)
+          cfg = {
+              "min_stars": 20,
+              "min_rel": 0.15,
+              "since": "daily",
+              "ttl_hours": 6,
+              "gate_profile": "standard",
+              "hellogithub_repo": str(Path(os.environ["GITHUB_WORKSPACE"]) / "_hellogithub"),
+              "hg_max_issues": 8,
+              "corpus_feed_limit": 300,
+              "soft_skill_limit": 30,
+              "search_enabled": True,
+              "search_max_repos": 30,
+              "search_per_page": 20,
+              "search_probe_limit": 10,
+              "user_agent": "skill-feed/0.3 (+github-pages; recommend-only)",
+          }
+          (home / "config.json").write_text(
+              json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          print("config ->", home / "config.json")
+          PY
+
+      - name: Refresh feed
+        env:
+          SKILLFEED_HOME: ${{ github.workspace }}/.skill-feed-data
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python skillfeed.py refresh --force
+          python skillfeed.py publish-site --out site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

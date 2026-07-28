@@ -4,7 +4,25 @@ Instagram 板式的 **agent skill 信息流**：多源发现 → 门禁 → 本�
 
 与 [skill-picker](https://github.com/469910093-ui/Skill-picker) **拆产品线**：skill-picker 管本机已装；skill-feed 管远程发现。
 
-## 一键打开信息流
+## 在线网站（GitHub Pages）
+
+公开站会由 GitHub Actions **每 6 小时自动 refresh** 并部署：
+
+**https://469910093-ui.github.io/skillfeed/**
+
+- 仓库：[469910093-ui/skillfeed](https://github.com/469910093-ui/skillfeed)
+- 手动刷新：GitHub → Actions → **Refresh & Pages** → Run workflow
+- 赞/藏目前仅保存在浏览者本机（localStorage）；服务端 UGC 另议
+
+本地导出静态站：
+
+```bash
+python skillfeed.py refresh
+python skillfeed.py publish-site --out site
+# 把 site/ 丢到任意静态托管即可
+```
+
+## 一键打开信息流（本机）
 
 ```bash
 cd skill-feed

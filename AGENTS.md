@@ -24,9 +24,13 @@ python skillfeed.py serve      # Instagram 板式信息流（会自动 build）
 - `python skillfeed.py refresh [--since daily|weekly] [--force] [--intent TEXT]`
 - `python skillfeed.py build [--intent TEXT]` — 不联网重生信息流 HTML
 - `python skillfeed.py corpus [--max-issues N]`
+- `python skillfeed.py publish-site [--out site]` — 导出 GitHub Pages 静态站
 - `python skillfeed.py serve [--port 8473]`
 - `python skillfeed.py check`
 - `python skillfeed.py feedback`
+
+公开站：Actions 工作流 `Refresh & Pages` 每 6 小时 refresh 并部署到  
+`https://469910093-ui.github.io/skillfeed/`（`SKILLFEED_HOME` 可覆盖数据目录）。
 
 ## 注意
 

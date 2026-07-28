@@ -8,9 +8,13 @@ skill-picker 继续只做 100% 本地扫描/匹配。
   python skillfeed.py refresh [--since daily|weekly] [--force] [--intent TEXT]
   python skillfeed.py build [--intent TEXT]   # 用已有 feed/corpus 重生信息流 HTML
   python skillfeed.py corpus [--max-issues N]
+  python skillfeed.py publish-site [--out DIR]  # 导出静态站（GitHub Pages）
   python skillfeed.py serve [--port N]
   python skillfeed.py check
   python skillfeed.py feedback
+
+环境变量:
+  SKILLFEED_HOME  数据目录（默认 ~/.skill-feed；CI 可设为仓库内路径）
 """
 
 from __future__ import annotations
@@ -38,11 +42,30 @@ import skill_detect
 import trending
 
 HOME = Path.home()
-DATA_DIR = HOME / ".skill-feed"
+DEFAULTS_PATH = Path(__file__).resolve().parent / "config_defaults.json"
+
+
+def data_dir() -> Path:
+    """数据根目录。CI/网站构建用环境变量 SKILLFEED_HOME 覆盖。"""
+    env = (os.environ.get("SKILLFEED_HOME") or "").strip()
+    if env:
+        return Path(env).expanduser().resolve()
+    return (HOME / ".skill-feed").resolve()
+
+
+DATA_DIR = data_dir()
 FEED_JSON = DATA_DIR / "feed.json"
 FEED_HTML = DATA_DIR / "feed.html"
 CONFIG_JSON = DATA_DIR / "config.json"
-DEFAULTS_PATH = Path(__file__).resolve().parent / "config_defaults.json"
+
+
+def refresh_paths() -> None:
+    """SKILLFEED_HOME 在进程内被设置后，同步模块级路径。"""
+    global DATA_DIR, FEED_JSON, FEED_HTML, CONFIG_JSON
+    DATA_DIR = data_dir()
+    FEED_JSON = DATA_DIR / "feed.json"
+    FEED_HTML = DATA_DIR / "feed.html"
+    CONFIG_JSON = DATA_DIR / "config.json"
 TOOL_FILES = [
     "skillfeed.py",
     "trending.py",
@@ -136,6 +159,7 @@ def _resolve_github_token(cfg: dict) -> str:
 
 
 def cmd_corpus(argv: list[str]) -> int:
+    refresh_paths()
     cfg = load_config()
     ensure_data_dir(cfg)
     max_issues = int(cfg.get("hg_max_issues_corpus", 0) or 0)  # 0=全刊
@@ -156,6 +180,7 @@ def cmd_corpus(argv: list[str]) -> int:
 
 
 def cmd_refresh(argv: list[str]) -> int:
+    refresh_paths()
     cfg = load_config()
     ensure_data_dir(cfg)
     since = cfg.get("since", "daily")
@@ -369,6 +394,7 @@ def cmd_refresh(argv: list[str]) -> int:
 
 def cmd_build(argv: list[str]) -> int:
     """不联网：用现有 feed.json / corpus 重打包 + 重生 Instagram 信息流 HTML。"""
+    refresh_paths()
     cfg = load_config()
     ensure_data_dir(cfg)
     intent = str(cfg.get("intent") or "")
@@ -426,7 +452,55 @@ def cmd_build(argv: list[str]) -> int:
     return 0
 
 
+def cmd_publish_site(argv: list[str]) -> int:
+    """把最新 Feed 导出为可部署的静态站点（index.html + feed.json）。"""
+    refresh_paths()
+    out = Path("site")
+    i = 0
+    while i < len(argv):
+        if argv[i] in ("--out", "-o") and i + 1 < len(argv):
+            out = Path(argv[i + 1])
+            i += 2
+            continue
+        print(f"unknown arg: {argv[i]}", file=sys.stderr)
+        return 2
+
+    if not FEED_JSON.exists():
+        print("no feed.json — run: python skillfeed.py refresh", file=sys.stderr)
+        return 1
+    try:
+        feed = json.loads(FEED_JSON.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"bad feed.json: {e}", file=sys.stderr)
+        return 1
+
+    ui = dict(feed.get("ui") or {})
+    ui["hosting"] = "pages"
+    ui["feedback"] = "local-only"
+    ui["cta"] = ui.get("cta") or "open_github"
+    feed["ui"] = ui
+
+    out.mkdir(parents=True, exist_ok=True)
+    (out / ".nojekyll").write_text("", encoding="utf-8")
+    (out / "feed.json").write_text(
+        json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+    )
+    feed_dashboard.write_feed_html(feed, out / "index.html")
+    # 简短说明（不参与站点路由）
+    (out / "BUILD.txt").write_text(
+        "skill-feed static site\n"
+        f"generated_at={feed.get('generated_at')}\n"
+        f"items={len(feed.get('items') or [])}\n"
+        f"corpus={len(feed.get('corpus') or [])}\n",
+        encoding="utf-8",
+    )
+    print(f"[publish-site] wrote {out.resolve()}/index.html")
+    print(f"[publish-site] items={len(feed.get('items') or [])} corpus={len(feed.get('corpus') or [])}")
+    return 0
+
+
 def cmd_check(_: list[str]) -> int:
+    refresh_paths()
     cfg = load_config()
     if not FEED_JSON.exists():
         print("no feed.json — run: python skillfeed.py refresh")
@@ -519,6 +593,7 @@ class FeedHandler(BaseHTTPRequestHandler):
 
 
 def cmd_serve(argv: list[str]) -> int:
+    refresh_paths()
     cfg = load_config()
     ensure_data_dir(cfg)
     self_copy()
@@ -590,6 +665,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(rest)
     if cmd == "feedback":
         return cmd_feedback(rest)
+    if cmd == "publish-site":
+        return cmd_publish_site(rest)
     if cmd == "serve":
         return cmd_serve(rest)
     if cmd == "install":
