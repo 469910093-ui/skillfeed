@@ -313,6 +313,24 @@ def build_feed_html(feed: dict) -> str:
   }}
   .nav svg {{ width: 24px; height: 24px; }}
   .nav.on {{ color: var(--like); }}
+  .me-panel {{ padding: 18px 16px 28px; }}
+  .me-panel h2 {{ margin: 0 0 6px; font-size: 1.2rem; }}
+  .me-panel .lead {{ color: var(--muted); font-size: .88rem; line-height: 1.45; margin: 0 0 16px; }}
+  .me-card {{
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 10px;
+  }}
+  .me-card strong {{ display: block; margin-bottom: 4px; }}
+  .me-card p {{ margin: 0; font-size: .82rem; color: var(--muted); line-height: 1.4; }}
+  .me-actions {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }}
+  .me-actions a, .me-actions button {{
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .78rem; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+  }}
+  .me-actions a.primary, .me-actions button.primary {{
+    background: var(--ink); color: #fff; border-color: var(--ink);
+  }}
 
   .demo-bar {{
     position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%);
@@ -495,25 +513,17 @@ def build_feed_html(feed: dict) -> str:
     <main class="feed" id="feed"></main>
 
     <nav class="bottom">
-      <button class="nav on" type="button" data-mode="all" title="Home">
+      <button class="nav on" type="button" data-mode="all" title="发现">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-        Home
+        发现
       </button>
-      <button class="nav" type="button" data-mode="skills" title="Skills">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        Skills
+      <button class="nav" type="button" data-action="publish" title="发布">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        发布
       </button>
-      <button class="nav" type="button" data-mode="ai" title="AI">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.2 6.8H21l-5.5 4 2.1 6.7L12 15.8 6.4 19.5 8.5 12.8 3 8.8h6.8z"/></svg>
-        AI
-      </button>
-      <button class="nav" type="button" data-mode="oss" title="Explore">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Explore
-      </button>
-      <button class="nav" type="button" data-mode="saved" title="Saved">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-        Saved
+      <button class="nav" type="button" data-mode="me" title="我的">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>
+        我的
       </button>
     </nav>
   </div>
@@ -553,6 +563,7 @@ const SCENES = {scenes};
 const SCENES_L2 = {scenes_l2};
 const PAGE = 6;
 const STORY_MS = 3500;
+const API_BASE = ((FEED.ui && FEED.ui.api_base) || '').replace(/\\/$/, '');
 const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', shown: 0, intent: '' }};
 const demo = {{ on: false, step: 0, timer: null, focus: -1 }};
 const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
@@ -651,15 +662,60 @@ function allPool() {{
   return out;
 }}
 
-function matchMode(it) {{
-  const kind = it.kind || (it.skill_path ? 'skill' : 'oss');
+function kindOf(it) {{
+  return it.kind || (it.skill_path ? 'skill' : 'oss');
+}}
+
+function matchModeValue(it, mode) {{
+  const kind = kindOf(it);
   const sec = it.hg_section || '';
-  if (state.mode === 'all') return true;
-  if (state.mode === 'saved') return true;
-  if (state.mode === 'skills') return kind === 'skill' || !!it.skill_path || sec === 'Skills';
-  if (state.mode === 'ai') return kind === 'ai' || sec === '人工智能' || kind === 'skill';
-  if (state.mode === 'oss') return kind !== 'skill' && !it.skill_path;
+  if (mode === 'all' || mode === 'me' || mode === 'saved') return true;
+  if (mode === 'skills') return kind === 'skill' || !!it.skill_path || sec === 'Skills';
+  if (mode === 'ai') return kind === 'ai' || sec === '人工智能';
+  if (mode === 'oss') return kind !== 'skill' && !it.skill_path && sec !== 'Skills';
   return true;
+}}
+
+function matchMode(it) {{
+  return matchModeValue(it, state.mode);
+}}
+
+function countMode(mode) {{
+  return allPool().filter(it => matchModeValue(it, mode)).length;
+}}
+
+function countScene(sceneId) {{
+  return allPool().filter(it => matchMode(it) && (it.scene || 'other') === sceneId).length;
+}}
+
+function countSection(secId) {{
+  if (secId === 'all') return allPool().filter(it => matchMode(it)).length;
+  return allPool().filter(it => {{
+    if (!matchMode(it)) return false;
+    const sec = it.hg_section || '';
+    return !!sec && (sec === secId || sec.includes(secId));
+  }}).length;
+}}
+
+function countL2(l2Id) {{
+  if (l2Id === 'all') return countScene(state.scene);
+  return allPool().filter(it =>
+    matchMode(it) && (it.scene || 'other') === state.scene && (it.scene_l2 || '') === l2Id
+  ).length;
+}}
+
+function apiUrl(path) {{
+  if (!API_BASE) return '';
+  return API_BASE + (path.startsWith('/') ? path : ('/' + path));
+}}
+
+function openPublish() {{
+  const url = apiUrl('/publish');
+  if (url) {{
+    window.open(url, '_blank', 'noopener');
+    return;
+  }}
+  toast('请先启动 API：python skillfeed.py api（或配置 ui.api_base）');
 }}
 
 function liveIntentBoost(it, q) {{
@@ -723,21 +779,27 @@ function sceneItems(sceneId, limit) {{
 }}
 
 function l2Options() {{
-  if (state.scene === 'all') return [{{id:'all', label:'全部二级'}}];
-  const kids = SCENES_L2[state.scene] || [];
-  return [{{id:'all', label:'全部二级'}}].concat(kids);
+  if (state.scene === 'all') return [];
+  const kids = (SCENES_L2[state.scene] || [])
+    .filter(k => countL2(k[0]) > 0)
+    .map(([id, label]) => ({{ id, label }}));
+  if (!kids.length) return [];
+  return [{{ id: 'all', label: '全部二级' }}].concat(kids);
 }}
 
 function sectionOptions() {{
   const set = new Map();
-  set.set('all', '全部栏目');
   for (const it of allPool()) {{
+    if (!matchMode(it)) continue;
     const sec = it.hg_section;
     if (sec) set.set(sec, sec.replace(/ 项目$/, ''));
   }}
-  const preferred = ['all','Skills','人工智能','Python 项目','JavaScript 项目','Go 项目','Rust 项目','开源书籍','其它'];
+  const preferred = ['Skills','人工智能','Python 项目','JavaScript 项目','Go 项目','Rust 项目','开源书籍','其它'];
   const rest = [...set.keys()].filter(k => !preferred.includes(k)).sort();
-  return preferred.filter(k => set.has(k)).concat(rest).map(id => ({{ id, label: set.get(id) }}));
+  const ids = preferred.filter(k => set.has(k) && countSection(k) > 0)
+    .concat(rest.filter(k => countSection(k) > 0));
+  if (!ids.length) return [];
+  return [{{ id: 'all', label: '全部栏目' }}].concat(ids.map(id => ({{ id, label: set.get(id) }})));
 }}
 
 async function sendFeedback(action, it) {{
@@ -857,22 +919,25 @@ function cardHtml(it, idx) {{
 
 function renderStories() {{
   const el = document.getElementById('stories');
-  const isSaved = state.mode === 'saved';
-  el.classList.toggle('hidden', isSaved);
-  if (isSaved) {{ el.innerHTML = ''; return; }}
+  const hide = state.mode === 'me' || state.mode === 'saved';
+  el.classList.toggle('hidden', hide);
+  if (hide) {{ el.innerHTML = ''; return; }}
 
   const modes = [
     {{ id: 'mode:all', label: '全部', kind: 'mode', value: 'all' }},
     {{ id: 'mode:skills', label: 'Skills', kind: 'mode', value: 'skills' }},
     {{ id: 'mode:ai', label: 'AI', kind: 'mode', value: 'ai' }},
-    {{ id: 'mode:oss', label: 'Explore', kind: 'mode', value: 'oss' }},
-  ];
+    {{ id: 'mode:oss', label: '开源', kind: 'mode', value: 'oss' }},
+  ].filter(m => m.value === 'all' || countMode(m.value) > 0);
+
   const sceneStories = [{{ id: 'scene:all', label: '全部', kind: 'scene', value: 'all', text: '全部' }}]
-    .concat(SCENES.map(s => ({{ id: 'scene:' + s.id, label: s.label, kind: 'scene', value: s.id, text: s.label }})));
+    .concat(SCENES
+      .filter(s => countScene(s.id) > 0)
+      .map(s => ({{ id: 'scene:' + s.id, label: s.label, kind: 'scene', value: s.id, text: s.label }})));
 
   const items = modes.concat(sceneStories);
   el.innerHTML = items.map(st => {{
-    const on = (st.kind === 'mode' && state.mode === st.value && state.mode !== 'saved') ||
+    const on = (st.kind === 'mode' && state.mode === st.value) ||
                (st.kind === 'scene' && state.scene === st.value && st.value !== 'all') ||
                (st.kind === 'scene' && st.value === 'all' && state.scene === 'all' && state.mode === 'all');
     const pal = paletteFor(st.id);
@@ -898,8 +963,7 @@ function emptyHtml(items) {{
   if (state.mode === 'saved') {{
     return `<div class="empty">
       <h2>还没有收藏</h2>
-      <p>双击帖子点赞，或点书签收藏。Saved 会合并 liked ∪ saved。</p>
-      <p>跑 <code>refresh</code> 拉新 feed，或检查 corpus 备份是否写入。</p>
+      <p>双击帖子点赞，或点书签收藏。可在「我的」里查看。</p>
     </div>`;
   }}
   return `<div class="empty">
@@ -911,24 +975,76 @@ function emptyHtml(items) {{
   </div>`;
 }}
 
-function render(reset) {{
-  const items = filtered();
-  const feed = document.getElementById('feed');
+function mePanelHtml() {{
+  const nLiked = liked.size;
+  const nSaved = saved.size;
+  const pub = apiUrl('/publish') || '';
+  const docs = apiUrl('/docs') || '';
+  const home = apiUrl('/') || '';
+  return `<div class="me-panel">
+    <h2>我的</h2>
+    <p class="lead">个人账户、本机收藏，以及发布后台入口。赞/藏仍保存在此浏览器。</p>
+    <div class="me-card">
+      <strong>本机收藏</strong>
+      <p>点赞 ${{nLiked}} · 书签 ${{nSaved}}</p>
+      <div class="me-actions">
+        <button type="button" class="primary js-me-saved">查看收藏</button>
+      </div>
+    </div>
+    <div class="me-card">
+      <strong>发布与后台</strong>
+      <p>${{API_BASE ? ('API：' + escapeHtml(API_BASE)) : '尚未配置云端 API（ui.api_base / skillfeed.py api）'}}</p>
+      <div class="me-actions">
+        ${{pub ? `<a class="primary" href="${{escapeHtml(pub)}}" target="_blank" rel="noopener">去发布 Skill</a>` :
+          `<button type="button" class="primary js-me-publish">去发布 Skill</button>`}}
+        ${{docs ? `<a href="${{escapeHtml(docs)}}" target="_blank" rel="noopener">API 文档</a>` : ''}}
+        ${{home ? `<a href="${{escapeHtml(home)}}" target="_blank" rel="noopener">API 首页</a>` : ''}}
+        ${{API_BASE ? `<a href="${{escapeHtml(apiUrl('/auth/github'))}}" target="_blank" rel="noopener">GitHub 登录</a>` : ''}}
+      </div>
+    </div>
+    <div class="me-card">
+      <strong>发现站</strong>
+      <p>底部仅保留「发现 / 发布 / 我的」。Skills、AI、开源筛选在顶部 Stories，无内容的已自动隐藏。</p>
+    </div>
+  </div>`;
+}}
 
+function render(reset) {{
+  // 当前模式若已无内容，回退到发现
+  if (['skills', 'ai', 'oss'].includes(state.mode) && countMode(state.mode) === 0) {{
+    state.mode = 'all';
+  }}
+  if (state.scene !== 'all' && countScene(state.scene) === 0) {{
+    state.scene = 'all';
+    state.scene_l2 = 'all';
+  }}
+  if (state.section !== 'all' && countSection(state.section) === 0) {{
+    state.section = 'all';
+  }}
+
+  const feed = document.getElementById('feed');
   document.getElementById('genStatus').textContent = fmtGeneratedAt();
   renderStories();
 
-  const hideFilters = state.mode === 'saved';
-  const hideScene = state.mode === 'oss';
-  renderPills(document.getElementById('l2Strip'), l2Options(), 'scene_l2', !hideFilters && !hideScene && state.scene !== 'all');
-  renderPills(document.getElementById('sectionStrip'), sectionOptions().slice(0, 10), 'section', state.mode === 'oss');
+  const hideChrome = state.mode === 'me';
+  const secs = sectionOptions();
+  const l2s = l2Options();
+  renderPills(document.getElementById('l2Strip'), l2s, 'scene_l2', !hideChrome && l2s.length > 0);
+  renderPills(document.getElementById('sectionStrip'), secs, 'section', !hideChrome && secs.length > 0);
 
   document.querySelectorAll('.bottom .nav').forEach(n => {{
-    n.classList.toggle('on', n.dataset.mode === state.mode);
+    const mode = n.dataset.mode;
+    n.classList.toggle('on', !!mode && mode === state.mode);
   }});
 
-  document.getElementById('searchWrap').style.display = state.mode === 'saved' ? '' : '';
+  document.getElementById('searchWrap').style.display = hideChrome ? 'none' : '';
 
+  if (state.mode === 'me') {{
+    feed.innerHTML = mePanelHtml();
+    return;
+  }}
+
+  const items = filtered();
   if (!items.length) {{
     feed.innerHTML = emptyHtml(items);
     return;
@@ -1163,21 +1279,15 @@ function demoTick() {{
       }}
     }},
     () => {{
-      document.getElementById('demoText').textContent = 'Demo：切 Saved';
-      state.mode = 'saved';
+      document.getElementById('demoText').textContent = 'Demo：打开「我的」';
+      state.mode = 'me';
       demo.focus = -1;
       state.shown = 0;
       render(true);
       window.scrollTo({{ top: 0, behavior: 'smooth' }});
     }},
     () => {{
-      document.getElementById('demoText').textContent = 'Demo：Explore 开源逛逛';
-      state.mode = 'oss';
-      state.shown = 0;
-      render(true);
-    }},
-    () => {{
-      document.getElementById('demoText').textContent = 'Demo 循环 · 回 Home';
+      document.getElementById('demoText').textContent = 'Demo 循环 · 回发现';
       state.mode = 'all';
       state.scene = 'all';
       state.scene_l2 = 'all';
@@ -1253,8 +1363,14 @@ document.getElementById('sectionStrip').addEventListener('click', (e) => {{
 document.querySelector('.bottom').addEventListener('click', (e) => {{
   const nav = e.target.closest('.nav');
   if (!nav) return;
-  state.mode = nav.dataset.mode;
-  if (state.mode !== 'oss') state.section = 'all';
+  if (nav.dataset.action === 'publish') {{
+    openPublish();
+    return;
+  }}
+  state.mode = nav.dataset.mode || 'all';
+  if (state.mode === 'all') {{
+    state.section = 'all';
+  }}
   state.shown = 0;
   render(true);
   window.scrollTo({{ top: 0, behavior: 'smooth' }});
@@ -1269,6 +1385,17 @@ document.getElementById('intent').addEventListener('input', (e) => {{
 document.getElementById('feed').addEventListener('click', (e) => {{
   const t = e.target;
   if (!(t instanceof Element)) return;
+
+  if (t.closest('.js-me-saved')) {{
+    state.mode = 'saved';
+    state.shown = 0;
+    render(true);
+    return;
+  }}
+  if (t.closest('.js-me-publish')) {{
+    openPublish();
+    return;
+  }}
 
   if (t.closest('.js-doc-more')) {{
     const idx = t.closest('.js-doc-more').dataset.idx;

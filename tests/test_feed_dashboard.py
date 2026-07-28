@@ -55,6 +55,11 @@ class TestFeedDashboard(unittest.TestCase):
         self.assertIn("sv-cover", html)
         self.assertIn("object-fit: contain", html)
         self.assertNotIn("background-size: cover; background-position: center;", html)
+        self.assertIn("发现", html)
+        self.assertIn("发布", html)
+        self.assertIn("我的", html)
+        self.assertIn("countMode", html)
+        self.assertNotIn('data-mode="skills"', html)
         self.assertIn('"full_name": "acme/agent-skills"', json.dumps(feed))
 
 

@@ -480,6 +480,9 @@ def cmd_publish_site(argv: list[str]) -> int:
     ui["hosting"] = "pages"
     ui["feedback"] = "local-only"
     ui["cta"] = ui.get("cta") or "open_github"
+    api_base = (os.environ.get("SKILLFEED_PUBLIC_URL") or ui.get("api_base") or "").strip().rstrip("/")
+    if api_base:
+        ui["api_base"] = api_base
     feed["ui"] = ui
 
     out.mkdir(parents=True, exist_ok=True)
