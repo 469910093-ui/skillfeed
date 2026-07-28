@@ -225,38 +225,64 @@ def build_feed_html(feed: dict) -> str:
     100% {{ opacity: 0; transform: scale(1.4); }}
   }}
 
-  .doc {{
-    margin: 0; padding: 12px 14px 4px;
+  .pitch {{
+    margin: 0; padding: 12px 14px 6px;
     background: #fff;
   }}
-  .doc-head {{
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    margin-bottom: 8px;
+  .pitch .problem {{
+    font-size: .95rem; font-weight: 650; line-height: 1.35;
+    margin: 0 0 10px; letter-spacing: -.01em;
   }}
-  .doc-label {{
-    font-size: .68rem; font-weight: 700; letter-spacing: .04em;
-    color: var(--muted); text-transform: uppercase;
+  .pitch .problem em {{
+    font-style: normal; font-size: .68rem; font-weight: 700;
+    color: #fff; background: var(--ink); border-radius: 6px;
+    padding: 2px 6px; margin-right: 6px; vertical-align: 1px;
   }}
-  .doc-link {{
-    font-size: .72rem; font-weight: 600; color: var(--link); text-decoration: none;
+  .pitch .highlights {{
+    list-style: none; margin: 0; padding: 0; display: grid; gap: 6px;
   }}
-  .doc-body {{
-    margin: 0; padding: 12px 12px 14px;
+  .pitch .highlights li {{
+    position: relative; padding: 8px 10px 8px 28px;
     background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 10px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: .78rem; line-height: 1.5; color: #24292f;
-    white-space: pre-wrap; word-break: break-word;
-    max-height: 168px; overflow: hidden;
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 8;
+    font-size: .8rem; line-height: 1.35; color: #24292f;
   }}
-  .doc.expanded .doc-body {{
-    max-height: none; -webkit-line-clamp: unset; display: block;
+  .pitch .highlights li::before {{
+    content: "✦"; position: absolute; left: 10px; top: 8px;
+    color: var(--like); font-size: .75rem;
   }}
-  .doc-more {{
-    display: inline-block; margin-top: 6px; margin-bottom: 2px;
-    border: 0; background: transparent; color: var(--muted);
-    font: inherit; font-size: .78rem; font-weight: 600; cursor: pointer; padding: 0;
+  .pitch .doc-link {{
+    display: inline-block; margin-top: 10px;
+    font-size: .75rem; font-weight: 600; color: var(--link); text-decoration: none;
   }}
+  .who.clickable {{ cursor: pointer; }}
+  .who.clickable:hover .name {{ text-decoration: underline; }}
+  .avatar.clickable {{ cursor: pointer; }}
+  .pub-panel {{ padding: 16px 14px 28px; }}
+  .pub-head {{
+    display: flex; gap: 12px; align-items: center; margin-bottom: 14px;
+  }}
+  .pub-head .ava {{
+    width: 56px; height: 56px; border-radius: 50%;
+    display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 1.1rem;
+  }}
+  .pub-head h2 {{ margin: 0; font-size: 1.2rem; }}
+  .pub-head p {{ margin: 4px 0 0; font-size: .8rem; color: var(--muted); }}
+  .pub-actions {{ display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }}
+  .pub-actions a, .pub-actions button {{
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .78rem; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+  }}
+  .pub-actions a.primary {{ background: var(--ink); color: #fff; border-color: var(--ink); }}
+  .pub-sec {{ font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .04em;
+    text-transform: uppercase; margin: 14px 0 8px; }}
+  .pub-item {{
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px; margin-bottom: 8px; cursor: pointer;
+  }}
+  .pub-item strong {{ display: block; margin-bottom: 4px; }}
+  .pub-item p {{ margin: 0; font-size: .8rem; color: var(--muted); line-height: 1.4; }}
+  .pub-item .meta {{ margin-top: 6px; font-size: .72rem; color: var(--muted); }}
 
   .actions {{
     display: flex; align-items: center; justify-content: space-between;
@@ -564,9 +590,10 @@ const SCENES_L2 = {scenes_l2};
 const PAGE = 6;
 const STORY_MS = 3500;
 const API_BASE = ((FEED.ui && FEED.ui.api_base) || '').replace(/\\/$/, '');
-const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', shown: 0, intent: '' }};
+const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', shown: 0, intent: '', publisher: '' }};
 const demo = {{ on: false, step: 0, timer: null, focus: -1 }};
 const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
+const publisherCache = {{}};
 
 const PALETTES = [
   ['#ff6a3d','#c32bad','#7028e4'],
@@ -844,6 +871,41 @@ function friendlyWhy(it) {{
   return bits.length ? ('因为 · ' + bits.join(' · ')) : '';
 }}
 
+function extractHighlightsClient(it) {{
+  if (Array.isArray(it.highlights) && it.highlights.length && it.problem) {{
+    return {{ problem: it.problem, highlights: it.highlights.slice(0, 4) }};
+  }}
+  const desc = (it.description || it.one_liner || '').trim();
+  const body = (it.body_preview || '').trim();
+  const bullets = [];
+  const headings = [];
+  const paras = [];
+  for (const raw of body.split('\\n')) {{
+    const line = raw.trim();
+    if (!line || line === '---' || line.startsWith('```')) continue;
+    const hm = line.match(/^#{{1,3}}\\s+(.+)$/);
+    if (hm) {{ const h = hm[1].replace(/[`*_]/g,'').trim(); if (h.length >= 8 && h.length <= 120) headings.push(h); continue; }}
+    const bm = line.match(/^(?:[-*]|\\d+\\.)\\s+(.+)$/);
+    if (bm) {{ const b = bm[1].replace(/[`*_]/g,'').replace(/\\[[^\\]]+\\]\\([^)]+\\)/g, '$1').trim(); if (b.length >= 8 && b.length <= 120) bullets.push(b); continue; }}
+    if (line.startsWith('#') || line.startsWith('<')) continue;
+    const p = line.replace(/[`*_]/g,'').trim();
+    if (p.length >= 8 && p.length <= 120) paras.push(p);
+  }}
+  let problem = desc || paras[0] || headings[0] || (it.name || 'Skill');
+  if (problem.length > 110) problem = problem.slice(0, 109) + '…';
+  const highlights = [];
+  const seen = new Set();
+  for (const x of bullets.concat(headings).concat(paras.slice(1))) {{
+    const k = x.toLowerCase();
+    if (seen.has(k) || k === problem.toLowerCase()) continue;
+    seen.add(k);
+    highlights.push(x);
+    if (highlights.length >= 4) break;
+  }}
+  if (!highlights.length) highlights.push('打开 GitHub 查看完整 SKILL.md 与用法');
+  return {{ problem, highlights }};
+}}
+
 function cardHtml(it, idx) {{
   const url = it.url || ('https://github.com/' + it.full_name);
   const fn = it.full_name || '';
@@ -852,35 +914,33 @@ function cardHtml(it, idx) {{
   const score = it.personal_score != null ? Number(it.personal_score).toFixed(2)
     : (it.rel_score != null ? Number(it.rel_score).toFixed(2) : '—');
   const why = friendlyWhy(it);
-  const desc = it.description || '';
-  const body = (it.body_preview || '').trim();
+  const tips = extractHighlightsClient(it);
   const cover = it.cover_url || (fn ? ('https://opengraph.githubassets.com/1/' + fn) : '');
   const skillUrl = it.skill_url || (it.skill_path ? ('https://github.com/' + fn + '/blob/HEAD/' + it.skill_path) : url);
-  const docText = body || desc;
-  const docLong = docText.length > 320;
   const isLiked = liked.has(fn);
   const isSaved = saved.has(fn);
   const focus = demo.focus === idx ? 'focus' : '';
-  const owner = (fn.split('/')[0] || 'skill');
+  const owner = it.owner || (fn.split('/')[0] || 'skill');
   const softCls = it.soft ? ' soft' : '';
   const noCoverCls = cover ? '' : ' no-cover';
+  const hl = tips.highlights.map(h => `<li>${{escapeHtml(h)}}</li>`).join('');
   return `<article class="post ${{it.from_corpus ? 'corpus' : ''}}${{softCls}} ${{focus}}" id="post-${{idx}}"
       data-fn="${{escapeHtml(fn)}}" data-src="${{escapeHtml(it.source || '')}}"
       data-scene="${{escapeHtml(it.scene || '')}}" data-l2="${{escapeHtml(it.scene_l2 || '')}}"
+      data-owner="${{escapeHtml(owner)}}"
       data-fc="${{it.from_corpus ? '1' : '0'}}">
     <div class="post-head">
-      <div class="avatar"><span><b style="background:${{pal[1]}}">${{escapeHtml(initials(owner))}}</b></span></div>
-      <div class="who">
+      <div class="avatar clickable js-publisher" data-owner="${{escapeHtml(owner)}}" title="查看发布者"><span><b style="background:${{pal[1]}}">${{escapeHtml(initials(owner))}}</b></span></div>
+      <div class="who clickable js-publisher" data-owner="${{escapeHtml(owner)}}" title="查看发布者">
         <div class="name">${{escapeHtml(it.name || fn)}}</div>
-        <div class="sub">${{escapeHtml(fn)}} · ${{escapeHtml(sourceLabel(it.source))}} · ★ ${{stars}}</div>
+        <div class="sub">@${{escapeHtml(owner)}} · ${{escapeHtml(sourceLabel(it.source))}} · ★ ${{stars}}</div>
       </div>
-      <button class="more" type="button" aria-label="more">···</button>
     </div>
     <div class="media js-media${{noCoverCls}}" data-idx="${{idx}}">
       ${{cover ? `<img class="cover" src="${{escapeHtml(cover)}}" alt="${{escapeHtml(it.name || fn)}}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.media').classList.add('no-cover')" />` : ''}}
       <div class="cover-fallback">
         <div class="t">${{escapeHtml(it.name || fn)}}</div>
-        <div class="d">${{escapeHtml(desc.slice(0, 120))}}</div>
+        <div class="d">${{escapeHtml((tips.problem || '').slice(0, 120))}}</div>
       </div>
       <div class="badges">
         <span class="badge">${{escapeHtml(it.scene_label || it.scene || '其他')}}</span>
@@ -890,14 +950,11 @@ function cardHtml(it, idx) {{
       </div>
       <div class="heart-burst" id="burst-${{idx}}">${{heartSvg(true)}}</div>
     </div>
-    ${{docText ? `<div class="doc" id="doc-${{idx}}">
-      <div class="doc-head">
-        <span class="doc-label">${{body ? 'SKILL.md 预览' : '简介'}}</span>
-        <a class="doc-link" href="${{escapeHtml(skillUrl)}}" target="_blank" rel="noopener">在 GitHub 看全文</a>
-      </div>
-      <pre class="doc-body">${{escapeHtml(docText)}}</pre>
-      ${{docLong ? `<button type="button" class="doc-more js-doc-more" data-idx="${{idx}}">展开全文摘要</button>` : ''}}
-    </div>` : ''}}
+    <div class="pitch">
+      <div class="problem"><em>解决</em>${{escapeHtml(tips.problem || it.name || '')}}</div>
+      <ul class="highlights">${{hl}}</ul>
+      <a class="doc-link" href="${{escapeHtml(skillUrl)}}" target="_blank" rel="noopener">在 GitHub 看 SKILL.md 全文 →</a>
+    </div>
     <div class="actions">
       <div class="actions-left">
         <button class="act js-like ${{isLiked ? 'liked' : ''}}" type="button" data-fn="${{escapeHtml(fn)}}" aria-label="like">${{heartSvg(isLiked)}}</button>
@@ -917,9 +974,105 @@ function cardHtml(it, idx) {{
   </article>`;
 }}
 
+function publisherLocalItems(owner) {{
+  return allPool().filter(it => (it.owner || (it.full_name || '').split('/')[0]) === owner);
+}}
+
+async function fetchGithubRepos(owner) {{
+  if (Object.prototype.hasOwnProperty.call(publisherCache, owner) && publisherCache[owner] !== null) {{
+    return publisherCache[owner];
+  }}
+  try {{
+    const resp = await fetch('https://api.github.com/users/' + encodeURIComponent(owner) + '/repos?sort=updated&per_page=8', {{
+      headers: {{ 'Accept': 'application/vnd.github+json' }},
+    }});
+    if (!resp.ok) {{
+      publisherCache[owner] = [];
+      return [];
+    }}
+    const rows = await resp.json();
+    const localFns = new Set(publisherLocalItems(owner).map(it => it.full_name));
+    publisherCache[owner] = (rows || [])
+      .filter(r => !r.fork && !localFns.has(r.full_name))
+      .map(r => ({{
+        full_name: r.full_name,
+        name: r.name,
+        description: r.description || '',
+        stars: r.stargazers_count,
+        url: r.html_url,
+        language: r.language || '',
+      }}));
+    return publisherCache[owner];
+  }} catch (e) {{
+    publisherCache[owner] = [];
+    return [];
+  }}
+}}
+
+function publisherPanelHtml(owner, ghRepos) {{
+  const local = publisherLocalItems(owner);
+  const pal = paletteFor(owner);
+  const localHtml = local.length
+    ? local.map(it => {{
+        const tips = extractHighlightsClient(it);
+        const stars = (it.stars == null) ? '—' : Number(it.stars).toLocaleString();
+        return `<div class="pub-item js-pub-skill" data-fn="${{escapeHtml(it.full_name || '')}}" data-name="${{escapeHtml(it.name || '')}}">
+          <strong>${{escapeHtml(it.name || it.full_name || '')}}</strong>
+          <p>${{escapeHtml(tips.problem || it.description || '')}}</p>
+          <div class="meta">${{escapeHtml(it.scene_label || '')}} · ★ ${{stars}} · Feed 内</div>
+        </div>`;
+      }}).join('')
+    : `<p class="lead" style="color:var(--muted);font-size:.85rem">信息流里暂无 Ta 的其他 skill 卡。</p>`;
+  let ghHtml = '';
+  if (ghRepos === undefined || ghRepos === null) {{
+    ghHtml = `<p class="lead" style="color:var(--muted);font-size:.85rem">正在拉取 GitHub 仓库…</p>`;
+  }} else if (!ghRepos.length) {{
+    ghHtml = `<p class="lead" style="color:var(--muted);font-size:.85rem">暂无更多公开仓库，或 GitHub API 限流。</p>`;
+  }} else {{
+    ghHtml = ghRepos.map(r => `<a class="pub-item" href="${{escapeHtml(r.url)}}" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit">
+      <strong>${{escapeHtml(r.name)}}</strong>
+      <p>${{escapeHtml((r.description || '暂无描述').slice(0, 140))}}</p>
+      <div class="meta">★ ${{Number(r.stars || 0).toLocaleString()}}${{r.language ? ' · ' + escapeHtml(r.language) : ''}} · GitHub</div>
+    </a>`).join('');
+  }}
+  return `<div class="pub-panel">
+    <div class="pub-head">
+      <div class="ava" style="background:${{pal[1]}}">${{escapeHtml(initials(owner))}}</div>
+      <div>
+        <h2>@${{escapeHtml(owner)}}</h2>
+        <p>发布者主页 · Feed 内 ${{local.length}} 条 · GitHub 整合</p>
+      </div>
+    </div>
+    <div class="pub-actions">
+      <button type="button" class="js-pub-back">← 返回发现</button>
+      <a class="primary" href="https://github.com/${{escapeHtml(owner)}}" target="_blank" rel="noopener">打开 GitHub 主页</a>
+      <a href="https://github.com/${{escapeHtml(owner)}}?tab=repositories" target="_blank" rel="noopener">全部仓库</a>
+    </div>
+    <div class="pub-sec">在 skill-feed 中</div>
+    ${{localHtml}}
+    <div class="pub-sec">GitHub 上的其他内容</div>
+    ${{ghHtml}}
+  </div>`;
+}}
+
+function openPublisher(owner) {{
+  if (!owner) return;
+  state.mode = 'publisher';
+  state.publisher = owner;
+  state.shown = 0;
+  render(true);
+  window.scrollTo({{ top: 0, behavior: 'smooth' }});
+  if (!Object.prototype.hasOwnProperty.call(publisherCache, owner)) {{
+    publisherCache[owner] = null;
+    fetchGithubRepos(owner).then(() => {{
+      if (state.mode === 'publisher' && state.publisher === owner) render(false);
+    }});
+  }}
+}}
+
 function renderStories() {{
   const el = document.getElementById('stories');
-  const hide = state.mode === 'me' || state.mode === 'saved';
+  const hide = state.mode === 'me' || state.mode === 'saved' || state.mode === 'publisher';
   el.classList.toggle('hidden', hide);
   if (hide) {{ el.innerHTML = ''; return; }}
 
@@ -1026,7 +1179,7 @@ function render(reset) {{
   document.getElementById('genStatus').textContent = fmtGeneratedAt();
   renderStories();
 
-  const hideChrome = state.mode === 'me';
+  const hideChrome = state.mode === 'me' || state.mode === 'publisher';
   const secs = sectionOptions();
   const l2s = l2Options();
   renderPills(document.getElementById('l2Strip'), l2s, 'scene_l2', !hideChrome && l2s.length > 0);
@@ -1041,6 +1194,10 @@ function render(reset) {{
 
   if (state.mode === 'me') {{
     feed.innerHTML = mePanelHtml();
+    return;
+  }}
+  if (state.mode === 'publisher') {{
+    feed.innerHTML = publisherPanelHtml(state.publisher, publisherCache[state.publisher]);
     return;
   }}
 
@@ -1396,15 +1553,26 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     openPublish();
     return;
   }}
-
-  if (t.closest('.js-doc-more')) {{
-    const idx = t.closest('.js-doc-more').dataset.idx;
-    const doc = document.getElementById('doc-' + idx);
-    const btn = t.closest('.js-doc-more');
-    if (doc) {{
-      const on = doc.classList.toggle('expanded');
-      btn.textContent = on ? '收起' : '展开全文摘要';
-    }}
+  if (t.closest('.js-pub-back')) {{
+    state.mode = 'all';
+    state.publisher = '';
+    state.shown = 0;
+    render(true);
+    return;
+  }}
+  const pubSkill = t.closest('.js-pub-skill');
+  if (pubSkill) {{
+    state.mode = 'all';
+    state.publisher = '';
+    state.intent = pubSkill.dataset.name || '';
+    document.getElementById('intent').value = state.intent;
+    state.shown = 0;
+    render(true);
+    return;
+  }}
+  const pub = t.closest('.js-publisher');
+  if (pub) {{
+    openPublisher(pub.dataset.owner || '');
     return;
   }}
 

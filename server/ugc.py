@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+import highlights as hl
 import scene
 import skill_detect
 from feed_pack import cover_url_for
@@ -58,12 +59,16 @@ def prepare_post_payload(
     if github_url and not github_url.startswith("http"):
         github_url = f"https://github.com/{full_name}"
 
+    body_preview = (meta.get("body_preview") or body_md or desc)[:700]
+    tips = hl.extract_highlights(body_preview, desc)
     item = {
         "name": name,
         "title": name,
         "description": desc[:400],
         "body_md": body_md or f"# {name}\n\n{desc}\n",
-        "body_preview": (meta.get("body_preview") or body_md or desc)[:700],
+        "body_preview": body_preview,
+        "problem": tips.get("problem") or desc[:140],
+        "highlights": tips.get("highlights") or [],
         "github_url": github_url or (f"https://github.com/{full_name}" if full_name else ""),
         "full_name": full_name,
         "url": github_url or (f"https://github.com/{full_name}" if full_name else ""),
@@ -88,6 +93,8 @@ def prepare_post_payload(
 def post_to_feed_item(post: dict[str, Any]) -> dict[str, Any]:
     fn = post.get("full_name") or ""
     url = post.get("github_url") or (f"https://github.com/{fn}" if fn else "")
+    body_preview = (post.get("body_md") or "")[:700]
+    tips = hl.extract_highlights(body_preview, post.get("description") or "")
     return {
         "id": f"ugc:{post['id']}",
         "ugc_id": post["id"],
@@ -95,7 +102,9 @@ def post_to_feed_item(post: dict[str, Any]) -> dict[str, Any]:
         "name": post.get("title") or "skill",
         "description": post.get("description") or "",
         "one_liner": (post.get("description") or "")[:140],
-        "body_preview": (post.get("body_md") or "")[:700],
+        "body_preview": body_preview,
+        "problem": tips.get("problem") or (post.get("description") or "")[:140],
+        "highlights": tips.get("highlights") or [],
         "url": url,
         "skill_url": url,
         "cover_url": post.get("cover_url") or cover_url_for(fn),

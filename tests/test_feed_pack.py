@@ -54,9 +54,13 @@ class TestFeedPack(unittest.TestCase):
             slim = feed["items"][0]
             self.assertIn("one_liner", slim)
             self.assertIn("cover_url", slim)
+            self.assertIn("problem", slim)
+            self.assertIn("highlights", slim)
             self.assertTrue(slim["cover_url"].startswith("https://opengraph.githubassets.com/"))
             live = next(i for i in feed["items"] if i["full_name"] == "acme/live-skill")
             self.assertEqual(live["cover_url"], "https://opengraph.githubassets.com/1/acme/live-skill")
+            self.assertTrue(live["problem"])
+            self.assertTrue(live["highlights"])
 
 
 if __name__ == "__main__":

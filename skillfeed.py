@@ -79,6 +79,7 @@ TOOL_FILES = [
     "github_search.py",
     "corpus.py",
     "feed_pack.py",
+    "highlights.py",
     "scene.py",
     "feedback.py",
     "config_defaults.json",

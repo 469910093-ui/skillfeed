@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import highlights as hl
 import rank
 import scene
 
@@ -16,6 +17,7 @@ KEEP_KEYS = (
     "rel_score", "rel_why", "personal_score", "personal_why", "rank_why",
     "from_corpus", "soft", "owner", "one_liner",
     "body_preview", "cover_url", "skill_url",
+    "problem", "highlights",
 )
 
 BODY_PREVIEW_MAX = 700
@@ -69,6 +71,9 @@ def normalize_item(item: dict, *, previews: Optional[dict[str, str]] = None) -> 
         bp = previews[fn]
     if bp:
         out["body_preview"] = bp[:BODY_PREVIEW_MAX] + ("…" if len(bp) > BODY_PREVIEW_MAX else "")
+    tips = hl.extract_highlights(bp or "", desc)
+    out["problem"] = tips.get("problem") or out["one_liner"]
+    out["highlights"] = list(tips.get("highlights") or [])
     out["cover_url"] = out.get("cover_url") or cover_url_for(fn)
     out["skill_url"] = out.get("skill_url") or skill_url_for(fn, out.get("skill_path") or "")
     if out.get("stars") is None:
