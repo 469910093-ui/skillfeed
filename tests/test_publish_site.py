@@ -44,14 +44,19 @@ class TestPublishSite(unittest.TestCase):
                 skillfeed.refresh_paths()
             self.assertEqual(rc, 0)
             self.assertTrue((out / "index.html").exists())
+            self.assertTrue((out / "embed.html").exists())
             self.assertTrue((out / "feed.json").exists())
             self.assertTrue((out / ".nojekyll").exists())
             published = json.loads((out / "feed.json").read_text(encoding="utf-8"))
             self.assertEqual(published["ui"]["hosting"], "pages")
             html = (out / "index.html").read_text(encoding="utf-8")
             self.assertIn('"hosting": "pages"', html)
+            self.assertIn("variant-full", html)
             self.assertIn("demo-skill", html)
             self.assertIn("Body preview text", html)
+            lite = (out / "embed.html").read_text(encoding="utf-8")
+            self.assertIn("variant-lite", lite)
+            self.assertIn("demo-skill", lite)
 
 
 if __name__ == "__main__":

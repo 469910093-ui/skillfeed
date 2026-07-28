@@ -8,16 +8,33 @@ from pathlib import Path
 import scene
 
 
-def build_feed_html(feed: dict) -> str:
+def _resolve_variant(feed: dict, variant: str | None = None) -> str:
+    v = (variant or (feed.get("ui") or {}).get("variant") or "full").strip().lower()
+    return v if v in ("full", "lite") else "full"
+
+
+def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
+    """生成 Feed HTML。
+
+    variant:
+      - full：独立网页产品（Stories/关注/发布/我的）
+      - lite：给 skill-picker 嵌入的发现子页（无关注/发布/个人后台）
+    """
+    variant = _resolve_variant(feed, variant)
+    feed = dict(feed)
+    ui = dict(feed.get("ui") or {})
+    ui["variant"] = variant
+    feed["ui"] = ui
     payload = json.dumps(feed, ensure_ascii=False)
     scenes = json.dumps(feed.get("scenes") or scene.scene_chips(), ensure_ascii=False)
     scenes_l2 = json.dumps(feed.get("scenes_l2") or scene.scene_l2_tree(), ensure_ascii=False)
+    page_title = "去 GitHub 发现" if variant == "lite" else "skill-feed"
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>skill-feed</title>
+<title>{page_title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Billabong&family=Cookie&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -95,13 +112,31 @@ def build_feed_html(feed: dict) -> str:
   .search::placeholder {{ color: var(--muted); }}
   .search:focus {{ outline: 2px solid #c7c7c7; outline-offset: 0; background: #fff; }}
 
+  .stories-wrap {{
+    background: var(--card); border-bottom: 1px solid var(--line);
+  }}
+  .stories-wrap.hidden {{ display: none; }}
+  .stories-hint {{
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 12px 0; font-size: .72rem; line-height: 1.45; color: var(--muted);
+  }}
+  .stories-hint b {{ color: var(--ink); font-weight: 700; }}
+  .stories-hint .hint-close {{
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 2px; margin-left: auto;
+  }}
+  .stories-hint.flash {{
+    animation: hintFlash 1.2s ease;
+  }}
+  @keyframes hintFlash {{
+    0%, 100% {{ background: transparent; }}
+    30% {{ background: rgba(237,73,86,.08); }}
+  }}
   .stories {{
-    display: flex; gap: 14px; overflow-x: auto; padding: 14px 12px 12px;
-    border-bottom: 1px solid var(--line); background: var(--card);
+    display: flex; gap: 14px; overflow-x: auto; padding: 12px 12px 12px;
     scrollbar-width: none;
   }}
   .stories::-webkit-scrollbar {{ display: none; }}
-  .stories.hidden {{ display: none; }}
   .story {{
     flex: 0 0 auto; width: 72px; text-align: center; cursor: pointer;
     background: transparent; border: 0; padding: 0; font: inherit; color: inherit;
@@ -110,7 +145,8 @@ def build_feed_html(feed: dict) -> str:
     width: 66px; height: 66px; margin: 0 auto 6px; padding: 2px;
     border-radius: 50%; background: #dbdbdb;
   }}
-  .story.on .ring, .story.hot .ring {{ background: var(--ring); }}
+  .story.hot .ring, .story.has-new .ring {{ background: var(--ring); }}
+  .story.guide .ring {{ background: #e8e8e8; }}
   .story .face {{
     width: 100%; height: 100%; border-radius: 50%;
     background: #fff; padding: 2px; display: grid; place-items: center;
@@ -119,6 +155,9 @@ def build_feed_html(feed: dict) -> str:
     width: 100%; height: 100%; border-radius: 50%;
     display: grid; place-items: center;
     font-style: normal; font-weight: 700; font-size: .85rem; color: #fff;
+  }}
+  .story.guide .face i {{
+    background: #f5f5f5 !important; color: var(--ink); font-size: 1.35rem; font-weight: 500;
   }}
   .story .label {{
     display: block; font-size: .68rem; color: var(--ink);
@@ -273,7 +312,56 @@ def build_feed_html(feed: dict) -> str:
     border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .78rem; font-weight: 600;
     cursor: pointer; text-decoration: none;
   }}
-  .pub-actions a.primary {{ background: var(--ink); color: #fff; border-color: var(--ink); }}
+  .pub-actions a.primary, .pub-actions button.primary {{
+    background: var(--ink); color: #fff; border-color: var(--ink);
+  }}
+  .pub-actions button.following {{ background: #efefef; color: var(--ink); border-color: var(--line); }}
+  .follow-mini {{
+    appearance: none; flex: 0 0 auto; margin-left: auto;
+    border: 1px solid var(--ink); background: var(--ink); color: #fff;
+    border-radius: 8px; padding: 5px 10px; font: inherit; font-size: .72rem; font-weight: 700;
+    cursor: pointer;
+  }}
+  .follow-mini.on {{ background: #fff; color: var(--ink); border-color: var(--line); }}
+  .media .badge.clickable {{ cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }}
+  .sheet {{
+    position: fixed; inset: 0; z-index: 90; display: none;
+    background: rgba(0,0,0,.45); align-items: flex-end; justify-content: center;
+  }}
+  .sheet.open {{ display: flex; }}
+  .sheet-panel {{
+    width: min(100%, var(--phone)); background: #fff; border-radius: 16px 16px 0 0;
+    padding: 16px 16px calc(18px + env(safe-area-inset-bottom));
+    max-height: 72vh; overflow: auto;
+  }}
+  .sheet-panel h3 {{ margin: 0 0 6px; font-size: 1.05rem; }}
+  .sheet-panel .lead {{ margin: 0 0 12px; font-size: .8rem; color: var(--muted); line-height: 1.45; }}
+  .sheet-row {{
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    border: 1px solid var(--line); background: #fff; border-radius: 12px;
+    padding: 10px 12px; margin-bottom: 8px; font: inherit; text-align: left; cursor: pointer;
+  }}
+  .sheet-row .ava {{
+    width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto;
+    display: grid; place-items: center; color: #fff; font-weight: 700; font-size: .75rem;
+  }}
+  .sheet-row .meta {{ flex: 1; min-width: 0; }}
+  .sheet-row .meta b {{ display: block; font-size: .88rem; }}
+  .sheet-row .meta span {{ font-size: .72rem; color: var(--muted); }}
+  .sheet-row .act-label {{ font-size: .72rem; font-weight: 700; color: var(--like); white-space: nowrap; }}
+  .sheet-close {{
+    appearance: none; width: 100%; margin-top: 8px; border: 0; background: #efefef;
+    border-radius: 10px; padding: 10px; font: inherit; font-weight: 700; cursor: pointer;
+  }}
+  .follow-chip {{
+    display: inline-flex; align-items: center; gap: 6px; margin: 0 6px 6px 0;
+    border: 1px solid var(--line); background: #fff; border-radius: 999px;
+    padding: 5px 10px; font-size: .75rem; font-weight: 600; cursor: pointer;
+  }}
+  .follow-chip button {{
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    cursor: pointer; font-size: .85rem; padding: 0; line-height: 1;
+  }}
   .pub-sec {{ font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .04em;
     text-transform: uppercase; margin: 14px 0 8px; }}
   .pub-item {{
@@ -502,13 +590,30 @@ def build_feed_html(feed: dict) -> str:
   .sv-tap-left {{ left: 0; }}
   .sv-tap-right {{ right: 0; }}
 
+  /* lite：skill-picker 发现子页 — 无 Stories/关注/发布/我的 */
+  body.variant-lite .stories-wrap,
+  body.variant-lite #followSheet,
+  body.variant-lite .nav[data-action="publish"],
+  body.variant-lite .nav[data-mode="me"],
+  body.variant-lite .follow-mini,
+  body.variant-lite #btnDemo {{ display: none !important; }}
+  body.variant-lite .bottom {{ justify-content: center; }}
+  body.variant-lite .bottom .nav[data-mode="all"] {{ min-width: 120px; }}
+  body.variant-lite .feed {{ padding-bottom: 24px; }}
+  body.variant-lite .lite-banner {{
+    display: block; padding: 10px 14px; font-size: .78rem; line-height: 1.45;
+    color: var(--muted); background: #fff; border-bottom: 1px solid var(--line);
+  }}
+  body.variant-lite .lite-banner b {{ color: var(--ink); }}
+  .lite-banner {{ display: none; }}
+
   @media (max-width: 520px) {{
     .shell {{ border: 0; }}
     .story-viewer {{ max-width: 100%; left: 0; transform: none; }}
   }}
 </style>
 </head>
-<body>
+<body class="variant-{variant}">
   <div class="shell">
     <header class="topbar">
       <div class="top-left">
@@ -525,14 +630,24 @@ def build_feed_html(feed: dict) -> str:
         </button>
       </div>
     </header>
+    <div class="lite-banner" id="liteBanner">
+      <b>本机没有合适 skill 时</b>，在这里按意图浏览远程线索，点「打开 GitHub」自行安装；装好后回 skill-picker 再扫一遍。
+    </div>
 
     <div class="search-wrap" id="searchWrap">
       <input class="search" id="intent" type="search" placeholder="搜索意图，如：去 AI 味写作 / 周报复盘" />
     </div>
 
-    <div class="stories" id="stories" aria-label="场景 Stories"></div>
+    <div class="stories-wrap" id="storiesWrap">
+      <div class="stories-hint" id="storiesHint">
+        <span><b>顶部圆环 = 你关注的最新动态</b>：关注 Builder 或行业后，新内容会出现在这里优先观看。</span>
+        <button type="button" class="hint-close" id="storiesHintClose" aria-label="关闭提示">×</button>
+      </div>
+      <div class="stories" id="stories" aria-label="关注动态 Stories"></div>
+    </div>
     <div class="sr-only" id="sceneLabel">一级场景</div>
     <div class="sr-only" id="sceneL2Label">二级场景</div>
+    <div class="filter-strip" id="sceneStrip" aria-label="行业筛选"></div>
     <div class="filter-strip" id="l2Strip" aria-label="二级场景"></div>
     <div class="filter-strip" id="sectionStrip" aria-label="栏目"></div>
 
@@ -582,14 +697,19 @@ def build_feed_html(feed: dict) -> str:
     <button type="button" id="demoStop">停止</button>
   </div>
   <div class="toast" id="toast"></div>
+  <div class="sheet" id="followSheet" aria-hidden="true">
+    <div class="sheet-panel" id="followSheetPanel"></div>
+  </div>
 
 <script>
 const FEED = {payload};
 const SCENES = {scenes};
 const SCENES_L2 = {scenes_l2};
+const VARIANT = ((FEED.ui && FEED.ui.variant) || 'full');
+const IS_LITE = VARIANT === 'lite';
 const PAGE = 6;
 const STORY_MS = 3500;
-const API_BASE = ((FEED.ui && FEED.ui.api_base) || '').replace(/\\/$/, '');
+const API_BASE = IS_LITE ? '' : (((FEED.ui && FEED.ui.api_base) || '').replace(/\\/$/, ''));
 const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', shown: 0, intent: '', publisher: '' }};
 const demo = {{ on: false, step: 0, timer: null, focus: -1 }};
 const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
@@ -623,12 +743,34 @@ function persistSet(key, set) {{
 
 const liked = loadSet('sf_liked');
 const saved = loadSet('sf_saved');
+const followBuilders = loadSet('sf_follow_builders');
+const followIndustries = loadSet('sf_follow_industries');
 
-function toast(msg) {{
+function toast(msg, ms) {{
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2200);
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), ms || 2600);
+}}
+
+function flashStoriesHint() {{
+  window.scrollTo({{ top: 0, behavior: 'smooth' }});
+  const hint = document.getElementById('storiesHint');
+  if (!hint) return;
+  if (hint.hidden) {{
+    hint.hidden = false;
+    try {{ localStorage.removeItem('sf_stories_hint_dismissed'); }} catch (e) {{}}
+  }}
+  hint.classList.remove('flash');
+  void hint.offsetWidth;
+  hint.classList.add('flash');
+}}
+
+function followToast(kind, name) {{
+  const who = kind === 'builder' ? ('@' + name) : name;
+  toast('已关注 ' + who + ' · 最新动态会出现在顶部 Stories 圆环', 3200);
+  flashStoriesHint();
 }}
 
 function escapeHtml(s) {{
@@ -731,12 +873,159 @@ function countL2(l2Id) {{
   ).length;
 }}
 
+function ownerOf(it) {{
+  return it.owner || (it.full_name || '').split('/')[0] || '';
+}}
+
+function sceneLabelOf(sceneId) {{
+  return (SCENES.find(s => s.id === sceneId) || {{}}).label || sceneId;
+}}
+
+function isFollowingBuilder(owner) {{
+  return !!owner && followBuilders.has(owner);
+}}
+
+function isFollowingIndustry(sceneId) {{
+  return !!sceneId && followIndustries.has(sceneId);
+}}
+
+function toggleFollowBuilder(owner, opts) {{
+  if (!owner) return false;
+  const now = !followBuilders.has(owner);
+  if (now) followBuilders.add(owner); else followBuilders.delete(owner);
+  persistSet('sf_follow_builders', followBuilders);
+  if (opts && opts.silent) return now;
+  if (now) followToast('builder', owner);
+  else toast('已取消关注 @' + owner);
+  render(false);
+  return now;
+}}
+
+function toggleFollowIndustry(sceneId, opts) {{
+  if (!sceneId || sceneId === 'all') return false;
+  const now = !followIndustries.has(sceneId);
+  if (now) followIndustries.add(sceneId); else followIndustries.delete(sceneId);
+  persistSet('sf_follow_industries', followIndustries);
+  if (opts && opts.silent) return now;
+  if (now) followToast('industry', sceneLabelOf(sceneId));
+  else toast('已取消关注「' + sceneLabelOf(sceneId) + '」');
+  render(false);
+  return now;
+}}
+
+function builderItems(owner, limit) {{
+  const q = state.intent.trim().toLowerCase();
+  return allPool()
+    .filter(it => ownerOf(it) === owner)
+    .sort((a, b) => scoreRow(b, q) - scoreRow(a, q))
+    .slice(0, limit || 5);
+}}
+
+function industryItems(sceneId, limit) {{
+  const q = state.intent.trim().toLowerCase();
+  return allPool()
+    .filter(it => (it.scene || 'other') === sceneId)
+    .sort((a, b) => scoreRow(b, q) - scoreRow(a, q))
+    .slice(0, limit || 5);
+}}
+
+function followingItems(limit) {{
+  const q = state.intent.trim().toLowerCase();
+  return allPool()
+    .filter(it => isFollowingBuilder(ownerOf(it)) || isFollowingIndustry(it.scene || 'other'))
+    .sort((a, b) => scoreRow(b, q) - scoreRow(a, q))
+    .slice(0, limit || 8);
+}}
+
+function topBuilders(limit) {{
+  const counts = new Map();
+  for (const it of allPool()) {{
+    const o = ownerOf(it);
+    if (!o) continue;
+    counts.set(o, (counts.get(o) || 0) + 1);
+  }}
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit || 12)
+    .map(([owner, n]) => ({{ owner, n }}));
+}}
+
+function closeFollowSheet() {{
+  const el = document.getElementById('followSheet');
+  el.classList.remove('open');
+  el.setAttribute('aria-hidden', 'true');
+}}
+
+function openFollowSheet(kind) {{
+  if (IS_LITE) return;
+  const panel = document.getElementById('followSheetPanel');
+  if (kind === 'builder') {{
+    const rows = topBuilders(16);
+    panel.innerHTML = `<h3>发现 Builder</h3>
+      <p class="lead">关注后，Ta 的最新 skill 会出现在<strong>顶部 Stories 圆环</strong>，方便优先观看。</p>` +
+      rows.map(r => {{
+        const on = isFollowingBuilder(r.owner);
+        const pal = paletteFor(r.owner);
+        return `<button type="button" class="sheet-row js-sheet-follow-builder" data-owner="${{escapeHtml(r.owner)}}">
+          <div class="ava" style="background:${{pal[1]}}">${{escapeHtml(initials(r.owner))}}</div>
+          <div class="meta"><b>@${{escapeHtml(r.owner)}}</b><span>Feed 内 ${{r.n}} 条</span></div>
+          <span class="act-label">${{on ? '已关注 · 点按取消' : '关注'}}</span>
+        </button>`;
+      }}).join('') +
+      `<button type="button" class="sheet-close js-sheet-close">关闭</button>`;
+  }} else {{
+    const rows = SCENES.filter(s => countScene(s.id) > 0);
+    panel.innerHTML = `<h3>发现行业</h3>
+      <p class="lead">关注行业后，该领域最新内容会出现在<strong>顶部 Stories 圆环</strong>。</p>` +
+      rows.map(s => {{
+        const on = isFollowingIndustry(s.id);
+        const pal = paletteFor('scene:' + s.id);
+        const n = countScene(s.id);
+        return `<button type="button" class="sheet-row js-sheet-follow-industry" data-scene="${{escapeHtml(s.id)}}">
+          <div class="ava" style="background:linear-gradient(135deg,${{pal[0]}},${{pal[2]}})">${{escapeHtml(initials(s.label))}}</div>
+          <div class="meta"><b>${{escapeHtml(s.label)}}</b><span>Feed 内 ${{n}} 条</span></div>
+          <span class="act-label">${{on ? '已关注 · 点按取消' : '关注'}}</span>
+        </button>`;
+      }}).join('') +
+      `<button type="button" class="sheet-close js-sheet-close">关闭</button>`;
+  }}
+  const el = document.getElementById('followSheet');
+  el.classList.add('open');
+  el.setAttribute('aria-hidden', 'false');
+}}
+
+function openIndustrySheet(sceneId) {{
+  if (IS_LITE || !sceneId) return;
+  const label = sceneLabelOf(sceneId);
+  const on = isFollowingIndustry(sceneId);
+  const panel = document.getElementById('followSheetPanel');
+  panel.innerHTML = `<h3>${{escapeHtml(label)}}</h3>
+    <p class="lead">关注后，该行业最新动态会出现在<strong>顶部 Stories 圆环</strong>；也可只筛选发现流。</p>
+    <button type="button" class="sheet-row js-sheet-follow-industry" data-scene="${{escapeHtml(sceneId)}}">
+      <div class="meta"><b>${{on ? '取消关注行业' : '关注行业'}}</b>
+      <span>${{on ? '圆环将不再优先展示该行业' : '最新内容进顶部圆环'}}</span></div>
+      <span class="act-label">${{on ? '已关注' : '关注'}}</span>
+    </button>
+    <button type="button" class="sheet-row js-sheet-filter-scene" data-scene="${{escapeHtml(sceneId)}}">
+      <div class="meta"><b>只看该行业 Feed</b><span>用下方 pills 筛选发现流</span></div>
+      <span class="act-label">筛选</span>
+    </button>
+    <button type="button" class="sheet-close js-sheet-close">关闭</button>`;
+  const el = document.getElementById('followSheet');
+  el.classList.add('open');
+  el.setAttribute('aria-hidden', 'false');
+}}
+
 function apiUrl(path) {{
   if (!API_BASE) return '';
   return API_BASE + (path.startsWith('/') ? path : ('/' + path));
 }}
 
 function openPublish() {{
+  if (IS_LITE) {{
+    toast('发现子页不支持发布 · 请打开完整 skill-feed 网站');
+    return;
+  }}
   const url = apiUrl('/publish');
   if (url) {{
     window.open(url, '_blank', 'noopener');
@@ -923,10 +1212,12 @@ function cardHtml(it, idx) {{
   const owner = it.owner || (fn.split('/')[0] || 'skill');
   const softCls = it.soft ? ' soft' : '';
   const noCoverCls = cover ? '' : ' no-cover';
+  const followed = isFollowingBuilder(owner);
+  const sceneId = it.scene || '';
   const hl = tips.highlights.map(h => `<li>${{escapeHtml(h)}}</li>`).join('');
   return `<article class="post ${{it.from_corpus ? 'corpus' : ''}}${{softCls}} ${{focus}}" id="post-${{idx}}"
       data-fn="${{escapeHtml(fn)}}" data-src="${{escapeHtml(it.source || '')}}"
-      data-scene="${{escapeHtml(it.scene || '')}}" data-l2="${{escapeHtml(it.scene_l2 || '')}}"
+      data-scene="${{escapeHtml(sceneId)}}" data-l2="${{escapeHtml(it.scene_l2 || '')}}"
       data-owner="${{escapeHtml(owner)}}"
       data-fc="${{it.from_corpus ? '1' : '0'}}">
     <div class="post-head">
@@ -935,6 +1226,7 @@ function cardHtml(it, idx) {{
         <div class="name">${{escapeHtml(it.name || fn)}}</div>
         <div class="sub">@${{escapeHtml(owner)}} · ${{escapeHtml(sourceLabel(it.source))}} · ★ ${{stars}}</div>
       </div>
+      ${{IS_LITE ? '' : `<button type="button" class="follow-mini js-follow-builder ${{followed ? 'on' : ''}}" data-owner="${{escapeHtml(owner)}}" title="关注后最新动态出现在顶部 Stories">${{followed ? '已关注' : '关注'}}</button>`}}
     </div>
     <div class="media js-media${{noCoverCls}}" data-idx="${{idx}}">
       ${{cover ? `<img class="cover" src="${{escapeHtml(cover)}}" alt="${{escapeHtml(it.name || fn)}}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.media').classList.add('no-cover')" />` : ''}}
@@ -943,7 +1235,7 @@ function cardHtml(it, idx) {{
         <div class="d">${{escapeHtml((tips.problem || '').slice(0, 120))}}</div>
       </div>
       <div class="badges">
-        <span class="badge">${{escapeHtml(it.scene_label || it.scene || '其他')}}</span>
+        <span class="badge ${{IS_LITE ? 'clickable js-scene-filter' : 'clickable js-scene-tag'}}" data-scene="${{escapeHtml(sceneId)}}" title="${{IS_LITE ? '按行业筛选' : '关注行业 · 最新进顶部圆环'}}">${{escapeHtml(it.scene_label || it.scene || '其他')}}</span>
         ${{it.scene_l2_label ? `<span class="badge">${{escapeHtml(it.scene_l2_label)}}</span>` : ''}}
         ${{it.from_corpus ? `<span class="badge kb">知识库</span>` : ''}}
         ${{it.soft ? `<span class="badge soft">线索</span>` : ''}}
@@ -1035,17 +1327,20 @@ function publisherPanelHtml(owner, ghRepos) {{
       <div class="meta">★ ${{Number(r.stars || 0).toLocaleString()}}${{r.language ? ' · ' + escapeHtml(r.language) : ''}} · GitHub</div>
     </a>`).join('');
   }}
+  const followed = isFollowingBuilder(owner);
   return `<div class="pub-panel">
     <div class="pub-head">
       <div class="ava" style="background:${{pal[1]}}">${{escapeHtml(initials(owner))}}</div>
       <div>
         <h2>@${{escapeHtml(owner)}}</h2>
         <p>发布者主页 · Feed 内 ${{local.length}} 条 · GitHub 整合</p>
+        ${{IS_LITE ? '' : '<p style="margin-top:6px;color:var(--ink)">关注后，最新动态会出现在<strong>顶部 Stories 圆环</strong></p>'}}
       </div>
     </div>
     <div class="pub-actions">
+      ${{IS_LITE ? '' : `<button type="button" class="js-follow-builder ${{followed ? 'following' : 'primary'}}" data-owner="${{escapeHtml(owner)}}">${{followed ? '已关注 · 点按取消' : '关注 Builder'}}</button>`}}
       <button type="button" class="js-pub-back">← 返回发现</button>
-      <a class="primary" href="https://github.com/${{escapeHtml(owner)}}" target="_blank" rel="noopener">打开 GitHub 主页</a>
+      <a href="https://github.com/${{escapeHtml(owner)}}" target="_blank" rel="noopener">打开 GitHub 主页</a>
       <a href="https://github.com/${{escapeHtml(owner)}}?tab=repositories" target="_blank" rel="noopener">全部仓库</a>
     </div>
     <div class="pub-sec">在 skill-feed 中</div>
@@ -1071,35 +1366,60 @@ function openPublisher(owner) {{
 }}
 
 function renderStories() {{
+  const wrap = document.getElementById('storiesWrap');
   const el = document.getElementById('stories');
+  if (IS_LITE) {{
+    wrap.classList.add('hidden');
+    el.innerHTML = '';
+    return;
+  }}
   const hide = state.mode === 'me' || state.mode === 'saved' || state.mode === 'publisher';
-  el.classList.toggle('hidden', hide);
+  wrap.classList.toggle('hidden', hide);
   if (hide) {{ el.innerHTML = ''; return; }}
 
-  const modes = [
-    {{ id: 'mode:all', label: '全部', kind: 'mode', value: 'all' }},
-    {{ id: 'mode:skills', label: 'Skills', kind: 'mode', value: 'skills' }},
-    {{ id: 'mode:ai', label: 'AI', kind: 'mode', value: 'ai' }},
-    {{ id: 'mode:oss', label: '开源', kind: 'mode', value: 'oss' }},
-  ].filter(m => m.value === 'all' || countMode(m.value) > 0);
+  const rings = [];
+  const nFollow = followBuilders.size + followIndustries.size;
+  if (nFollow > 0) {{
+    rings.push({{
+      kind: 'following', value: 'all', label: '关注', face: '★',
+      hot: followingItems(1).length > 0, cls: 'has-new',
+    }});
+  }}
+  for (const owner of [...followBuilders]) {{
+    const n = builderItems(owner, 1).length;
+    rings.push({{
+      kind: 'builder', value: owner, label: owner,
+      face: initials(owner), hot: n > 0, cls: n ? 'has-new' : '',
+    }});
+  }}
+  for (const sceneId of [...followIndustries]) {{
+    const label = sceneLabelOf(sceneId);
+    const n = industryItems(sceneId, 1).length;
+    rings.push({{
+      kind: 'industry', value: sceneId, label,
+      face: initials(label), hot: n > 0, cls: n ? 'has-new' : '',
+    }});
+  }}
+  rings.push({{ kind: 'guide', value: 'builder', label: '+ Builder', face: '+', cls: 'guide' }});
+  rings.push({{ kind: 'guide', value: 'industry', label: '+ 行业', face: '+', cls: 'guide' }});
 
-  const sceneStories = [{{ id: 'scene:all', label: '全部', kind: 'scene', value: 'all', text: '全部' }}]
-    .concat(SCENES
-      .filter(s => countScene(s.id) > 0)
-      .map(s => ({{ id: 'scene:' + s.id, label: s.label, kind: 'scene', value: s.id, text: s.label }})));
-
-  const items = modes.concat(sceneStories);
-  el.innerHTML = items.map(st => {{
-    const on = (st.kind === 'mode' && state.mode === st.value) ||
-               (st.kind === 'scene' && state.scene === st.value && st.value !== 'all') ||
-               (st.kind === 'scene' && st.value === 'all' && state.scene === 'all' && state.mode === 'all');
-    const pal = paletteFor(st.id);
-    const label = st.text || st.label;
-    return `<button type="button" class="story ${{on ? 'on' : 'hot'}}" data-kind="${{st.kind}}" data-value="${{st.value}}">
-      <div class="ring"><div class="face"><i style="background:linear-gradient(135deg,${{pal[0]}},${{pal[2]}})">${{escapeHtml(initials(label))}}</i></div></div>
-      <span class="label">${{escapeHtml(label)}}</span>
+  el.innerHTML = rings.map(st => {{
+    const pal = paletteFor(st.kind + ':' + st.value);
+    const faceBg = st.cls === 'guide'
+      ? ''
+      : `style="background:linear-gradient(135deg,${{pal[0]}},${{pal[2]}})"`;
+    return `<button type="button" class="story ${{st.cls || ''}} ${{st.hot ? 'hot' : ''}}" data-kind="${{st.kind}}" data-value="${{escapeHtml(st.value)}}" title="${{st.kind === 'guide' ? '去关注，最新动态会出现在这里' : '查看关注的最新动态'}}">
+      <div class="ring"><div class="face"><i ${{faceBg}}>${{escapeHtml(st.face)}}</i></div></div>
+      <span class="label">${{escapeHtml(st.label)}}</span>
     </button>`;
   }}).join('');
+}}
+
+function sceneOptions() {{
+  const rows = SCENES.filter(s => countScene(s.id) > 0)
+    .map(s => ({{ id: s.id, label: s.label }}));
+  if (!rows.length) return [];
+  return [{{ id: 'all', label: '全部行业' }}].concat(rows);
 }}
 
 function renderPills(el, items, key, show) {{
@@ -1124,7 +1444,7 @@ function emptyHtml(items) {{
     <p>漏斗：trending ${{funnel.trending_repos ?? '—'}} · search ${{funnel.search_candidates ?? '—'}} ·
       过门禁 ${{funnel.passed ?? (FEED.gates && FEED.gates.passed) ?? 0}}</p>
     <p>rejected ${{escapeHtml(JSON.stringify(rejected))}}</p>
-    <p>换个 Story / 二级场景，或跑 refresh 更新 corpus；配 GITHUB_TOKEN 可开 GitHub Search。</p>
+    <p>换个行业 pills / 意图，或跑 refresh；也可先关注 Builder，在顶部 Stories 看动态。</p>
   </div>`;
 }}
 
@@ -1134,9 +1454,31 @@ function mePanelHtml() {{
   const pub = apiUrl('/publish') || '';
   const docs = apiUrl('/docs') || '';
   const home = apiUrl('/') || '';
+  const builders = [...followBuilders];
+  const industries = [...followIndustries];
+  const builderChips = builders.length
+    ? builders.map(o => `<span class="follow-chip">@${{escapeHtml(o)}} <button type="button" class="js-unfollow-builder" data-owner="${{escapeHtml(o)}}" aria-label="取消关注">×</button></span>`).join('')
+    : `<p style="margin:0;font-size:.82rem;color:var(--muted)">还没关注 Builder。在卡片点「关注」，最新动态会出现在顶部 Stories。</p>`;
+  const industryChips = industries.length
+    ? industries.map(id => `<span class="follow-chip">${{escapeHtml(sceneLabelOf(id))}} <button type="button" class="js-unfollow-industry" data-scene="${{escapeHtml(id)}}" aria-label="取消关注">×</button></span>`).join('')
+    : `<p style="margin:0;font-size:.82rem;color:var(--muted)">还没关注行业。点卡片上的场景标签即可关注。</p>`;
   return `<div class="me-panel">
     <h2>我的</h2>
-    <p class="lead">个人账户、本机收藏，以及发布后台入口。赞/藏仍保存在此浏览器。</p>
+    <p class="lead">关注的 Builder / 行业，其<strong>最新内容会出现在发现页顶部 Stories 圆环</strong>。赞/藏仍保存在此浏览器。</p>
+    <div class="me-card">
+      <strong>我关注的 Builder</strong>
+      <div style="margin-top:8px">${{builderChips}}</div>
+      <div class="me-actions">
+        <button type="button" class="primary js-me-find-builder">发现 Builder</button>
+      </div>
+    </div>
+    <div class="me-card">
+      <strong>我关注的行业</strong>
+      <div style="margin-top:8px">${{industryChips}}</div>
+      <div class="me-actions">
+        <button type="button" class="primary js-me-find-industry">发现行业</button>
+      </div>
+    </div>
     <div class="me-card">
       <strong>本机收藏</strong>
       <p>点赞 ${{nLiked}} · 书签 ${{nSaved}}</p>
@@ -1157,7 +1499,7 @@ function mePanelHtml() {{
     </div>
     <div class="me-card">
       <strong>发现站</strong>
-      <p>底部仅保留「发现 / 发布 / 我的」。Skills、AI、开源筛选在顶部 Stories，无内容的已自动隐藏。</p>
+      <p>Stories = 关注动态；下方 pills = 逛发现时的行业/栏目筛选。两者不再重复。</p>
     </div>
   </div>`;
 }}
@@ -1180,8 +1522,10 @@ function render(reset) {{
   renderStories();
 
   const hideChrome = state.mode === 'me' || state.mode === 'publisher';
+  const scenes = sceneOptions();
   const secs = sectionOptions();
   const l2s = l2Options();
+  renderPills(document.getElementById('sceneStrip'), scenes, 'scene', !hideChrome && scenes.length > 0);
   renderPills(document.getElementById('l2Strip'), l2s, 'scene_l2', !hideChrome && l2s.length > 0);
   renderPills(document.getElementById('sectionStrip'), secs, 'section', !hideChrome && secs.length > 0);
 
@@ -1345,18 +1689,28 @@ function svAdvance(delta) {{
   sv.timer = setTimeout(() => svAdvance(1), STORY_MS);
 }}
 
-function openStoryViewer(sceneId) {{
-  const label = (SCENES.find(s => s.id === sceneId) || {{}}).label || sceneId;
-  const items = sceneItems(sceneId, 5);
+function openStoryViewer(kind, value) {{
+  let label = '';
+  let items = [];
+  if (kind === 'following') {{
+    label = '关注动态';
+    items = followingItems(8);
+  }} else if (kind === 'builder') {{
+    label = '@' + value;
+    items = builderItems(value, 5);
+  }} else if (kind === 'industry' || kind === 'scene') {{
+    label = sceneLabelOf(value);
+    items = industryItems(value, 5);
+  }}
   if (!items.length) {{
-    toast('该场景暂无内容 · 试试 refresh 或 corpus');
+    toast(kind === 'guide' ? '先去关注一位 Builder 或一个行业' : '暂无最新动态 · 试试换个关注或 refresh');
     return;
   }}
   sv.open = true;
-  sv.scene = sceneId;
+  sv.scene = value || kind;
   sv.items = items;
   sv.idx = 0;
-  document.getElementById('svWho').textContent = label;
+  document.getElementById('svWho').textContent = label + ' · 关注最新';
   document.getElementById('storyViewer').classList.add('open');
   document.getElementById('storyViewer').setAttribute('aria-hidden', 'false');
   renderSvSlide();
@@ -1393,17 +1747,24 @@ function demoTick() {{
   if (!demo.on) return;
   const steps = [
     () => {{
-      document.getElementById('demoText').textContent = 'Demo：点场景 Story → 内容创作';
+      document.getElementById('demoText').textContent = 'Demo：关注行业 → 顶部 Stories';
       state.mode = 'all';
-      state.scene = 'content';
+      state.scene = 'all';
       state.scene_l2 = 'all';
+      if (!isFollowingIndustry('content')) toggleFollowIndustry('content', {{ silent: true }});
+      persistSet('sf_follow_industries', followIndustries);
       state.shown = 0;
       render(true);
-      openStoryViewer('content');
+      flashStoriesHint();
+      toast('关注后最新动态出现在顶部圆环', 2800);
+    }},
+    () => {{
+      document.getElementById('demoText').textContent = 'Demo：点 Stories 看关注最新';
+      openStoryViewer('industry', 'content');
     }},
     () => {{
       closeStoryViewer();
-      document.getElementById('demoText').textContent = 'Demo：二级场景 → 写作润色';
+      document.getElementById('demoText').textContent = 'Demo：pills 筛选行业（非 Stories）';
       state.scene = 'content';
       state.scene_l2 = 'writing';
       state.shown = 0;
@@ -1476,29 +1837,22 @@ document.getElementById('stories').addEventListener('click', (e) => {{
   if (!btn) return;
   const kind = btn.dataset.kind;
   const value = btn.dataset.value;
-  if (kind === 'mode') {{
-    state.mode = value;
-    state.scene_l2 = 'all';
-    if (value === 'oss') state.scene = 'all';
-    state.shown = 0;
-    render(true);
+  if (kind === 'guide') {{
+    openFollowSheet(value === 'industry' ? 'industry' : 'builder');
     return;
   }}
-  if (kind === 'scene') {{
-    if (value === 'all') {{
-      state.scene = 'all';
-      state.scene_l2 = 'all';
-      state.shown = 0;
-      render(true);
-    }} else {{
-      state.scene = value;
-      state.scene_l2 = 'all';
-      if (state.mode === 'oss') state.mode = 'all';
-      state.shown = 0;
-      render(true);
-      openStoryViewer(value);
-    }}
+  if (kind === 'following' || kind === 'builder' || kind === 'industry') {{
+    openStoryViewer(kind, value);
   }}
+}});
+
+document.getElementById('sceneStrip').addEventListener('click', (e) => {{
+  const btn = e.target.closest('.pill');
+  if (!btn) return;
+  state.scene = btn.dataset.id;
+  state.scene_l2 = 'all';
+  state.shown = 0;
+  render(true);
 }});
 
 document.getElementById('l2Strip').addEventListener('click', (e) => {{
@@ -1517,13 +1871,55 @@ document.getElementById('sectionStrip').addEventListener('click', (e) => {{
   render(true);
 }});
 
+document.getElementById('followSheet').addEventListener('click', (e) => {{
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  if (t === e.currentTarget || t.closest('.js-sheet-close')) {{
+    closeFollowSheet();
+    return;
+  }}
+  const b = t.closest('.js-sheet-follow-builder');
+  if (b) {{
+    toggleFollowBuilder(b.dataset.owner || '');
+    openFollowSheet('builder');
+    return;
+  }}
+  const ind = t.closest('.js-sheet-follow-industry');
+  if (ind) {{
+    const sceneId = ind.dataset.scene || '';
+    toggleFollowIndustry(sceneId);
+    const title = (document.querySelector('#followSheetPanel h3') || {{}}).textContent || '';
+    if (title === '发现行业') openFollowSheet('industry');
+    else if (sceneId) openIndustrySheet(sceneId);
+    return;
+  }}
+  const fil = t.closest('.js-sheet-filter-scene');
+  if (fil) {{
+    state.mode = 'all';
+    state.scene = fil.dataset.scene || 'all';
+    state.scene_l2 = 'all';
+    state.shown = 0;
+    closeFollowSheet();
+    render(true);
+    window.scrollTo({{ top: 0, behavior: 'smooth' }});
+  }}
+}});
+
+document.getElementById('storiesHintClose').addEventListener('click', () => {{
+  const hint = document.getElementById('storiesHint');
+  hint.hidden = true;
+  try {{ localStorage.setItem('sf_stories_hint_dismissed', '1'); }} catch (e) {{}}
+}});
+
 document.querySelector('.bottom').addEventListener('click', (e) => {{
   const nav = e.target.closest('.nav');
   if (!nav) return;
   if (nav.dataset.action === 'publish') {{
+    if (IS_LITE) return;
     openPublish();
     return;
   }}
+  if (IS_LITE && nav.dataset.mode === 'me') return;
   state.mode = nav.dataset.mode || 'all';
   if (state.mode === 'all') {{
     state.section = 'all';
@@ -1553,11 +1949,54 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     openPublish();
     return;
   }}
+  if (t.closest('.js-me-find-builder')) {{
+    state.mode = 'all';
+    render(true);
+    openFollowSheet('builder');
+    return;
+  }}
+  if (t.closest('.js-me-find-industry')) {{
+    state.mode = 'all';
+    render(true);
+    openFollowSheet('industry');
+    return;
+  }}
+  const unB = t.closest('.js-unfollow-builder');
+  if (unB) {{
+    toggleFollowBuilder(unB.dataset.owner || '');
+    return;
+  }}
+  const unI = t.closest('.js-unfollow-industry');
+  if (unI) {{
+    toggleFollowIndustry(unI.dataset.scene || '');
+    return;
+  }}
   if (t.closest('.js-pub-back')) {{
     state.mode = 'all';
     state.publisher = '';
     state.shown = 0;
     render(true);
+    return;
+  }}
+  const followBtn = t.closest('.js-follow-builder');
+  if (followBtn) {{
+    e.stopPropagation();
+    toggleFollowBuilder(followBtn.dataset.owner || '');
+    return;
+  }}
+  const sceneFilter = t.closest('.js-scene-filter');
+  if (sceneFilter) {{
+    e.stopPropagation();
+    state.scene = sceneFilter.dataset.scene || 'all';
+    state.scene_l2 = 'all';
+    state.shown = 0;
+    render(true);
+    return;
+  }}
+  const sceneTag = t.closest('.js-scene-tag');
+  if (sceneTag) {{
+    e.stopPropagation();
+    openIndustrySheet(sceneTag.dataset.scene || '');
     return;
   }}
   const pubSkill = t.closest('.js-pub-skill');
@@ -1634,11 +2073,25 @@ window.addEventListener('scroll', () => maybeLoadMore(), {{ passive: true }});
 document.getElementById('btnDemo').addEventListener('click', startDemo);
 document.getElementById('demoStop').addEventListener('click', stopDemo);
 document.getElementById('btnHeart').addEventListener('click', () =>
-  toast('双击点赞 · 书签收藏 · 反馈写入 personal_score 排序'));
+  toast('关注后最新进顶部 Stories · 双击点赞 · 书签收藏'));
+
+try {{
+  if (!IS_LITE && localStorage.getItem('sf_stories_hint_dismissed') === '1') {{
+    document.getElementById('storiesHint').hidden = true;
+  }}
+}} catch (e) {{}}
+
+(function prefillIntentFromQuery() {{
+  const q = new URLSearchParams(location.search).get('q') || new URLSearchParams(location.search).get('intent') || '';
+  if (!q) return;
+  state.intent = q;
+  const el = document.getElementById('intent');
+  if (el) el.value = q;
+}})();
 
 render(true);
 
-if (new URLSearchParams(location.search).get('demo') === '1') {{
+if (!IS_LITE && new URLSearchParams(location.search).get('demo') === '1') {{
   setTimeout(startDemo, 400);
 }}
 </script>
@@ -1647,6 +2100,12 @@ if (new URLSearchParams(location.search).get('demo') === '1') {{
 """
 
 
-def write_feed_html(feed: dict, path: Path) -> None:
+def write_feed_html(feed: dict, path: Path, *, variant: str | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(build_feed_html(feed), encoding="utf-8")
+    path.write_text(build_feed_html(feed, variant=variant), encoding="utf-8")
+
+
+def write_feed_variants(feed: dict, *, full_path: Path, lite_path: Path) -> None:
+    """同时写出独立站 full 页与 picker 用 lite 页。"""
+    write_feed_html(feed, full_path, variant="full")
+    write_feed_html(feed, lite_path, variant="lite")

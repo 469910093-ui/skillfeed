@@ -58,16 +58,25 @@ def data_dir() -> Path:
 DATA_DIR = data_dir()
 FEED_JSON = DATA_DIR / "feed.json"
 FEED_HTML = DATA_DIR / "feed.html"
+FEED_HTML_LITE = DATA_DIR / "feed.lite.html"
 CONFIG_JSON = DATA_DIR / "config.json"
 
 
 def refresh_paths() -> None:
     """SKILLFEED_HOME 在进程内被设置后，同步模块级路径。"""
-    global DATA_DIR, FEED_JSON, FEED_HTML, CONFIG_JSON
+    global DATA_DIR, FEED_JSON, FEED_HTML, FEED_HTML_LITE, CONFIG_JSON
     DATA_DIR = data_dir()
     FEED_JSON = DATA_DIR / "feed.json"
     FEED_HTML = DATA_DIR / "feed.html"
+    FEED_HTML_LITE = DATA_DIR / "feed.lite.html"
     CONFIG_JSON = DATA_DIR / "config.json"
+
+
+def write_local_feed_pages(feed: dict) -> None:
+    """本机：full 独立站页 + lite（给 skill-picker 嵌入）。"""
+    feed_dashboard.write_feed_variants(
+        feed, full_path=FEED_HTML, lite_path=FEED_HTML_LITE,
+    )
 TOOL_FILES = [
     "skillfeed.py",
     "trending.py",
@@ -384,7 +393,7 @@ def cmd_refresh(argv: list[str]) -> int:
     )
     feed["generated_at"] = datetime.now(timezone.utc).isoformat()
     FEED_JSON.write_text(json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    feed_dashboard.write_feed_html(feed, FEED_HTML)
+    write_local_feed_pages(feed)
     self_copy()
 
     print(f"[refresh] stream items: {len(feed.get('items') or [])} (passed={len(passed)} + soft)")
@@ -392,6 +401,7 @@ def cmd_refresh(argv: list[str]) -> int:
     print(f"[refresh] funnel: {feed.get('funnel')}")
     print(f"[refresh] wrote {FEED_JSON}")
     print(f"[refresh] wrote {FEED_HTML}")
+    print(f"[refresh] wrote {FEED_HTML_LITE} (lite · skill-picker)")
     return 0
 
 
@@ -448,15 +458,16 @@ def cmd_build(argv: list[str]) -> int:
     )
     feed["generated_at"] = datetime.now(timezone.utc).isoformat()
     FEED_JSON.write_text(json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    feed_dashboard.write_feed_html(feed, FEED_HTML)
+    write_local_feed_pages(feed)
     self_copy()
     print(f"[build] items={len(feed.get('items') or [])} corpus={len(feed.get('corpus') or [])}")
     print(f"[build] wrote {FEED_HTML}")
+    print(f"[build] wrote {FEED_HTML_LITE} (lite · skill-picker)")
     return 0
 
 
 def cmd_publish_site(argv: list[str]) -> int:
-    """把最新 Feed 导出为可部署的静态站点（index.html + feed.json）。"""
+    """导出独立网页产物：site/index.html（full）+ site/embed.html（lite）+ feed.json。"""
     refresh_paths()
     out = Path("site")
     i = 0
@@ -481,6 +492,7 @@ def cmd_publish_site(argv: list[str]) -> int:
     ui["hosting"] = "pages"
     ui["feedback"] = "local-only"
     ui["cta"] = ui.get("cta") or "open_github"
+    ui["variant"] = "full"
     api_base = (os.environ.get("SKILLFEED_PUBLIC_URL") or ui.get("api_base") or "").strip().rstrip("/")
     if api_base:
         ui["api_base"] = api_base
@@ -491,16 +503,24 @@ def cmd_publish_site(argv: list[str]) -> int:
     (out / "feed.json").write_text(
         json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
     )
-    feed_dashboard.write_feed_html(feed, out / "index.html")
-    # 简短说明（不参与站点路由）
+    feed_dashboard.write_feed_html(feed, out / "index.html", variant="full")
+    lite_feed = dict(feed)
+    lite_ui = dict(ui)
+    lite_ui["variant"] = "lite"
+    lite_ui.pop("api_base", None)
+    lite_feed["ui"] = lite_ui
+    feed_dashboard.write_feed_html(lite_feed, out / "embed.html", variant="lite")
     (out / "BUILD.txt").write_text(
-        "skill-feed static site\n"
+        "skill-feed static web product\n"
+        "index.html = full site (Stories/follow/publish when api_base set)\n"
+        "embed.html = lite for skill-picker (no follow/publish/me)\n"
         f"generated_at={feed.get('generated_at')}\n"
         f"items={len(feed.get('items') or [])}\n"
         f"corpus={len(feed.get('corpus') or [])}\n",
         encoding="utf-8",
     )
-    print(f"[publish-site] wrote {out.resolve()}/index.html")
+    print(f"[publish-site] wrote {out.resolve()}/index.html (full web)")
+    print(f"[publish-site] wrote {out.resolve()}/embed.html (lite embed)")
     print(f"[publish-site] items={len(feed.get('items') or [])} corpus={len(feed.get('corpus') or [])}")
     return 0
 

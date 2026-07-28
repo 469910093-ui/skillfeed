@@ -200,5 +200,6 @@ def pack_feed(
             "style": "instagram",
             "cta": "open_github",
             "demo_auto": False,
+            "variant": "full",
         },
     }

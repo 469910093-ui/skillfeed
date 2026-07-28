@@ -61,9 +61,34 @@ class TestFeedDashboard(unittest.TestCase):
         self.assertIn("发现", html)
         self.assertIn("发布", html)
         self.assertIn("我的", html)
+        self.assertIn("variant-full", html)
+        self.assertIn("IS_LITE", html)
         self.assertIn("countMode", html)
         self.assertNotIn('data-mode="skills"', html)
         self.assertIn('"full_name": "acme/agent-skills"', json.dumps(feed))
+
+    def test_lite_variant_strips_social_chrome(self):
+        feed = {
+            "items": [{
+                "full_name": "acme/agent-skills",
+                "name": "agent-skills",
+                "description": "demo",
+                "url": "https://github.com/acme/agent-skills",
+                "source": "github.com/trending",
+                "scene": "content",
+                "scene_label": "内容创作",
+            }],
+            "corpus": [],
+            "ui": {"variant": "lite"},
+        }
+        html = feed_dashboard.build_feed_html(feed, variant="lite")
+        self.assertIn("variant-lite", html)
+        self.assertIn("去 GitHub 发现", html)
+        self.assertIn("本机没有合适 skill", html)
+        self.assertIn("打开 GitHub", html)
+        self.assertIn("const IS_LITE = VARIANT === 'lite'", html)
+        # lite 仍含 DOM（CSS/JS 门控），但标记为 lite 且默认隐藏社交模块
+        self.assertIn("body.variant-lite .stories-wrap", html)
 
 
 if __name__ == "__main__":

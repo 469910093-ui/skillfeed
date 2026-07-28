@@ -4,9 +4,20 @@
 
 ## 产品一句话
 
-> 从 GitHub Trending + HelloGitHub + GitHub Search 发现 skill → 门禁 → **无限下滑 Feed**（一/二级场景 + 栏目）→ **打开 GitHub**。  
-> 排序：兴趣画像 + 意图 + feedback；HelloGitHub 全刊进本地 **corpus**。  
+> 从 GitHub Trending + HelloGitHub + GitHub Search 发现 skill → 门禁 → **无限下滑 Feed** → **打开 GitHub**。  
 > **不代装**。用户自行安装后用 skill-picker `scan`。
+
+### 双变体（必知）
+
+| 变体 | 命令产物 | 给谁用 |
+|---|---|---|
+| **full** | `~/.skill-feed/feed.html` · `site/index.html` | 独立网页（Stories/关注/发布/我的） |
+| **lite** | `~/.skill-feed/feed.lite.html` · `site/embed.html` | skill-picker「去 GitHub 发现」子页（无关注/发布/后台） |
+
+```bash
+python skillfeed.py build          # 同时写 full + lite
+python skillfeed.py publish-site   # 独立站：site/index.html + site/embed.html
+```
 
 ## 安装 / 打开信息流
 
@@ -35,8 +46,22 @@ python skillfeed.py serve      # Instagram 板式信息流（会自动 build）
 
 UGC API：`server/`（FastAPI + SQLite）。本地可先 `SKILLFEED_DEV_AUTH=1`，生产配 GitHub OAuth（见 `.env.example`）。
 
+## PRD 同步（强制）
+
+产品真相源：`docs/PRD.md`（含 §0 变更纪律、§13 变更日志）。
+
+当你或用户做**任何产品调优**（IA、Stories/pills、关注、排序/门禁、文案引导、存储 key、里程碑取舍等）：
+
+1. **同批更新** `docs/PRD.md` 正文对应章节  
+2. **追加** §13 变更日志一行（日期 · 摘要 · 影响）  
+3. 必要时刷新 §12 开发现状对照  
+4. 代码与 PRD 冲突时，**先改 PRD 再改代码**（或同 PR 内两者一起改完）  
+
+未回写 PRD 的产品改动视为未完成，不得只改 `feed_dashboard.py` / 引擎参数就结束。
+
 ## 注意
 
 - CTA 只有「打开 GitHub」；无 install / 不写宿主 skills 目录
+- Stories = 关注动态；pills = 发现筛选（见 PRD §5.0）
 - Trending 抓取失败时回退缓存并 WARN，不编造榜单
 - 知识库只增不删；空 Feed 时用 corpus backup + 漏斗解释
