@@ -3,12 +3,12 @@
 | 字段 | 内容 |
 |---|---|
 | 产品名 | skill-feed |
-| 版本 | v0.4.0（相对本仓库当前实现） |
+| 版本 | v0.4.1（相对本仓库当前实现） |
 | 文档状态 | **唯一产品真相源（Source of Truth）** |
 | 仓库 | https://github.com/469910093-ui/skillfeed |
 | 公开发现站 | https://469910093-ui.github.io/skillfeed/ |
 | 关联产品 | [skill-picker](https://github.com/469910093-ui/Skill-picker)（本机已装 skill 的扫描/匹配） |
-| 更新日期 | 2026-07-28 |
+| 更新日期 | 2026-08-03 |
 
 ---
 
@@ -191,6 +191,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | SKILL.md 链接 | 看全文 |
 | 互动 | 赞、踩、收藏 |
 | 主 CTA | **打开 GitHub** |
+| **空结果兜底** | Feed 内无匹配时：跳转 GitHub；代码搜用 `path:**/SKILL.md {{关键词}}`（勿用已失效的 `filename:`）；仓库搜 `SKILL.md in:name,description,readme`；**不代装** |
 
 ### 5.3 前端配置
 
@@ -464,6 +465,10 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-08-03 | 长意图自动提炼短关键词（输入框 maxlength、粘贴/回车/URL 预填压缩、关键词 chips）；匹配与 GitHub 空态都用短词 | `compressIntent` / `applyIntentInput` |
+| 2026-08-03 | 意图匹配支持中文二元组 + 去 AI 味同义（slop/stop-slop）；避免「去掉文案的AI味」空命中 | `intentTokens` / `intentMatch` |
+| 2026-08-03 | 修正 GitHub 空态搜索：`filename:` → `path:**/SKILL.md`（否则会搜到正文提到该字样的无关文件） | `githubSearchUrls` |
+| 2026-08-03 | Feed 空结果时提供 GitHub 网页搜索兜底；不代装 | §5.2 空态、`feed_dashboard.emptyHtml` |
 | 2026-07-28 | M3.6：页面拆 full（独立网页）/ lite（picker 子页，无关注·发布·我的）；`publish-site` 双写 index+embed；`?q=` 意图预填；skill-picker 第三 tab「去 GitHub 发现」 | §1、§3、§8、§12、`feed_dashboard.py`、`skillfeed.py`、picker `discover.py`/`dashboard.py` |
 | 2026-07-28 | 订立 §0 变更纪律：产品调优必须同批回写 PRD | 流程 / 全文档 |
 | 2026-07-28 | M3.5：Stories 从模式/场景筛选改为关注 Builder+行业最新动态；pills 专司筛选；多入口关注 +「最新进顶部圆环」引导 | §5.0–5.4、§8、§9、§12、`feed_dashboard.py` |

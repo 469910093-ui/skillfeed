@@ -111,6 +111,16 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .search::placeholder {{ color: var(--muted); }}
   .search:focus {{ outline: 2px solid #c7c7c7; outline-offset: 0; background: #fff; }}
+  .intent-keys {{
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 6px 2px 2px; font-size: .72rem; color: var(--muted);
+  }}
+  .intent-keys[hidden] {{ display: none !important; }}
+  .intent-keys b {{ color: var(--ink); font-weight: 700; }}
+  .intent-keys .ik {{
+    border: 1px solid var(--line); background: #fff; border-radius: 999px;
+    padding: 2px 8px; color: var(--ink); font-weight: 600;
+  }}
 
   .stories-wrap {{
     background: var(--card); border-bottom: 1px solid var(--line);
@@ -635,7 +645,8 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     </div>
 
     <div class="search-wrap" id="searchWrap">
-      <input class="search" id="intent" type="search" placeholder="搜索意图，如：去 AI 味写作 / 周报复盘" />
+      <input class="search" id="intent" type="search" placeholder="短关键词更好，如：去AI味 / 周报 / 剪视频" maxlength="40" />
+      <div class="intent-keys" id="intentKeys" hidden></div>
     </div>
 
     <div class="stories-wrap" id="storiesWrap">
@@ -1034,11 +1045,164 @@ function openPublish() {{
   toast('请先启动 API：python skillfeed.py api（或配置 ui.api_base）');
 }}
 
+const INTENT_STOP = new Set(
+  '的了呢吗啊把被在是有我要帮做一份一个能否可以怎么如何请帮忙去掉删除去除一下帮我给我用到进行进行中以及还有就是这个那个什么哪些为了把它给'.split('')
+);
+const INTENT_PHRASES = [
+  '去ai味', 'ai味', 'stop-slop', '周报复盘', '周报', '复盘', '剪视频', '短视频',
+  '去ai', '文案', '写作', '润色', '飞书', 'figma', '图表', 'ppt', '演示',
+  'cad', '知识图谱', '代码审查', '架构图', '网页推荐',
+];
+
+/** 长意图 → 短关键词（便于匹配与结果展示） */
+function compressIntent(raw) {{
+  const src = String(raw || '').trim();
+  if (!src) return {{ keys: [], query: '', shortened: false }};
+  const lower = src.toLowerCase().replace(/\\s+/g, ' ');
+  const compact = lower.replace(/\\s+/g, '');
+  const keys = [];
+  const push = (k) => {{
+    const t = String(k || '').trim();
+    if (!t || t.length < 2) return;
+    // 更长短语优先：若新词覆盖旧词则替换
+    for (let i = 0; i < keys.length; i++) {{
+      const x = keys[i];
+      if (x === t) return;
+      if (t.includes(x) && t.length > x.length) {{ keys[i] = t; return; }}
+      if (x.includes(t)) return;
+    }}
+    keys.push(t);
+  }};
+
+  // 0) 场景特判先写入（短且准）
+  let cjk = '';
+  for (const ch of compact) {{
+    if (/[\\u4e00-\\u9fff]/.test(ch) && !INTENT_STOP.has(ch)) cjk += ch;
+  }}
+  if (/ai味|去ai|ai写作|stop-slop|slop/.test(compact) || (cjk.includes('文案') && (compact.includes('ai') || cjk.includes('味')))) {{
+    push('去AI味');
+    if (cjk.includes('文案')) push('文案');
+  }}
+  if (/周报|复盘/.test(compact)) push(compact.includes('复盘') && compact.includes('周报') ? '周报复盘' : (compact.includes('周报') ? '周报' : '复盘'));
+  if (/剪视频|短视频|口播/.test(compact)) push('剪视频');
+
+  // 1) 短语库
+  for (const p of INTENT_PHRASES) {{
+    if (compact.includes(p) || lower.includes(p)) {{
+      if (p === 'ai味' || p === '去ai' || p === '去ai味') push('去AI味');
+      else push(p);
+    }}
+  }}
+  // 2) 英文词
+  for (const w of lower.match(/[a-z][a-z0-9\\-]{{1,24}}/g) || []) {{
+    if (!['the', 'and', 'for', 'with', 'from', 'this', 'that', 'skill', 'skills'].includes(w)) push(w);
+  }}
+  // 3) 中文补足
+  if (keys.length < 3) {{
+    for (let len = 3; len >= 2 && keys.length < 3; len--) {{
+      for (let i = 0; i + len <= cjk.length && keys.length < 3; i++) {{
+        const slice = cjk.slice(i, i + len);
+        if (/^[的了呢吗啊把被在是有我要帮]+$/.test(slice)) continue;
+        push(slice);
+      }}
+    }}
+  }}
+
+  // 已经很短：原样（最多 12 字）
+  const alreadyShort = compact.length <= 12 && src.split(/\\s+/).length <= 3;
+  if (alreadyShort && !keys.length) {{
+    return {{ keys: [src], query: src, shortened: false }};
+  }}
+  const picked = keys.slice(0, 3);
+  if (!picked.length) {{
+    const fallback = (cjk || compact).slice(0, 8);
+    return {{ keys: fallback ? [fallback] : [src.slice(0, 12)], query: fallback || src.slice(0, 12), shortened: src.length > 12 }};
+  }}
+  const query = picked.join(' ');
+  return {{ keys: picked, query, shortened: query !== src && compact.length > 8 }};
+}}
+
+function effectiveIntent() {{
+  return compressIntent(state.intent).query.toLowerCase();
+}}
+
+function renderIntentKeys() {{
+  const el = document.getElementById('intentKeys');
+  if (!el) return;
+  const {{ keys, shortened }} = compressIntent(state.intent);
+  if (!state.intent.trim() || !keys.length) {{
+    el.hidden = true;
+    el.innerHTML = '';
+    return;
+  }}
+  el.hidden = false;
+  el.innerHTML = (shortened ? '<span>已提炼</span>' : '<span>关键词</span>') +
+    keys.map(k => `<span class="ik">${{escapeHtml(k)}}</span>`).join('') +
+    (shortened ? '<b>· 用短词结果更准</b>' : '');
+}}
+
+function applyIntentInput(raw, {{ forceCompress = false, silent = false }} = {{}}) {{
+  const src = String(raw || '');
+  const packed = compressIntent(src);
+  const el = document.getElementById('intent');
+  const tooLong = src.replace(/\\s+/g, '').length > 10 || src.length > 16;
+  const use = (forceCompress || tooLong) ? packed.query : src.trim();
+  state.intent = use;
+  if (el && el.value !== use) el.value = use;
+  if (!silent && packed.shortened && use && use !== src.trim()) {{
+    toast('已提炼短关键词：' + use, 2200);
+  }}
+  renderIntentKeys();
+}}
+
+function intentHay(it) {{
+  const tips = (typeof extractHighlightsClient === 'function') ? extractHighlightsClient(it) : {{}};
+  const hl = Array.isArray(tips.highlights) ? tips.highlights.join(' ') : '';
+  return (
+    (it.name || '') + ' ' + (it.description || '') + ' ' + (it.full_name || '') + ' ' +
+    (it.one_liner || '') + ' ' + (it.problem || '') + ' ' + (it.body_preview || '') + ' ' +
+    (it.scene_label || '') + ' ' + (it.scene_l2_label || '') + ' ' + hl + ' ' +
+    ((it.highlights || []).join ? (it.highlights || []).join(' ') : '')
+  ).toLowerCase();
+}}
+
+function intentTokens(q) {{
+  const packed = compressIntent(q);
+  const raw = (packed.query || q || '').trim().toLowerCase();
+  if (!raw) return [];
+  const out = new Set(packed.keys.map(k => k.toLowerCase()));
+  for (const part of raw.split(/\\s+/).filter(Boolean)) out.add(part);
+  const compact = raw.replace(/\\s+/g, '');
+  for (let i = 0; i < compact.length - 1; i++) {{
+    const a = compact[i], b = compact[i + 1];
+    if (/[\\u4e00-\\u9fff]/.test(a) || /[\\u4e00-\\u9fff]/.test(b)) out.add(a + b);
+  }}
+  if (/ai\\s*味|去\\s*ai|slop|人味|润色|去ai|去ai味/.test(raw) || (/文案/.test(raw) && /ai|味/.test(raw))) {{
+    ['slop', 'stop-slop', 'ai writing', 'ai味', '去ai', '去ai味', '写作', '文案', '润色', 'human'].forEach(t => out.add(t));
+  }}
+  return [...out].filter(t => t.length >= 2);
+}}
+
+function intentMatch(it, q) {{
+  if (!q) return true;
+  const query = compressIntent(q).query.toLowerCase() || q;
+  const hay = intentHay(it);
+  if (hay.includes(query)) return true;
+  const toks = intentTokens(query);
+  if (!toks.length) return hay.includes(query);
+  let hits = 0;
+  for (const t of toks) if (hay.includes(t)) hits += 1;
+  if (hits >= 1 && toks.length <= 2) return true;
+  if (hits >= 2) return true;
+  const strong = ['stop-slop', 'slop', 'ai味', '去ai', '去ai味', 'hallmark'];
+  return strong.some(s => toks.includes(s) && hay.includes(s));
+}}
+
 function liveIntentBoost(it, q) {{
   if (!q) return 0;
-  const hay = ((it.name||'') + ' ' + (it.description||'') + ' ' + (it.scene_label||'') + ' ' + (it.scene_l2_label||'')).toLowerCase();
+  const hay = intentHay(it);
   let n = 0;
-  for (const part of q.split(/\\s+/).filter(Boolean)) {{
+  for (const part of intentTokens(q)) {{
     if (hay.includes(part)) n += 1;
   }}
   return n * 0.08;
@@ -1049,17 +1213,14 @@ function scoreRow(it, q) {{
 }}
 
 function filtered() {{
-  const q = state.intent.trim().toLowerCase();
+  const q = effectiveIntent();
 
   if (state.mode === 'saved') {{
     const keep = new Set([...liked, ...saved]);
     const rows = allPool().filter(it => {{
       const fn = it.full_name || '';
       if (!fn || !keep.has(fn)) return false;
-      if (q) {{
-        const hay = ((it.name||'') + ' ' + (it.description||'') + ' ' + (it.full_name||'') + ' ' + (it.one_liner||'')).toLowerCase();
-        if (!hay.includes(q) && !q.split(/\\s+/).some(p => p && hay.includes(p))) return false;
-      }}
+      if (q && !intentMatch(it, q)) return false;
       return true;
     }});
     rows.sort((a, b) => scoreRow(b, q) - scoreRow(a, q));
@@ -1076,10 +1237,7 @@ function filtered() {{
       const sec = it.hg_section || '';
       if (!sec || (!sec.includes(state.section) && sec !== state.section)) return false;
     }}
-    if (q) {{
-      const hay = ((it.name||'') + ' ' + (it.description||'') + ' ' + (it.full_name||'') + ' ' + (it.scene_l2_label||'') + ' ' + (it.one_liner||'')).toLowerCase();
-      if (!hay.includes(q) && !q.split(/\\s+/).some(p => p && hay.includes(p))) return false;
-    }}
+    if (q && !intentMatch(it, q)) return false;
     return true;
   }});
   rows.sort((a, b) => scoreRow(b, q) - scoreRow(a, q));
@@ -1430,6 +1588,23 @@ function renderPills(el, items, key, show) {{
   ).join('');
 }}
 
+function githubSearchUrls(intent) {{
+  const q = compressIntent(intent).query || (intent || '').trim();
+  const enc = encodeURIComponent;
+  // 空结果兜底：GitHub 代码搜索请用 path:**/SKILL.md
+  // filename: 已不被识别，会把整串当正文搜出「提到 filename:SKILL.md」的无关笔记
+  const codeQ = q
+    ? `path:**/SKILL.md ${{q}}`
+    : 'path:**/SKILL.md';
+  const repoQ = q
+    ? `${{q}} SKILL.md in:name,description,readme`
+    : 'SKILL.md in:name,description,readme';
+  return {{
+    code: 'https://github.com/search?type=code&q=' + enc(codeQ),
+    repos: 'https://github.com/search?type=repositories&q=' + enc(repoQ),
+  }};
+}}
+
 function emptyHtml(items) {{
   const funnel = FEED.funnel || {{}};
   const rejected = FEED.rejected_counts || (FEED.gates && FEED.gates.rejected) || {{}};
@@ -1439,12 +1614,23 @@ function emptyHtml(items) {{
       <p>双击帖子点赞，或点书签收藏。可在「我的」里查看。</p>
     </div>`;
   }}
+  const packed = compressIntent(state.intent);
+  const intent = packed.query || (state.intent || '').trim();
+  const gh = githubSearchUrls(intent);
+  const intentLine = intent
+    ? `<p>关键词：<b>${{escapeHtml(intent)}}</b> — Feed 内暂无匹配，可到 GitHub 继续搜。</p>`
+    : `<p>Feed 内暂无结果。试短关键词（如「去AI味」），或直接去 GitHub 搜 SKILL.md。</p>`;
   return `<div class="empty">
     <h2>没有匹配帖子</h2>
-    <p>漏斗：trending ${{funnel.trending_repos ?? '—'}} · search ${{funnel.search_candidates ?? '—'}} ·
-      过门禁 ${{funnel.passed ?? (FEED.gates && FEED.gates.passed) ?? 0}}</p>
-    <p>rejected ${{escapeHtml(JSON.stringify(rejected))}}</p>
-    <p>换个行业 pills / 意图，或跑 refresh；也可先关注 Builder，在顶部 Stories 看动态。</p>
+    ${{intentLine}}
+    <p style="margin:14px 0 10px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+      <a class="open-gh" style="display:inline-block;padding:10px 16px;width:auto;min-width:180px" href="${{escapeHtml(gh.code)}}" target="_blank" rel="noopener">在 GitHub 搜 SKILL.md（代码）</a>
+      <a class="open-gh" style="display:inline-block;padding:10px 16px;width:auto;min-width:180px;background:#fff;color:var(--ink);border:1px solid var(--line)" href="${{escapeHtml(gh.repos)}}" target="_blank" rel="noopener">在 GitHub 搜仓库</a>
+    </p>
+    <p style="font-size:.78rem;color:var(--muted)">不代装：在 GitHub 选中仓库后自行安装，再回 skill-picker 跑 scan。</p>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:12px">漏斗：trending ${{funnel.trending_repos ?? '—'}} · search ${{funnel.search_candidates ?? '—'}} ·
+      过门禁 ${{funnel.passed ?? (FEED.gates && FEED.gates.passed) ?? 0}}
+      · rejected ${{escapeHtml(JSON.stringify(rejected))}}</p>
   </div>`;
 }}
 
@@ -1519,6 +1705,7 @@ function render(reset) {{
 
   const feed = document.getElementById('feed');
   document.getElementById('genStatus').textContent = fmtGeneratedAt();
+  renderIntentKeys();
   renderStories();
 
   const hideChrome = state.mode === 'me' || state.mode === 'publisher';
@@ -1929,10 +2116,34 @@ document.querySelector('.bottom').addEventListener('click', (e) => {{
   window.scrollTo({{ top: 0, behavior: 'smooth' }});
 }});
 
-document.getElementById('intent').addEventListener('input', (e) => {{
+const intentEl = document.getElementById('intent');
+intentEl.addEventListener('input', (e) => {{
   state.intent = e.target.value || '';
+  renderIntentKeys();
   state.shown = 0;
   render(true);
+}});
+intentEl.addEventListener('paste', () => {{
+  setTimeout(() => {{
+    applyIntentInput(intentEl.value, {{ forceCompress: true }});
+    state.shown = 0;
+    render(true);
+  }}, 0);
+}});
+intentEl.addEventListener('blur', () => {{
+  const v = intentEl.value || '';
+  if (v.replace(/\\s+/g, '').length > 10 || v.length > 16) {{
+    applyIntentInput(v, {{ forceCompress: true }});
+    state.shown = 0;
+    render(true);
+  }}
+}});
+intentEl.addEventListener('keydown', (e) => {{
+  if (e.key === 'Enter') {{
+    applyIntentInput(intentEl.value, {{ forceCompress: true }});
+    state.shown = 0;
+    render(true);
+  }}
 }});
 
 document.getElementById('feed').addEventListener('click', (e) => {{
@@ -2084,11 +2295,10 @@ try {{
 (function prefillIntentFromQuery() {{
   const q = new URLSearchParams(location.search).get('q') || new URLSearchParams(location.search).get('intent') || '';
   if (!q) return;
-  state.intent = q;
-  const el = document.getElementById('intent');
-  if (el) el.value = q;
+  applyIntentInput(q, {{ forceCompress: true, silent: true }});
 }})();
 
+renderIntentKeys();
 render(true);
 
 if (!IS_LITE && new URLSearchParams(location.search).get('demo') === '1') {{
