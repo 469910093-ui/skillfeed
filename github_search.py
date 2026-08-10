@@ -18,7 +18,10 @@ DEFAULT_REPO_QUERIES = [
     'filename:SKILL.md',  # 部分环境仍可用；失败则忽略
     '"SKILL.md" in:readme',
     '"agent skills" OR "claude skill" OR "cursor skill"',
-    "topic:claude-skills OR topic:agent-skills",
+    "topic:claude-skills",
+    "topic:agent-skills",
+    "awesome agent skills in:name,description,readme",
+    "skills.sh OR agent-skills in:name,description",
 ]
 
 

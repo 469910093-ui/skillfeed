@@ -795,6 +795,8 @@ function sourceLabel(src) {{
   if (src === 'github.com/trending') return 'trending';
   if (src === 'hellogithub') return 'HelloGitHub';
   if (src === 'github-search') return 'GitHub Search';
+  if (src === 'catalog') return '策展目录';
+  if (src === 'xiaohongshu') return '小红书';
   if (src === 'corpus') return '知识库';
   return src;
 }}

@@ -8,6 +8,7 @@ skill-picker 继续只做 100% 本地扫描/匹配。
   python skillfeed.py refresh [--since daily|weekly] [--force] [--intent TEXT]
   python skillfeed.py build [--intent TEXT]   # 用已有 feed/corpus 重生信息流 HTML
   python skillfeed.py corpus [--max-issues N]
+  python skillfeed.py xhs-crawl [--keyword TEXT] [--max N]  # 媒讯助手/Chrome 采小红书
   python skillfeed.py publish-site [--out DIR]  # 导出静态站（GitHub Pages）
   python skillfeed.py api [--host HOST] [--port N]  # 云端 API：登录 + UGC
   python skillfeed.py serve [--port N]
@@ -31,6 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+import catalog_sources
 import corpus
 import feedback
 import feed_dashboard
@@ -42,6 +44,7 @@ import rank
 import scene
 import skill_detect
 import trending
+import xiaohongshu
 
 HOME = Path.home()
 DEFAULTS_PATH = Path(__file__).resolve().parent / "config_defaults.json"
@@ -86,6 +89,8 @@ TOOL_FILES = [
     "feed_dashboard.py",
     "hellogithub.py",
     "github_search.py",
+    "catalog_sources.py",
+    "xiaohongshu.py",
     "corpus.py",
     "feed_pack.py",
     "highlights.py",
@@ -168,6 +173,23 @@ def _resolve_github_token(cfg: dict) -> str:
         or os.environ.get("GITHUB_TOKEN", "").strip()
         or os.environ.get("GH_TOKEN", "").strip()
     )
+
+
+def cmd_xhs_crawl(argv: list[str]) -> int:
+    """调用本机 Chrome（媒讯助手扩展）采集小红书 skill 相关笔记。"""
+    refresh_paths()
+    cfg = load_config()
+    ensure_data_dir(cfg)
+    script = Path(__file__).resolve().parent / "scripts" / "xhs_meixun_crawl.py"
+    if not script.exists():
+        print(f"missing {script}", file=sys.stderr)
+        return 1
+    # 复用同一解释器跑采集脚本
+    import subprocess
+
+    cmd = [sys.executable, str(script), "--data-dir", str(DATA_DIR), *argv]
+    print(f"[xhs-crawl] {' '.join(cmd)}")
+    return int(subprocess.call(cmd))
 
 
 def cmd_corpus(argv: list[str]) -> int:
@@ -281,6 +303,48 @@ def cmd_refresh(argv: list[str]) -> int:
     else:
         print("[refresh] github-search disabled")
 
+    # 3b) 策展目录（awesome / skills.sh 映射）
+    catalog_rows: list[dict] = []
+    catalog_meta: dict = {}
+    if cfg.get("catalog_enabled", True):
+        token = _resolve_github_token(cfg)
+        try:
+            catalog_rows, catalog_meta = catalog_sources.fetch_catalog_candidates(
+                DATA_DIR,
+                user_agent=ua,
+                token=token,
+                ttl_hours=float(cfg.get("catalog_ttl_hours", 24)),
+                force=force,
+                max_repos=int(cfg.get("catalog_max_repos", 50)),
+            )
+        except Exception as e:  # noqa: BLE001
+            catalog_meta = {"warn": str(e)}
+            print(f"[refresh] catalog WARN: {e}")
+        print(
+            f"[refresh] catalog candidates: {len(catalog_rows)} "
+            f"(cache={catalog_meta.get('from_cache')})"
+        )
+    else:
+        print("[refresh] catalog disabled")
+
+    # 3c) 小红书（媒讯助手导出 / Chrome 采集落盘）
+    xhs_rows: list[dict] = []
+    xhs_meta: dict = {}
+    if cfg.get("xhs_enabled", True):
+        try:
+            xhs_rows, xhs_meta = xiaohongshu.candidates_from_mentions(
+                DATA_DIR, max_repos=int(cfg.get("xhs_max_repos", 30)),
+            )
+        except Exception as e:  # noqa: BLE001
+            xhs_meta = {"warn": str(e)}
+            print(f"[refresh] xiaohongshu WARN: {e}")
+        print(
+            f"[refresh] xiaohongshu candidates: {len(xhs_rows)} "
+            f"(notes={xhs_meta.get('note_count')})"
+        )
+    else:
+        print("[refresh] xiaohongshu disabled")
+
     enriched: list[dict] = []
     probed = 0
     t_enriched, t_probed = _probe_candidates(trending_rows, ua, always_if_skills_section=False)
@@ -300,11 +364,29 @@ def cmd_refresh(argv: list[str]) -> int:
     enriched.extend(s_enriched)
     probed += s_probed
 
-    # 去重 full_name（优先更高 stars；trending > hellogithub > search）
+    max_catalog_probe = int(cfg.get("catalog_probe_limit", 20))
+    catalog_probe = sorted(
+        catalog_rows,
+        key=lambda x: int(x.get("stars") or 0),
+        reverse=True,
+    )[:max_catalog_probe]
+    c_enriched, c_probed = _probe_candidates(catalog_probe, ua, always_if_skills_section=True)
+    enriched.extend(c_enriched)
+    probed += c_probed
+
+    max_xhs_probe = int(cfg.get("xhs_probe_limit", 15))
+    xhs_probe = xhs_rows[:max_xhs_probe]
+    x_enriched, x_probed = _probe_candidates(xhs_probe, ua, always_if_skills_section=True)
+    enriched.extend(x_enriched)
+    probed += x_probed
+
+    # 去重 full_name（优先更高 stars；trending > hellogithub > catalog > search > xhs）
     source_rank = {
-        "github.com/trending": 3,
-        "hellogithub": 2,
+        "github.com/trending": 4,
+        "hellogithub": 3,
+        "catalog": 2,
         "github-search": 1,
+        "xiaohongshu": 1,
         "corpus": 0,
     }
     by_name: dict[str, dict] = {}
@@ -339,7 +421,10 @@ def cmd_refresh(argv: list[str]) -> int:
         min_rel=min_rel,
         interest_toks=interest_toks,
         allowed_sources=set(cfg.get("allowed_sources") or list(gates.DEFAULT_ALLOWED_SOURCES)),
-        star_exempt_sources=set(cfg.get("star_exempt_sources") or ["hellogithub", "corpus", "github-search"]),
+        star_exempt_sources=set(
+            cfg.get("star_exempt_sources")
+            or ["hellogithub", "corpus", "github-search", "catalog", "xiaohongshu"]
+        ),
         intent=intent,
     )
     affinity = rank.load_feedback_affinity(DATA_DIR)
@@ -363,12 +448,16 @@ def cmd_refresh(argv: list[str]) -> int:
         "trending": {"repos": len(repos), "from_cache": meta.get("from_cache")},
         "hellogithub": {"candidates": len(hg_rows)},
         "github-search": search_meta,
+        "catalog": catalog_meta,
+        "xiaohongshu": xhs_meta,
     }
     funnel = {
         "trending_repos": len(repos),
         "star_shortlist": len(shortlist),
         "hg_candidates": len(hg_rows),
         "search_candidates": len(search_rows),
+        "catalog_candidates": len(catalog_rows),
+        "xhs_candidates": len(xhs_rows),
         "probed": probed,
         "skill_shaped": len(enriched),
         "passed": len(passed),
@@ -725,6 +814,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_build(rest)
     if cmd == "corpus":
         return cmd_corpus(rest)
+    if cmd == "xhs-crawl":
+        return cmd_xhs_crawl(rest)
     if cmd == "check":
         return cmd_check(rest)
     if cmd == "feedback":

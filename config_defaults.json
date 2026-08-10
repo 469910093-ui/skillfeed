@@ -16,16 +16,27 @@
   "search_max_repos": 40,
   "search_per_page": 25,
   "search_probe_limit": 15,
+  "catalog_enabled": true,
+  "catalog_ttl_hours": 24,
+  "catalog_max_repos": 50,
+  "catalog_probe_limit": 20,
+  "xhs_enabled": true,
+  "xhs_max_repos": 30,
+  "xhs_probe_limit": 15,
   "allowed_sources": [
     "github.com/trending",
     "hellogithub",
     "github-search",
+    "catalog",
+    "xiaohongshu",
     "corpus"
   ],
   "star_exempt_sources": [
     "hellogithub",
     "corpus",
-    "github-search"
+    "github-search",
+    "catalog",
+    "xiaohongshu"
   ],
   "user_agent": "skill-feed/0.3 (+local; recommend-only)"
 }

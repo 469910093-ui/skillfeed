@@ -10,6 +10,8 @@ DEFAULT_ALLOWED_SOURCES = frozenset({
     "github.com/trending",
     "hellogithub",
     "github-search",
+    "catalog",
+    "xiaohongshu",
     "corpus",
 })
 

@@ -8,7 +8,7 @@
 | 仓库 | https://github.com/469910093-ui/skillfeed |
 | 公开发现站 | https://469910093-ui.github.io/skillfeed/ |
 | 关联产品 | [skill-picker](https://github.com/469910093-ui/Skill-picker)（本机已装 skill 的扫描/匹配） |
-| 更新日期 | 2026-08-03 |
+| 更新日期 | 2026-08-10 |
 
 ---
 
@@ -137,6 +137,7 @@ skill-feed full（独立站）── Stories/关注/UGC（可选 API）──►
 ┌───────────────▼──────────────────────────────┐
 │ 发现引擎 + 定时任务（CLI / GitHub Actions）     │
 │  trending · HelloGitHub · GitHub Search       │
+│  catalog（awesome/skills.sh）· 小红书（媒讯） │
 │  gates · scene · rank · corpus · publish-site │
 └──────────────────────────────────────────────┘
 ```
@@ -269,7 +270,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 命令 | 职责 |
 |---|---|
 | `corpus` | HelloGitHub 等灌入本地知识库（只增不删） |
-| `refresh` | trending + HG + Search → 探测 SKILL.md → 门禁 → 场景 → 排序 → `feed.json` + HTML |
+| `refresh` | 多源 → 探测 SKILL.md → 门禁 → 场景 → 排序 → `feed.json` + HTML |
+| `xhs-crawl` | 本机 Chrome（媒讯助手扩展）采小红书 → `~/.skill-feed/xhs/mentions.json` |
 | `build` | 不联网，用已有数据重生 Feed HTML |
 | `publish-site` | 导出 `site/index.html` + `feed.json`（Pages） |
 | `serve` | 本机预览 + `/api/feedback` |
@@ -283,6 +285,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | `github.com/trending` | 热度爆发 |
 | `hellogithub` | Skills / AI 月刊稳定供给 |
 | `github-search` | SKILL.md / agent-skills 召回（建议 Token） |
+| `catalog` | awesome 列表 / skills.sh 热榜映射 / 官方 skills 仓 |
+| `xiaohongshu` | 小红书近一周 skill 热议（媒讯助手 CSV 或 `xhs-crawl`） |
 | `corpus` / soft | 知识库补货线索卡 |
 | `ugc` | 用户发布（API） |
 
@@ -465,6 +469,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-08-10 | 新增 `catalog`（awesome / skills.sh / 官方仓）与 `xiaohongshu`（媒讯助手/Chrome 采集）发现源；`xhs-crawl` CLI；源 chip 展示 | §4、§6.1、`catalog_sources.py`、`xiaohongshu.py`、`skillfeed.py` |
 | 2026-08-03 | 长意图自动提炼短关键词（输入框 maxlength、粘贴/回车/URL 预填压缩、关键词 chips）；匹配与 GitHub 空态都用短词 | `compressIntent` / `applyIntentInput` |
 | 2026-08-03 | 意图匹配支持中文二元组 + 去 AI 味同义（slop/stop-slop）；避免「去掉文案的AI味」空命中 | `intentTokens` / `intentMatch` |
 | 2026-08-03 | 修正 GitHub 空态搜索：`filename:` → `path:**/SKILL.md`（否则会搜到正文提到该字样的无关文件） | `githubSearchUrls` |

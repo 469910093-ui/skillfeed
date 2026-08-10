@@ -4,7 +4,7 @@
 
 ## 产品一句话
 
-> 从 GitHub Trending + HelloGitHub + GitHub Search 发现 skill → 门禁 → **无限下滑 Feed** → **打开 GitHub**。  
+> 从 GitHub Trending + HelloGitHub + GitHub Search + 策展目录 + 小红书热议 发现 skill → 门禁 → **无限下滑 Feed** → **打开 GitHub**。  
 > **不代装**。用户自行安装后用 skill-picker `scan`。
 
 ### 双变体（必知）
@@ -33,6 +33,7 @@ python skillfeed.py serve      # Instagram 板式信息流（会自动 build）
 ## 常用命令
 
 - `python skillfeed.py refresh [--since daily|weekly] [--force] [--intent TEXT]`
+- `python skillfeed.py xhs-crawl [--keyword TEXT] [--max N]` — 媒讯助手/Chrome 采小红书
 - `python skillfeed.py build [--intent TEXT]` — 不联网重生信息流 HTML
 - `python skillfeed.py corpus [--max-issues N]`
 - `python skillfeed.py publish-site [--out site]` — 导出 GitHub Pages 静态站
