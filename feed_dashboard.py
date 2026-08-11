@@ -1048,15 +1048,18 @@ function openPublish() {{
 }}
 
 const INTENT_STOP = new Set(
-  '的了呢吗啊把被在是有我要帮做一份一个能否可以怎么如何请帮忙去掉删除去除一下帮我给我用到进行进行中以及还有就是这个那个什么哪些为了把它给'.split('')
+  '的了呢吗啊把被在是有我要帮做一份一个能否可以怎么如何请帮忙去掉删除去除一下帮我给我用到进行进行中以及还有就是这个那个什么哪些为了把它给工具用来实现功能需求'.split('')
 );
+// 真实词表（长的优先）。禁止用滑动窗口造「产品设/品设品」这类假词。
 const INTENT_PHRASES = [
-  '去ai味', 'ai味', 'stop-slop', '周报复盘', '周报', '复盘', '剪视频', '短视频',
-  '去ai', '文案', '写作', '润色', '飞书', 'figma', '图表', 'ppt', '演示',
-  'cad', '知识图谱', '代码审查', '架构图', '网页推荐',
+  '去ai味', 'stop-slop', '周报复盘', '产品设计', '交互设计', '视觉设计', '跟团选品', '选品工具',
+  '剪视频', '短视频', '知识图谱', '代码审查', '架构图', '网页推荐', 'ai味', '去ai',
+  '周报', '复盘', '文案', '写作', '润色', '飞书', 'figma', '图表', 'ppt', '演示',
+  '选品', '跟团', '设计', 'ui', 'ux', 'mcp', '看板', 'cad', '口播',
 ];
+const MAX_INTENT_KEYS = 2;
 
-/** 长意图 → 短关键词（便于匹配与结果展示） */
+/** 长意图 → 真实短关键词（最多 2 个；绝不滑动切碎中文） */
 function compressIntent(raw) {{
   const src = String(raw || '').trim();
   if (!src) return {{ keys: [], query: '', shortened: false }};
@@ -1065,60 +1068,79 @@ function compressIntent(raw) {{
   const keys = [];
   const push = (k) => {{
     const t = String(k || '').trim();
-    if (!t || t.length < 2) return;
-    // 更长短语优先：若新词覆盖旧词则替换
+    if (!t || t.length < 2 || keys.length >= MAX_INTENT_KEYS) return;
+    const tl = t.toLowerCase();
     for (let i = 0; i < keys.length; i++) {{
       const x = keys[i];
-      if (x === t) return;
-      if (t.includes(x) && t.length > x.length) {{ keys[i] = t; return; }}
-      if (x.includes(t)) return;
+      const xl = x.toLowerCase();
+      if (xl === tl) return;
+      if (tl.includes(xl) && t.length > x.length) {{ keys[i] = t; return; }}
+      if (xl.includes(tl)) return;
     }}
     keys.push(t);
   }};
 
-  // 0) 场景特判先写入（短且准）
   let cjk = '';
   for (const ch of compact) {{
     if (/[\\u4e00-\\u9fff]/.test(ch) && !INTENT_STOP.has(ch)) cjk += ch;
   }}
+  // 纠正历史滑窗拼贴：产品设品设计 / 产品设*设计 → 产品设计
+  if (/产品设.*设计/.test(cjk) || /产品设计/.test(cjk)) {{
+    cjk = cjk.replace(/产品设品设计/g, '产品设计').replace(/产品设+品?设计/g, '产品设计');
+  }}
+
+  // 0) 场景特判
   if (/ai味|去ai|ai写作|stop-slop|slop/.test(compact) || (cjk.includes('文案') && (compact.includes('ai') || cjk.includes('味')))) {{
     push('去AI味');
     if (cjk.includes('文案')) push('文案');
   }}
-  if (/周报|复盘/.test(compact)) push(compact.includes('复盘') && compact.includes('周报') ? '周报复盘' : (compact.includes('周报') ? '周报' : '复盘'));
+  if (/周报|复盘/.test(compact)) {{
+    push(compact.includes('复盘') && compact.includes('周报') ? '周报复盘' : (compact.includes('周报') ? '周报' : '复盘'));
+  }}
   if (/剪视频|短视频|口播/.test(compact)) push('剪视频');
+  if (/产品设.*设计|产品设计/.test(compact) || /产品设.*设计|产品设计/.test(cjk)) push('产品设计');
 
-  // 1) 短语库
-  for (const p of INTENT_PHRASES) {{
+  // 1) 词表：按长度降序匹配，避免先命中短词挡住「产品设计」
+  const phrases = INTENT_PHRASES.slice().sort((a, b) => b.length - a.length);
+  for (const p of phrases) {{
+    if (keys.length >= MAX_INTENT_KEYS) break;
     if (compact.includes(p) || lower.includes(p)) {{
       if (p === 'ai味' || p === '去ai' || p === '去ai味') push('去AI味');
+      else if (p === 'ui' || p === 'ux' || p === 'mcp' || p === 'ppt' || p === 'cad') push(p.toUpperCase());
       else push(p);
     }}
   }}
-  // 2) 英文词
+
+  // 2) 英文词（短且真）
   for (const w of lower.match(/[a-z][a-z0-9\\-]{{1,24}}/g) || []) {{
-    if (!['the', 'and', 'for', 'with', 'from', 'this', 'that', 'skill', 'skills'].includes(w)) push(w);
+    if (keys.length >= MAX_INTENT_KEYS) break;
+    if (['the', 'and', 'for', 'with', 'from', 'this', 'that', 'skill', 'skills', 'http', 'https'].includes(w)) continue;
+    push(w.length <= 3 ? w.toUpperCase() : w);
   }}
-  // 3) 中文补足
-  if (keys.length < 3) {{
-    for (let len = 3; len >= 2 && keys.length < 3; len--) {{
-      for (let i = 0; i + len <= cjk.length && keys.length < 3; i++) {{
-        const slice = cjk.slice(i, i + len);
-        if (/^[的了呢吗啊把被在是有我要帮]+$/.test(slice)) continue;
-        push(slice);
-      }}
+
+  // 3) 无词表命中时：整段短查询当 1 个词；长句不再切碎
+  const spaceParts = src.split(/\\s+/).filter(Boolean);
+  const alreadyShort = compact.length <= 8 && spaceParts.length <= 2 && cjk.length <= 6;
+  if (!keys.length) {{
+    if (alreadyShort) {{
+      return {{ keys: [src], query: src, shortened: false }};
+    }}
+    if (cjk.length >= 2 && cjk.length <= 6) {{
+      push(cjk);
+    }} else if (spaceParts.length && spaceParts.length <= 2 && compact.length <= 12) {{
+      spaceParts.slice(0, MAX_INTENT_KEYS).forEach(push);
+    }} else if (cjk.length > 6) {{
+      // 宁可少词，也不造「产品设」：只取词表扫过仍空时的末 2 字实体（常为题眼）
+      // 但若末 2 字是虚词则放弃
+      const tail = cjk.slice(-2);
+      if (tail && ![...tail].every(ch => INTENT_STOP.has(ch))) push(tail);
     }}
   }}
 
-  // 已经很短：原样（最多 12 字）
-  const alreadyShort = compact.length <= 12 && src.split(/\\s+/).length <= 3;
-  if (alreadyShort && !keys.length) {{
-    return {{ keys: [src], query: src, shortened: false }};
-  }}
-  const picked = keys.slice(0, 3);
+  const picked = keys.slice(0, MAX_INTENT_KEYS);
   if (!picked.length) {{
-    const fallback = (cjk || compact).slice(0, 8);
-    return {{ keys: fallback ? [fallback] : [src.slice(0, 12)], query: fallback || src.slice(0, 12), shortened: src.length > 12 }};
+    const fallback = alreadyShort ? src : (cjk.slice(0, 4) || compact.slice(0, 6) || src.slice(0, 8));
+    return {{ keys: fallback ? [fallback] : [], query: fallback, shortened: compact.length > 8 }};
   }}
   const query = picked.join(' ');
   return {{ keys: picked, query, shortened: query !== src && compact.length > 8 }};
@@ -1147,8 +1169,9 @@ function applyIntentInput(raw, {{ forceCompress = false, silent = false }} = {{}
   const src = String(raw || '');
   const packed = compressIntent(src);
   const el = document.getElementById('intent');
-  const tooLong = src.replace(/\\s+/g, '').length > 10 || src.length > 16;
-  const use = (forceCompress || tooLong) ? packed.query : src.trim();
+  const tooLong = src.replace(/\\s+/g, '').length > 8 || src.length > 12;
+  // lite / 发现页：始终压成真实短词，避免「产品设品设计」这类滑窗残骸留在输入框
+  const use = (forceCompress || tooLong || IS_LITE || packed.shortened) ? (packed.query || src.trim()) : src.trim();
   state.intent = use;
   if (el && el.value !== use) el.value = use;
   if (!silent && packed.shortened && use && use !== src.trim()) {{
@@ -1169,16 +1192,12 @@ function intentHay(it) {{
 }}
 
 function intentTokens(q) {{
+  // 只用真实关键词做匹配，禁止再滑窗造假二元组污染结果
   const packed = compressIntent(q);
   const raw = (packed.query || q || '').trim().toLowerCase();
   if (!raw) return [];
   const out = new Set(packed.keys.map(k => k.toLowerCase()));
   for (const part of raw.split(/\\s+/).filter(Boolean)) out.add(part);
-  const compact = raw.replace(/\\s+/g, '');
-  for (let i = 0; i < compact.length - 1; i++) {{
-    const a = compact[i], b = compact[i + 1];
-    if (/[\\u4e00-\\u9fff]/.test(a) || /[\\u4e00-\\u9fff]/.test(b)) out.add(a + b);
-  }}
   if (/ai\\s*味|去\\s*ai|slop|人味|润色|去ai|去ai味/.test(raw) || (/文案/.test(raw) && /ai|味/.test(raw))) {{
     ['slop', 'stop-slop', 'ai writing', 'ai味', '去ai', '去ai味', '写作', '文案', '润色', 'human'].forEach(t => out.add(t));
   }}

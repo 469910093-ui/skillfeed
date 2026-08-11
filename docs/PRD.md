@@ -469,6 +469,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-08-11 | Feeds 关键词改为真实词表命中（最多 2 个），禁止中文滑动切碎造「产品设/品设品」假词 | `compressIntent` / `intentTokens` |
 | 2026-08-10 | 新增 `catalog`（awesome / skills.sh / 官方仓）与 `xiaohongshu`（媒讯助手/Chrome 采集）发现源；`xhs-crawl` CLI；源 chip 展示 | §4、§6.1、`catalog_sources.py`、`xiaohongshu.py`、`skillfeed.py` |
 | 2026-08-03 | 长意图自动提炼短关键词（输入框 maxlength、粘贴/回车/URL 预填压缩、关键词 chips）；匹配与 GitHub 空态都用短词 | `compressIntent` / `applyIntentInput` |
 | 2026-08-03 | 意图匹配支持中文二元组 + 去 AI 味同义（slop/stop-slop）；避免「去掉文案的AI味」空命中 | `intentTokens` / `intentMatch` |
