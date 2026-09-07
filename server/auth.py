@@ -53,6 +53,29 @@ def verify_session(secret: str, token: str) -> Optional[dict[str, Any]]:
         return None
 
 
+# —— 匿名设备凭据 ——
+#
+# device_id 是客户端自铸的，服务端凭什么相信「这个 device_id 属于你」？答案是：
+# 单凭 device_id 不能相信。所以服务端在**首次见到**某个 device_id 时下发一枚
+# HMAC 凭据，之后不再补发；并档时校验这枚凭据。
+#
+# 攻击者即使知道受害者的 device_id，也拿不到对应凭据（它只在注册那一次返回过），
+# 而伪造 HMAC 需要 session_secret。攻击者抢先用一个别人还没用过的 device_id
+# 注册在理论上可行，但那要求先猜中一个尚未使用的 uuid4，不构成现实威胁。
+
+def device_token(secret: str, device_id: str) -> str:
+    mac = hmac.new(
+        secret.encode("utf-8"), f"device:{device_id}".encode("utf-8"), hashlib.sha256,
+    ).digest()
+    return _b64e(mac)
+
+
+def verify_device_token(secret: str, device_id: str, token: str) -> bool:
+    if not device_id or not token:
+        return False
+    return hmac.compare_digest(device_token(secret, device_id), token)
+
+
 def set_session_cookie(resp: Response, settings: Settings, user_id: int, login: str) -> None:
     token = sign_session(
         settings.session_secret,

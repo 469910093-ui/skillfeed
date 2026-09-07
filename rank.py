@@ -188,30 +188,44 @@ def load_feedback_affinity(data_dir: Path, *, recent: int = 400) -> dict[str, An
         scene = (obj.get("scene") or "").strip()
         l2 = (obj.get("scene_l2") or "").strip()
         fn = (obj.get("full_name") or "").strip()
-        if action in ("useful", "opened_github"):
-            w = 1.0 if action == "useful" else 0.6
+        # open_github 是 opened_github 的新名字（见 feedback.ACTION_ALIASES）。
+        # 两个都得认，否则埋点改名后历史转化记录会被整段丢掉。
+        if action in ("useful", "opened_github", "open_github", "save", "expand_detail"):
+            # 与 ranking.DEFAULTS.event_weights 同一套排序：打开 > 收藏 >> 点赞。
+            # 这里过去是反的（useful 1.0 / save 0.8 / open_github 落到 0.6 兜底），
+            # 等于让最弱的态度信号盖过北极星行为
+            w = {
+                "open_github": 1.0,
+                "opened_github": 1.0,
+                "save": 0.9,
+                "useful": 0.45,
+                "expand_detail": 0.3,
+            }.get(action, 0.5)
             if scene:
                 scene_pos[scene] = scene_pos.get(scene, 0) + w
             if l2:
                 l2_pos[l2] = l2_pos.get(l2, 0) + w
             if fn:
                 repo_pos[fn] = repo_pos.get(fn, 0) + w
-        elif action in ("bad", "skip", "wrong_scene"):
-            w = 1.0 if action == "bad" else 0.5
+        elif action in ("bad", "skip", "wrong_scene", "not_interested", "skip_fast"):
+            w = 1.0 if action in ("bad", "not_interested") else 0.5
             if scene:
                 scene_neg[scene] = scene_neg.get(scene, 0) + w
             if fn:
                 repo_neg[fn] = repo_neg.get(fn, 0) + w
 
-    def _norm_boost(d: dict[str, float], cap: float = 0.25) -> dict[str, float]:
+    # 按同维最大值归一有个致命缺陷：只点过 1 次时那 1 次就是最大值，直接拿满档。
+    # 实测 5 条历史反馈（4 条指向同一仓库）就能让 feed 头部 top-10 重叠率归零、
+    # 单条位移 +288 名。改成按**绝对证据量**饱和：点得越多越接近上限，
+    # 但一次点击只值一小部分。仍然单调，所以维度间的相对排序不变。
+    def _norm_boost(d: dict[str, float], cap: float = 0.25, k: float = 3.0) -> dict[str, float]:
         if not d:
             return {}
-        m = max(d.values()) or 1.0
-        return {k: round(cap * (v / m), 4) for k, v in d.items()}
+        return {key: round(cap * (v / (v + k)), 4) for key, v in d.items()}
 
     scene_boost = _norm_boost(scene_pos, 0.22)
     for s, v in scene_neg.items():
-        pen = min(0.18, 0.18 * (v / (max(scene_neg.values()) or 1)))
+        pen = 0.18 * (v / (v + 3.0))
         scene_boost[s] = round(scene_boost.get(s, 0) - pen, 4)
 
     return {

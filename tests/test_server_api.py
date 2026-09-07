@@ -19,6 +19,9 @@ class TestServerAPI(unittest.TestCase):
         self.db = Path(self.tmp.name) / "t.db"
         self.settings = Settings()
         self.settings.db_path = self.db
+        # 无凭据登录现在是 fail-closed 的：必须同时显式打开 dev_mode 和 dev_auth，
+        # 缺任一即 404。这里两个都设，正是为了证明它需要刻意开启
+        self.settings.dev_mode = True
         self.settings.dev_auth = True
         self.settings.session_secret = "test-secret"
         self.settings.public_url = "http://testserver"
