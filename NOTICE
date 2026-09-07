@@ -1,0 +1,72 @@
+# 第三方素材出处
+
+本项目的界面图标有一部分取自开源图标集。下面每一条都是逐字节比对上游仓库确认过的，
+不是「大概来自」。核对方法：抓上游 SVG 的 `d=` 属性，与 `feed_dashboard.py` 里的
+字符串做精确匹配（Material 的 SVG 第一条 path 是透明包围盒 `M0 0h24v24H0z`，
+要取第二条）。
+
+## Feather Icons
+
+- 版权：Copyright (c) 2013-2023 Cole Bemis
+- 许可：MIT License
+- 来源：https://github.com/feathericons/feather
+
+用到的图标：
+
+| 图标 | 用途 | 与上游的关系 |
+|---|---|---|
+| `bookmark` | 收藏按钮（描边态与实心态） | 逐字节相同 |
+| `thumbs-down` | 「不感兴趣」按钮 | 逐字节相同 |
+| `heart` | 点赞按钮的描边态 | **衍生版**：坐标四舍五入到一位小数（`M20.84 4.61…` → `M20.8 4.6…`），命令序列与弧半径未变 |
+
+MIT 许可证全文：
+
+```
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## Material Icons
+
+- 版权：Copyright Google LLC
+- 许可：Apache License 2.0
+- 来源：https://github.com/google/material-design-icons
+
+用到的图标：
+
+| 图标 | 用途 | 与上游的关系 |
+|---|---|---|
+| `home`（action/home/materialicons/24px） | 底部导航「首页」 | 逐字节相同 |
+
+Apache-2.0 全文见 https://www.apache.org/licenses/LICENSE-2.0
+
+## 自绘、无需署名的图形
+
+这几个不来自任何图标集，是本项目自己画的或属通用几何图形：播放三角
+（`polygon points="6,4 20,12 6,20"`）、加号（两条直线）、用户轮廓
+（圆 + 一段弧，与 Feather 的 `user` 结构不同）、点赞的实心心形。
+
+## 网页字体
+
+`Outfit` 采用 SIL Open Font License 1.1，允许商用与网页嵌入。
+经由 Google Fonts 加载，未再分发字体文件本身。
+
+## 内容与封面图
+
+feed 里的仓库信息、头像与封面图来自 GitHub（含 `opengraph.githubassets.com`
+生成的仓库卡片图）。这些内容的商标与著作权归各自权利人所有；本项目只做展示与
+跳转，不代为分发。

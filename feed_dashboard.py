@@ -108,7 +108,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 
     --font: "Outfit", "PingFang SC", "Microsoft YaHei", sans-serif;
     --logo: "Outfit", "PingFang SC", sans-serif;
-    --phone: 470px;
+    --phone: 448px;
   }}
   * {{ box-sizing: border-box; }}
   html, body {{ margin: 0; background: #efefef; color: var(--ink); font-family: var(--font); }}

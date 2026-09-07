@@ -169,3 +169,9 @@ python skillfeed.py bitable dedupe                   # 清重复行
 ```bash
 python -m unittest discover -s tests
 ```
+
+## 第三方素材
+
+界面图标有一部分来自 Feather Icons（MIT）与 Material Icons（Apache-2.0），
+出处、许可与「哪个图标是逐字节相同、哪个是衍生版」逐条列在 [`NOTICE`](NOTICE)。
+品牌色板与字体的取值依据见 [`docs/brand-tokens.md`](docs/brand-tokens.md)。
