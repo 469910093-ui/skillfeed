@@ -11,7 +11,6 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
 
 import hellogithub
 
@@ -89,6 +88,31 @@ HOT_SKILL_SEEDS = [
         "full_name": "alchaincyf/huashu-design",
         "note_title": "花叔设计/内容 skill",
         "keyword": "花叔 skill",
+    },
+    {
+        "full_name": "xiaopu-ai/web-design",
+        "note_title": "Web/产品设计 Claude Skill",
+        "keyword": "Claude Skill 产品设计",
+    },
+    {
+        "full_name": "Ilm-Alan/frontend-design",
+        "note_title": "Frontend Design Skill vibe coding",
+        "keyword": "frontend-design skill",
+    },
+    {
+        "full_name": "Leonxlnx/taste-skill",
+        "note_title": "设计品味 taste-skill",
+        "keyword": "taste skill 设计",
+    },
+    {
+        "full_name": "nexu-io/open-design",
+        "note_title": "open-design Figma/shadcn skills 合集",
+        "keyword": "Figma skill Claude",
+    },
+    {
+        "full_name": "warpdotdev/figma-skills",
+        "note_title": "Figma MCP skills",
+        "keyword": "Figma Skills",
     },
     {
         "full_name": "alchaincyf/zhangxuefeng-skill",
@@ -216,7 +240,14 @@ def ingest_export_csv(data_dir: Path, csv_path: Path) -> dict:
                 or row.get("正文")
                 or ""
             ).strip()
-            url = (row.get("url") or row.get("链接") or row.get("note_url") or "").strip()
+            url = (
+                row.get("url")
+                or row.get("链接")
+                or row.get("note_url")
+                or row.get("笔记链接")
+                or ""
+            ).strip()
+            author = (row.get("author") or row.get("作者") or "").strip()
             likes = row.get("likes") or row.get("点赞数") or row.get("liked_count") or 0
             try:
                 likes_n = int(str(likes).replace(",", "") or 0)
@@ -228,6 +259,7 @@ def ingest_export_csv(data_dir: Path, csv_path: Path) -> dict:
                 "title": title,
                 "desc": desc[:800],
                 "url": url,
+                "author": author,
                 "likes": likes_n,
                 "repos": repos,
                 "source_file": str(csv_path),

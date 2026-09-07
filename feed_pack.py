@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 import highlights as hl
+import impressions
 import rank
+import ranking
 import scene
+import star_history
 
 # 嵌入 HTML 时保留的字段（控制体积）
+# 注意：normalize_item 按这个白名单裁字段，没列进来的新字段会被静默丢弃
 KEEP_KEYS = (
     "id", "full_name", "name", "description", "url", "source", "kind",
     "language", "stars", "stars_today", "skill_path",
     "hg_section", "issue", "hellogithub_url",
     "scene", "scene_label", "scene_l2", "scene_l2_label",
     "rel_score", "rel_why", "personal_score", "personal_why", "rank_why",
+    "global_score", "global_why", "first_seen_at", "is_new", "star_velocity",
+    "repo_items",
     "from_corpus", "soft", "owner", "one_liner",
     "body_preview", "cover_url", "skill_url",
     "problem", "highlights",
@@ -60,6 +68,7 @@ def normalize_item(item: dict, *, previews: Optional[dict[str, str]] = None) -> 
     out = dict(item)
     fn = out.get("full_name") or ""
     out["full_name"] = fn
+    out["id"] = out.get("id") or item_key(out)
     out["url"] = out.get("url") or (f"https://github.com/{fn}" if fn else "")
     out["name"] = (out.get("name") or (fn.split("/")[-1] if fn else "skill")).strip()
     desc = (out.get("description") or out.get("repo_description") or "").strip()
@@ -102,6 +111,15 @@ def normalize_item(item: dict, *, previews: Optional[dict[str, str]] = None) -> 
     return slim
 
 
+def item_key(it: dict) -> str:
+    """同一 GitHub 仓可有多条子 skill，用 full_name::skill_path 区分。"""
+    if it.get("id"):
+        return str(it["id"])
+    fn = it.get("full_name") or ""
+    sp = (it.get("skill_path") or "SKILL.md").lstrip("/")
+    return f"{fn}::{sp}" if fn else sp
+
+
 def soft_skills_from_corpus(
     corpus_rows: list[dict],
     *,
@@ -112,7 +130,9 @@ def soft_skills_from_corpus(
     out: list[dict] = []
     for c in corpus_rows:
         fn = c.get("full_name") or ""
-        if not fn or fn in exclude:
+        key = item_key(c)
+        # exclude 兼容旧逻辑（只含 full_name）与新逻辑（含 id）
+        if not fn or key in exclude or fn in exclude:
             continue
         sec = c.get("hg_section") or ""
         kind = c.get("kind") or ""
@@ -122,6 +142,7 @@ def soft_skills_from_corpus(
         row["kind"] = "skill"
         row["from_corpus"] = True
         row["soft"] = True
+        row.setdefault("id", key)
         if not row.get("source") or row.get("source") == "corpus":
             row["source"] = "hellogithub" if sec == "Skills" else (row.get("source") or "corpus")
         if not row.get("scene"):
@@ -130,6 +151,51 @@ def soft_skills_from_corpus(
         if len(out) >= limit:
             break
     return out
+
+
+def apply_global_scores(
+    rows: list[dict],
+    *,
+    data_dir: Optional[Path] = None,
+    config: Optional[dict] = None,
+    now: Optional[datetime] = None,
+) -> list[dict]:
+    """给条目打全局质量分（CTR + star 增速 + 存量 + 新鲜度 + 完整度）。
+
+    star 增速要跨天对比才算得出来，所以这里顺带落一次快照；本机版的 CTR 从
+    feedback.jsonl 聚合，线上版由 server 侧用 SQLite 的统计覆盖重算。
+    """
+    if not rows:
+        return rows
+    cfg = ranking.resolve_config(config)
+    now = now or datetime.now(timezone.utc)
+    home = star_history.data_home(data_dir)
+    snapshot = star_history.observe(rows, data_dir=home, now=now)
+    first_seen = star_history.first_seen_map(rows, data_dir=home, now=now)
+    try:
+        # 三个来源并集：本机 jsonl + 同机 server.db + 线上导出的 item_stats.json。
+        # 静态形态（GitHub Pages）没有服务端，运行期个性化做不了，但「站内热度」
+        # 是全站聚合量，可以在这里烧进 feed.json —— 这是规则 1 后半句在静态站
+        # 唯一的落地位置
+        stats = impressions.load_stats(home, config=cfg)
+    except OSError:
+        stats = {}
+    gstats = ranking.build_global_stats(stats, rows)
+    ranking.annotate_repo_share(rows, config=cfg)
+
+    for row in rows:
+        fn = row.get("full_name") or ""
+        row.setdefault("first_seen_at", first_seen.get(fn) or now.isoformat())
+        st = stats.get(row.get("id") or fn)
+        score, why = ranking.global_quality(
+            row, stats=st, gstats=gstats, star_snapshot=snapshot, config=cfg, now=now,
+        )
+        gain, conf = ranking.velocity_parts(row, snapshot)
+        row["global_score"] = score
+        row["global_why"] = why
+        row["is_new"] = ranking.is_new_item(row, st, cfg, now)
+        row["star_velocity"] = round(gain, 3) if conf > 0 else None
+    return rows
 
 
 def pack_feed(
@@ -144,6 +210,7 @@ def pack_feed(
     config: Optional[dict] = None,
     soft_limit: int = 40,
     skill_pool: Optional[list[dict]] = None,
+    data_dir: Optional[Path] = None,
 ) -> dict[str, Any]:
     """
     组装最终 feed.json：
@@ -151,18 +218,21 @@ def pack_feed(
     - corpus：其余 backup（Explore / 无限滑补货）
     """
     aff = affinity or {}
-    live = [scene.apply_scene(p) if not p.get("scene") else p for p in passed]
+    # 始终重打场景：规则升级后（如产品设计路径优先）需覆盖旧标签
+    live = [scene.apply_scene(dict(p)) for p in passed]
     live = rank.rerank(live, affinity=aff, intent=intent)
+    live_keys = {item_key(p) for p in live}
     live_names = {p.get("full_name") for p in live if p.get("full_name")}
 
     pool = list(skill_pool or []) + list(corpus_rows or [])
-    soft = soft_skills_from_corpus(pool, exclude=live_names, limit=soft_limit)
+    soft = soft_skills_from_corpus(pool, exclude=live_keys | live_names, limit=soft_limit)
     soft = rank.rerank(soft, affinity=aff, intent=intent)
     previews = _preview_lookup(pool + live + soft)
 
-    items = [normalize_item(x, previews=previews) for x in (live + soft)]
+    stream = apply_global_scores(live + soft, data_dir=data_dir, config=config)
+    items = [normalize_item(x, previews=previews) for x in stream]
 
-    used = {x.get("full_name") for x in items}
+    used = {item_key(x) for x in items} | {x.get("full_name") for x in items if x.get("full_name")}
     browse: list[dict] = []
     for c in corpus_rows:
         fn = c.get("full_name") or ""

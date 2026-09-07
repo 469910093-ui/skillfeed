@@ -15,14 +15,22 @@
   "search_ttl_hours": 12,
   "search_max_repos": 40,
   "search_per_page": 25,
-  "search_probe_limit": 15,
+  "search_probe_limit": 25,
   "catalog_enabled": true,
   "catalog_ttl_hours": 24,
-  "catalog_max_repos": 50,
-  "catalog_probe_limit": 20,
+  "catalog_max_repos": 60,
+  "catalog_probe_limit": 35,
+  "monorepo_expand_limit": 20,
   "xhs_enabled": true,
   "xhs_max_repos": 30,
-  "xhs_probe_limit": 15,
+  "xhs_probe_limit": 20,
+  "i18n_enabled": true,
+  "i18n_model": "qwen-plus",
+  "i18n_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "i18n_workers": 4,
+  "i18n_limit": 0,
+  "dashscope_api_key": "",
+  "bitable_base_token": "",
   "allowed_sources": [
     "github.com/trending",
     "hellogithub",
@@ -38,5 +46,110 @@
     "catalog",
     "xiaohongshu"
   ],
-  "user_agent": "skill-feed/0.3 (+local; recommend-only)"
+  "user_agent": "skill-feed/0.3 (+local; recommend-only)",
+  "ranking": {
+    "weights": {
+      "global": 1.0,
+      "global_min": 0.55,
+      "personal_max": 0.3,
+      "focus": 0.15,
+      "fatigue": 0.25,
+      "personal_scale": 2.0,
+      "lookalike": 0.5
+    },
+    "global_parts": {
+      "ctr": 0.34,
+      "velocity": 0.28,
+      "stock": 0.14,
+      "freshness": 0.12,
+      "completeness": 0.12
+    },
+    "ctr": {
+      "prior_alpha": 20,
+      "z": 1.96,
+      "position_bands": [5, 15, 40]
+    },
+    "profile": {
+      "confidence_events": 12,
+      "half_life_days": {
+        "scene": 21,
+        "scene_l2": 14,
+        "owner": 14,
+        "language": 30,
+        "item": 90
+      }
+    },
+    "event_weights": {
+      "open_github": 1.0,
+      "save": 0.9,
+      "useful": 0.45,
+      "dwell_long": 0.35,
+      "expand_detail": 0.3,
+      "impression_no_action": -0.05,
+      "skip_fast": -0.15,
+      "not_interested": -1.0
+    },
+    "dwell": {
+      "skip_fast_ms": 1500,
+      "ignore_below_ms": 200,
+      "long_ms": 8000
+    },
+    "suppress": {
+      "item": [1.0, 60, 0.02],
+      "owner": [0.45, 30, 0.05],
+      "scene_l2": [0.3, 14, 0.03],
+      "scene": [0.2, 7, 0.02]
+    },
+    "fatigue": {
+      "half_life_days": 3,
+      "hard_block_impressions": 6,
+      "hard_block_days": 7,
+      "scale": 3.0
+    },
+    "diversity": {
+      "window": 20,
+      "max_consecutive_scene": 2,
+      "max_owner_per_window": 3,
+      "max_l2_per_10": 3,
+      "max_focus_per_window": 8,
+      "search_max_consecutive_scene": 4
+    },
+    "exploration": {
+      "ratio": 0.15,
+      "slots": [5, 12, 17],
+      "min_new_per_window": 1
+    },
+    "new_item": {
+      "grace_days": 3,
+      "min_impressions": 200
+    },
+    "star": {
+      "share_exponent": 0.5,
+      "neutral_fallback": 0.5
+    },
+    "session": {
+      "order_ttl_s": 1800,
+      "jitter_amp": 0.02,
+      "echo": {
+        "enabled": true,
+        "scene_l2": 0.12,
+        "owner": 0.1,
+        "max": 0.35
+      }
+    },
+    "ingest": {
+      "stale_after_s": 86400
+    },
+    "search": {
+      "personal_scale": 0.35,
+      "focus_scale": 0.3,
+      "relevance_bucket": 0.1,
+      "min_relevance": 0.02
+    },
+    "ratelimit": {
+      "window_s": 300,
+      "max_events_per_ip": 600,
+      "max_events_per_device": 400
+    }
+  }
 }

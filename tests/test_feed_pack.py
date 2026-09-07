@@ -44,6 +44,7 @@ class TestFeedPack(unittest.TestCase):
                 funnel={"passed": 1},
                 skill_pool=skills,
                 soft_limit=10,
+                data_dir=data,
             )
             names = {i["full_name"] for i in feed["items"]}
             self.assertIn("acme/live-skill", names)
@@ -61,6 +62,38 @@ class TestFeedPack(unittest.TestCase):
             self.assertEqual(live["cover_url"], "https://opengraph.githubassets.com/1/acme/live-skill")
             self.assertTrue(live["problem"])
             self.assertTrue(live["highlights"])
+
+    def test_ranking_fields_survive_keep_keys(self):
+        """normalize_item 按 KEEP_KEYS 裁字段，没登记的新字段会被静默丢弃。
+
+        这个坑踩过一次，这里把排序引擎依赖的字段全锁死。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp)
+            passed = [{
+                "full_name": "acme/live-skill",
+                "name": "live-skill",
+                "description": "A live probed Claude Cursor agent skill with workflows.",
+                "source": "github-search",
+                "kind": "skill",
+                "skill_path": "SKILL.md",
+                "stars": 10,
+                "url": "https://github.com/acme/live-skill",
+                "rel_score": 0.4,
+            }]
+            feed = feed_pack.pack_feed(
+                passed=passed,
+                corpus_rows=[],
+                meta={"source": "test"},
+                gates_summary={"passed": 1, "rejected": {}},
+                funnel={"passed": 1},
+                data_dir=data,
+            )
+            item = feed["items"][0]
+            for key in ("global_score", "global_why", "first_seen_at", "is_new"):
+                self.assertIn(key, item, f"{key} 被 KEEP_KEYS 拦掉了")
+            self.assertIn(key, feed_pack.KEEP_KEYS)
+            self.assertGreater(item["global_score"], 0)
 
 
 if __name__ == "__main__":

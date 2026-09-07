@@ -7,6 +7,8 @@ skill-picker 继续只做 100% 本地扫描/匹配。
 用法:
   python skillfeed.py refresh [--since daily|weekly] [--force] [--intent TEXT]
   python skillfeed.py build [--intent TEXT]   # 用已有 feed/corpus 重生信息流 HTML
+  python skillfeed.py i18n [--force] [--limit N] [--model NAME]  # 只补中英双语人话字段
+  python skillfeed.py bitable init|pull|push|sync|dedupe         # 译稿库（飞书多维表格）
   python skillfeed.py corpus [--max-issues N]
   python skillfeed.py xhs-crawl [--keyword TEXT] [--max N]  # 媒讯助手/Chrome 采小红书
   python skillfeed.py publish-site [--out DIR]  # 导出静态站（GitHub Pages）
@@ -16,7 +18,9 @@ skill-picker 继续只做 100% 本地扫描/匹配。
   python skillfeed.py feedback
 
 环境变量:
-  SKILLFEED_HOME  数据目录（默认 ~/.skill-feed；CI 可设为仓库内路径）
+  SKILLFEED_HOME     数据目录（默认 ~/.skill-feed；CI 可设为仓库内路径）
+  DASHSCOPE_API_KEY  阿里云百炼 key，用于生成中英双语卡片文案
+  GITHUB_TOKEN       GitHub token；缺了 api.github.com 匿名会 403，monorepo 展不开
   详见 .env.example（OAuth / DB / 官方 feed URL）
 """
 
@@ -30,8 +34,10 @@ import webbrowser
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
+import bitable_store
 import catalog_sources
 import corpus
 import feedback
@@ -40,6 +46,7 @@ import feed_pack
 import gates
 import github_search
 import hellogithub
+import i18n
 import rank
 import scene
 import skill_detect
@@ -80,6 +87,51 @@ def write_local_feed_pages(feed: dict) -> None:
     feed_dashboard.write_feed_variants(
         feed, full_path=FEED_HTML, lite_path=FEED_HTML_LITE,
     )
+
+
+def run_i18n(feed: dict, cfg: dict, *, force: bool = False) -> None:
+    """给入流条目补中英双语人话字段。缺 key 或失败都只降级，不中断构建。"""
+    if not cfg.get("i18n_enabled", True):
+        return
+    key = str(cfg.get("dashscope_api_key") or "").strip() or os.environ.get(
+        "DASHSCOPE_API_KEY", ""
+    )
+    stats = i18n.enrich_feed(
+        DATA_DIR,
+        feed,
+        api_key=key,
+        model=str(cfg.get("i18n_model") or i18n.DEFAULT_MODEL),
+        base_url=str(cfg.get("i18n_base_url") or i18n.DEFAULT_BASE_URL),
+        workers=int(cfg.get("i18n_workers") or i18n.DEFAULT_WORKERS),
+        force=force,
+        limit=int(cfg.get("i18n_limit") or 0),
+    )
+    print(
+        "[i18n] "
+        f"total={stats['total']} cached={stats['cached']} "
+        f"locked={stats.get('locked', 0)} "
+        f"translated={stats['translated']} failed={stats['failed']} "
+        f"skipped={stats['skipped']}"
+    )
+    if not key and stats["skipped"]:
+        print("[i18n] WARN 未设置 DASHSCOPE_API_KEY，未命中缓存的条目保持原文")
+
+
+def retag_scenes(feed: dict) -> None:
+    """i18n 之后重跑行业分类。
+
+    pack_feed 里第一次分类只看得到英文 SKILL.md 原文，噪音大；等 i18n 把中文
+    一句话写进条目后再判一次，判定质量明显更好。apply_scene 是幂等的。
+    """
+    items = feed.get("items") or []
+    moved = 0
+    for i, it in enumerate(items):
+        before = it.get("scene") or ""
+        items[i] = scene.apply_scene(it)
+        if items[i].get("scene") != before:
+            moved += 1
+    if moved:
+        print(f"[scene] i18n 后重判，{moved}/{len(items)} 条改了一级行业")
 TOOL_FILES = [
     "skillfeed.py",
     "trending.py",
@@ -94,6 +146,8 @@ TOOL_FILES = [
     "corpus.py",
     "feed_pack.py",
     "highlights.py",
+    "i18n.py",
+    "bitable_store.py",
     "scene.py",
     "feedback.py",
     "config_defaults.json",
@@ -138,12 +192,20 @@ def self_copy() -> None:
             shutil.copy2(src, DATA_DIR / name)
 
 
+def _item_key(it: dict) -> str:
+    return it.get("id") or skill_detect.skill_item_id(
+        it.get("full_name") or "", it.get("skill_path") or "",
+    )
+
+
 def _probe_candidates(
     rows: list[dict],
     ua: str,
     *,
     always_if_skills_section: bool = True,
     always_probe_all: bool = False,
+    expand_limit: int = 6,
+    token: str = "",
 ) -> tuple[list[dict], int]:
     enriched: list[dict] = []
     probed = 0
@@ -153,18 +215,52 @@ def _probe_candidates(
         )
         if always_if_skills_section and (r.get("hg_section") == "Skills" or r.get("kind") == "skill"):
             always = True
-        if r.get("source") == "github-search":
+        if r.get("source") in ("github-search", "catalog", "xiaohongshu"):
             always = True
         probed += 1
         try:
-            item = skill_detect.enrich_repo(r, ua, always_probe=always)
+            items = skill_detect.enrich_repo_multi(
+                r, ua, always_probe=always, max_skills=expand_limit, token=token,
+            )
         except Exception as e:  # noqa: BLE001
             print(f"[refresh] skip {r.get('full_name')}: {e}")
             continue
-        if item:
+        for item in items:
             enriched.append(item)
-            print(f"[refresh] skill hit: {item.get('full_name')} <- {item.get('source')}")
+            print(
+                f"[refresh] skill hit: {item.get('full_name')} "
+                f"[{item.get('name') or item.get('skill_path')}] <- {item.get('source')}"
+            )
     return enriched, probed
+
+
+def _pick_probe_rows(
+    rows: list[dict],
+    *,
+    limit: int,
+    force_names: Optional[set[str]] = None,
+) -> list[dict]:
+    """强制探测名单优先入队，其余按星数降序补齐。"""
+    force = set(force_names or ())
+    pinned: list[dict] = []
+    rest: list[dict] = []
+    seen: set[str] = set()
+    for r in rows:
+        fn = (r.get("full_name") or "").strip()
+        if not fn or fn in seen:
+            continue
+        seen.add(fn)
+        if fn in force:
+            pinned.append(r)
+        else:
+            rest.append(r)
+    rest.sort(key=lambda x: int(x.get("stars") or 0), reverse=True)
+    # 强制仓不占「普通配额」之外被截断：先全量 pinned，再补 rest
+    out = pinned + rest
+    # 若总量过大，至少保住 pinned；rest 用 limit 收束
+    if len(out) <= max(limit, len(pinned)):
+        return out
+    return pinned + rest[: max(0, limit)]
 
 
 def _resolve_github_token(cfg: dict) -> str:
@@ -347,40 +443,54 @@ def cmd_refresh(argv: list[str]) -> int:
 
     enriched: list[dict] = []
     probed = 0
-    t_enriched, t_probed = _probe_candidates(trending_rows, ua, always_if_skills_section=False)
+    probe_token = _resolve_github_token(cfg)
+    if not probe_token:
+        print("[refresh] WARN 无 GITHUB_TOKEN：api.github.com 匿名会 403，monorepo 无法展开，供给会明显偏少")
+    t_enriched, t_probed = _probe_candidates(
+        trending_rows, ua, always_if_skills_section=False, token=probe_token,
+    )
     enriched.extend(t_enriched)
     probed += t_probed
-    h_enriched, h_probed = _probe_candidates(hg_rows, ua, always_if_skills_section=True)
+    h_enriched, h_probed = _probe_candidates(
+        hg_rows, ua, always_if_skills_section=True, token=probe_token,
+    )
     enriched.extend(h_enriched)
     probed += h_probed
-    # Search 探测限流：按星数优先，避免刷爆 API
-    max_search_probe = int(cfg.get("search_probe_limit", 15))
-    search_probe = sorted(
-        search_rows,
-        key=lambda x: int(x.get("stars") or 0),
-        reverse=True,
-    )[:max_search_probe]
-    s_enriched, s_probed = _probe_candidates(search_probe, ua, always_if_skills_section=True)
+    force_probe = set(
+        cfg.get("force_probe_repos")
+        or getattr(catalog_sources, "FORCE_PROBE_REPOS", [])
+    )
+    expand_limit = int(cfg.get("monorepo_expand_limit", 6))
+
+    # Search 探测：强制设计仓 + 按星数补齐
+    max_search_probe = int(cfg.get("search_probe_limit", 25))
+    search_probe = _pick_probe_rows(search_rows, limit=max_search_probe, force_names=force_probe)
+    s_enriched, s_probed = _probe_candidates(
+        search_probe, ua, always_if_skills_section=True, expand_limit=expand_limit,
+        token=probe_token,
+    )
     enriched.extend(s_enriched)
     probed += s_probed
 
-    max_catalog_probe = int(cfg.get("catalog_probe_limit", 20))
-    catalog_probe = sorted(
-        catalog_rows,
-        key=lambda x: int(x.get("stars") or 0),
-        reverse=True,
-    )[:max_catalog_probe]
-    c_enriched, c_probed = _probe_candidates(catalog_probe, ua, always_if_skills_section=True)
+    max_catalog_probe = int(cfg.get("catalog_probe_limit", 35))
+    catalog_probe = _pick_probe_rows(catalog_rows, limit=max_catalog_probe, force_names=force_probe)
+    c_enriched, c_probed = _probe_candidates(
+        catalog_probe, ua, always_if_skills_section=True, expand_limit=expand_limit,
+        token=probe_token,
+    )
     enriched.extend(c_enriched)
     probed += c_probed
 
-    max_xhs_probe = int(cfg.get("xhs_probe_limit", 15))
-    xhs_probe = xhs_rows[:max_xhs_probe]
-    x_enriched, x_probed = _probe_candidates(xhs_probe, ua, always_if_skills_section=True)
+    max_xhs_probe = int(cfg.get("xhs_probe_limit", 20))
+    xhs_probe = _pick_probe_rows(xhs_rows, limit=max_xhs_probe, force_names=force_probe)
+    x_enriched, x_probed = _probe_candidates(
+        xhs_probe, ua, always_if_skills_section=True, expand_limit=expand_limit,
+        token=probe_token,
+    )
     enriched.extend(x_enriched)
     probed += x_probed
 
-    # 去重 full_name（优先更高 stars；trending > hellogithub > catalog > search > xhs）
+    # 去重：同一仓可有多条 skill（按 id=full_name::skill_path）；同源择优
     source_rank = {
         "github.com/trending": 4,
         "hellogithub": 3,
@@ -389,29 +499,28 @@ def cmd_refresh(argv: list[str]) -> int:
         "xiaohongshu": 1,
         "corpus": 0,
     }
-    by_name: dict[str, dict] = {}
+    by_key: dict[str, dict] = {}
     for it in enriched:
-        fn = it.get("full_name") or ""
-        prev = by_name.get(fn)
+        key = _item_key(it)
+        prev = by_key.get(key)
         if not prev:
-            by_name[fn] = it
+            by_key[key] = it
             continue
         prev_stars = int(prev.get("stars") or 0)
         cur_stars = int(it.get("stars") or 0)
         if cur_stars > prev_stars:
             merged = dict(prev)
             merged.update({k: v for k, v in it.items() if v is not None})
-            # 保留更高优先级 source 标签作主 source，但附带 sources 列表
             if source_rank.get(prev.get("source"), 0) >= source_rank.get(it.get("source"), 0):
                 merged["source"] = prev.get("source")
-            by_name[fn] = merged
+            by_key[key] = merged
         elif source_rank.get(it.get("source"), 0) > source_rank.get(prev.get("source"), 0):
             merged = dict(it)
             for k, v in prev.items():
                 if merged.get(k) in (None, "", 0) and v not in (None, ""):
                     merged[k] = v
-            by_name[fn] = merged
-    enriched = list(by_name.values())
+            by_key[key] = merged
+    enriched = list(by_key.values())
     print(f"[refresh] skill-shaped unique: {len(enriched)}")
 
     passed, gate_summary = gates.run_gates(
@@ -481,6 +590,8 @@ def cmd_refresh(argv: list[str]) -> int:
         skill_pool=skill_pool,
     )
     feed["generated_at"] = datetime.now(timezone.utc).isoformat()
+    run_i18n(feed, cfg)
+    retag_scenes(feed)
     FEED_JSON.write_text(json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     write_local_feed_pages(feed)
     self_copy()
@@ -546,6 +657,8 @@ def cmd_build(argv: list[str]) -> int:
         skill_pool=skill_pool,
     )
     feed["generated_at"] = datetime.now(timezone.utc).isoformat()
+    run_i18n(feed, cfg)
+    retag_scenes(feed)
     FEED_JSON.write_text(json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     write_local_feed_pages(feed)
     self_copy()
@@ -801,6 +914,130 @@ def cmd_serve(argv: list[str]) -> int:
     return 0
 
 
+def cmd_i18n(argv: list[str]) -> int:
+    """只补双语人话字段：不联网采集，直接改写现有 feed.json 并重生 HTML。"""
+    refresh_paths()
+    cfg = load_config()
+    ensure_data_dir(cfg)
+    force = False
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--force":
+            force = True
+            i += 1
+            continue
+        if argv[i] == "--limit" and i + 1 < len(argv):
+            cfg["i18n_limit"] = int(argv[i + 1])
+            i += 2
+            continue
+        if argv[i] == "--model" and i + 1 < len(argv):
+            cfg["i18n_model"] = argv[i + 1]
+            i += 2
+            continue
+        print(f"unknown arg: {argv[i]}", file=sys.stderr)
+        return 2
+
+    if not FEED_JSON.exists():
+        print(f"没有 {FEED_JSON}，先跑 refresh 或 build", file=sys.stderr)
+        return 1
+    try:
+        feed = json.loads(FEED_JSON.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"读取 feed.json 失败: {e}", file=sys.stderr)
+        return 1
+
+    run_i18n(feed, cfg, force=force)
+    retag_scenes(feed)
+    FEED_JSON.write_text(json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_local_feed_pages(feed)
+    self_copy()
+    print(f"[i18n] wrote {FEED_JSON}")
+    print(f"[i18n] wrote {FEED_HTML}")
+    print(f"[i18n] wrote {FEED_HTML_LITE}")
+    return 0
+
+
+def cmd_bitable(argv: list[str]) -> int:
+    """译稿库：init 建表 / pull 拉回验收结果 / push 上传新译稿 / sync 一次做完。"""
+    refresh_paths()
+    cfg = load_config()
+    ensure_data_dir(cfg)
+    if not argv:
+        print(
+            "用法: bitable init --base-token TOKEN | pull | push | sync | dedupe",
+            file=sys.stderr,
+        )
+        return 2
+    sub, rest = argv[0], argv[1:]
+
+    base_token = ""
+    i = 0
+    while i < len(rest):
+        if rest[i] == "--base-token" and i + 1 < len(rest):
+            base_token = rest[i + 1]
+            i += 2
+            continue
+        print(f"unknown arg: {rest[i]}", file=sys.stderr)
+        return 2
+
+    if sub == "init":
+        base_token = base_token or str(cfg.get("bitable_base_token") or "")
+        if not base_token:
+            print(
+                "缺 --base-token。可在 ~/.skill-feed/config.json 写 bitable_base_token",
+                file=sys.stderr,
+            )
+            return 2
+        bt, tid = bitable_store.init_table(DATA_DIR, base_token)
+        print(f"[bitable] 译稿库就绪 base_token={bt} table_id={tid}")
+        return 0
+
+    if sub == "pull":
+        s = bitable_store.pull(DATA_DIR)
+        print(
+            f"[bitable] pull 远端={s['remote']} 可用={s['usable']} "
+            f"已验收={s['accepted']} 需重译={s['redo']} 重复键={s['dupes']}"
+        )
+        if s["dupes"]:
+            print("[bitable] 有重复行，可跑 `bitable dedupe` 清理")
+        return 0
+
+    if sub == "dedupe":
+        s = bitable_store.dedupe(DATA_DIR)
+        print(f"[bitable] dedupe 唯一键={s['keys']} 删除重复={s['deleted']}")
+        return 0
+
+    if sub in ("push", "sync"):
+        if not FEED_JSON.exists():
+            print(f"没有 {FEED_JSON}，先跑 refresh 或 build", file=sys.stderr)
+            return 1
+        feed = json.loads(FEED_JSON.read_text(encoding="utf-8"))
+        if sub == "sync":
+            s = bitable_store.pull(DATA_DIR)
+            print(
+                f"[bitable] pull 远端={s['remote']} 可用={s['usable']} "
+                f"已验收={s['accepted']} 需重译={s['redo']}"
+            )
+            run_i18n(feed, cfg)
+            retag_scenes(feed)
+            FEED_JSON.write_text(
+                json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+            write_local_feed_pages(feed)
+        p = bitable_store.push(
+            DATA_DIR, feed, model=str(cfg.get("i18n_model") or i18n.DEFAULT_MODEL)
+        )
+        print(
+            f"[bitable] push 新建={p['created']} 更新={p['updated']} "
+            f"跳过已验收={p['skipped_accepted']} 无译稿={p['no_fields']} "
+            f"同键去重={p['deduped']}"
+        )
+        return 0
+
+    print(f"unknown bitable subcommand: {sub}", file=sys.stderr)
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in ("-h", "--help", "help"):
@@ -812,6 +1049,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_refresh(rest)
     if cmd == "build":
         return cmd_build(rest)
+    if cmd == "i18n":
+        return cmd_i18n(rest)
+    if cmd == "bitable":
+        return cmd_bitable(rest)
     if cmd == "corpus":
         return cmd_corpus(rest)
     if cmd == "xhs-crawl":

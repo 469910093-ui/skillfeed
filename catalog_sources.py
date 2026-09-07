@@ -35,6 +35,32 @@ DEFAULT_SEED_REPOS = [
     "prisma/skills",
     "superpowers-ai/superpowers",
     "obra/superpowers",
+    # 产品设计 / UI / Figma / vibe-coding 视觉（强制探测，见 FORCE_PROBE_REPOS）
+    "xiaopu-ai/web-design",
+    "Ilm-Alan/frontend-design",
+    "Leonxlnx/taste-skill",
+    "senlindesign/taste-skill",
+    "nexu-io/open-design",
+    "alima-max/prototype-to-figma-skill",
+    "warpdotdev/figma-skills",
+    "wilwaldon/Claude-Code-Frontend-Design-Toolkit",
+    "Nutlope/hallmark",
+]
+
+# refresh 时不按星数截断、必须探测的仓（避免设计仓因 stars=None 掉出 top N）
+FORCE_PROBE_REPOS = [
+    "anthropics/skills",
+    "vercel-labs/agent-skills",
+    "xiaopu-ai/web-design",
+    "Ilm-Alan/frontend-design",
+    "Leonxlnx/taste-skill",
+    "senlindesign/taste-skill",
+    "nexu-io/open-design",
+    "alima-max/prototype-to-figma-skill",
+    "warpdotdev/figma-skills",
+    "wilwaldon/Claude-Code-Frontend-Design-Toolkit",
+    "Nutlope/hallmark",
+    "hardikpandya/stop-slop",
 ]
 
 # 从 README 抽链接时优先抓这些宿主仓的 README
@@ -60,6 +86,11 @@ SKILLS_SH_HOT = [
     "supabase/agent-skills",
     "remotion-dev/skills",
     "prisma/skills",
+    "xiaopu-ai/web-design",
+    "Ilm-Alan/frontend-design",
+    "Leonxlnx/taste-skill",
+    "nexu-io/open-design",
+    "Nutlope/hallmark",
 ]
 
 

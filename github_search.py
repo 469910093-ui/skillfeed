@@ -22,6 +22,11 @@ DEFAULT_REPO_QUERIES = [
     "topic:agent-skills",
     "awesome agent skills in:name,description,readme",
     "skills.sh OR agent-skills in:name,description",
+    # 产品设计 / UI / Figma（vibe coding 基础场景，避免只捞 agent 工具链）
+    '"frontend-design" OR "web-design" skill',
+    "figma skill OR figma-skills",
+    "shadcn skill OR ui-ux SKILL.md",
+    '"product design" OR "design system" OR "taste-skill" SKILL.md',
 ]
 
 
