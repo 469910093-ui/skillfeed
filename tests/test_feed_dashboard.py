@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 import re
 import shutil
@@ -1164,6 +1166,160 @@ class TestActionLabelsAreLocalised(unittest.TestCase):
                     continue
                 self.assertIn("aria-label=", tag,
                               variant + " 变体里有个按钮既无文本也无 aria-label：" + tag[:120])
+
+
+class TestContentSecurityPolicy(unittest.TestCase):
+    """CSP 的失效模式全都是静默的，所以每一条都得锁住。
+
+    这条策略靠内联块的 sha256 哈希生效。它有两种坏法，都不会在生成时报错：
+
+    - 哈希对不上 → 浏览器拒绝执行那一整块 script → **整页白屏**。改任何
+      会影响内联内容的东西（包括加一个空格）都会换哈希，所以真正要锁的是
+      「算哈希的代码和最终产物始终一致」，而不是某个具体的哈希值。
+    - 有人加了内联事件处理器（onclick / onerror 之类）→ 哈希覆盖不到属性，
+      script-src 用了哈希之后 'unsafe-inline' 会被忽略 → 那个交互静默失效。
+
+    所以这里从最终 HTML 里重新抠出内联块自己算一遍，跟 meta 里的比 —— 用的是
+    浏览器的视角，而不是复用被测代码的中间变量（那样两边一起错也照样绿）。
+    """
+
+    ITEM = dict(REAL_SKILL, url="https://github.com/hardikpandya/stop-slop")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pages = {
+            v: feed_dashboard.build_feed_html(
+                {"items": [cls.ITEM], "corpus": []}, variant=v)
+            for v in ("full", "lite")
+        }
+
+    @staticmethod
+    def _policy(html: str) -> dict[str, list[str]]:
+        m = re.search(
+            r'<meta http-equiv="Content-Security-Policy" content="([^"]+)"', html)
+        assert m, "页面里没有 CSP meta"
+        out = {}
+        for chunk in m.group(1).split("; "):
+            name, _, rest = chunk.partition(" ")
+            out[name] = rest.split()
+        return out
+
+    @staticmethod
+    def _sha256_source(text: str) -> str:
+        return "'sha256-" + base64.b64encode(
+            hashlib.sha256(text.encode("utf-8")).digest()).decode("ascii") + "'"
+
+    def test_every_inline_block_hash_matches_what_a_browser_would_compute(self):
+        """哈希错一个字节，线上就是白屏；这条是整套 CSP 的命门。"""
+        for variant, html in self.pages.items():
+            policy = self._policy(html)
+            scripts = re.findall(
+                r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, flags=re.S)
+            styles = re.findall(r"<style[^>]*>(.*?)</style>", html, flags=re.S)
+            self.assertTrue(scripts, variant + "：没有内联 script，抽取规则已失效")
+            self.assertTrue(styles, variant + "：没有内联 style，抽取规则已失效")
+            for block in scripts:
+                with self.subTest(variant=variant, kind="script"):
+                    self.assertIn(self._sha256_source(block), policy["script-src"],
+                                  "内联 script 的哈希不在 script-src 里 —— 线上会白屏")
+            for block in styles:
+                with self.subTest(variant=variant, kind="style"):
+                    self.assertIn(self._sha256_source(block),
+                                  policy["style-src-elem"],
+                                  "内联 style 的哈希不在 style-src-elem 里")
+
+    def test_script_src_never_falls_back_to_unsafe(self):
+        """script-src 里一旦出现 unsafe-inline / unsafe-eval，这条策略就白写了。"""
+        for variant, html in self.pages.items():
+            with self.subTest(variant=variant):
+                src = self._policy(html)["script-src"]
+                for token in ("'unsafe-inline'", "'unsafe-eval'", "'none'", "*"):
+                    self.assertNotIn(token, src)
+                self.assertTrue(all(s.startswith("'sha256-") for s in src),
+                                "script-src 里混进了非哈希来源：" + str(src))
+
+    def test_no_inline_event_handlers_anywhere(self):
+        """内联处理器在哈希式 CSP 下不执行，加进来就是静默坏掉一个交互。
+
+        故意连注释里的字样一起挡：注释会随页面发给访客，任何安全扫描器看到
+        `onerror="` 都会报，与其日后逐个解释，不如换个说法。
+        """
+        for variant, html in self.pages.items():
+            with self.subTest(variant=variant):
+                hits = re.findall(r"\bon[a-z]+\s*=\s*[\"']", html)
+                self.assertEqual([], hits,
+                                 "出现内联事件处理器，改用 addEventListener："
+                                 + str(hits[:5]))
+
+    def test_cover_failure_uses_a_delegated_listener(self):
+        """封面兜底不能依赖内联 onerror。
+
+        GitHub 的 OG 图有相当比例 404，这条路径是常态。error 事件不冒泡，
+        所以监听必须在捕获阶段注册 —— 写成冒泡阶段收不到，页面上会留一个
+        2:1 的空黑盒。
+        """
+        js = max(_script_blocks(self.pages["full"]), key=len)
+        m = re.search(r"document\.addEventListener\(\s*'error'[\s\S]{0,400}?\}\s*,\s*(\w+)\s*\)", js)
+        self.assertIsNotNone(m, "找不到 error 事件的委托监听")
+        self.assertEqual("true", m.group(1),
+                         "error 事件不冒泡，addEventListener 必须传 true 走捕获阶段")
+        self.assertIn("no-cover", m.group(0))
+
+    def test_policy_is_declared_before_anything_it_governs(self):
+        """CSP 只管它被解析到之后声明的资源，插晚了前面的字体和样式就在策略之外。"""
+        for variant, html in self.pages.items():
+            with self.subTest(variant=variant):
+                meta = html.index("Content-Security-Policy")
+                self.assertLess(meta, html.index("<link"))
+                self.assertLess(meta, html.index("<style"))
+                # charset 必须仍在最前，否则编码嗅探要出问题
+                self.assertLess(html.index('<meta charset="utf-8">'), meta)
+
+    def test_default_src_is_closed_and_each_opening_is_deliberate(self):
+        """默认全关、逐项开口。开口的清单本身就是这条策略的可审计部分。"""
+        for variant, html in self.pages.items():
+            with self.subTest(variant=variant):
+                policy = self._policy(html)
+                self.assertEqual(["'none'"], policy["default-src"])
+                self.assertEqual(["'none'"], policy["base-uri"])
+                self.assertEqual(["'none'"], policy["form-action"])
+                self.assertEqual(["https://fonts.gstatic.com"], policy["font-src"])
+                self.assertIn("https://api.github.com", policy["connect-src"])
+                self.assertIn("'self'", policy["connect-src"])
+
+    def test_old_browsers_still_get_styles(self):
+        """style-src-elem / -attr 是 Chrome 75+ / Firefox 111+ / Safari 15.4+ 才有的。
+
+        不支持的浏览器会回退到 style-src；那里如果不留 'unsafe-inline'，
+        内联 <style> 会被一起拦掉，整页变成无样式的裸 HTML。宁可在老浏览器上
+        少一层 CSS 防护，也不能让页面在那里彻底不可读。
+        """
+        for variant, html in self.pages.items():
+            with self.subTest(variant=variant):
+                policy = self._policy(html)
+                self.assertIn("'unsafe-inline'", policy["style-src"])
+                self.assertIn("'unsafe-inline'", policy["style-src-attr"])
+
+    def test_api_base_is_allowed_through_connect_src_when_configured(self):
+        """配了后端地址就得放行，否则反馈回传会被 connect-src 静默拦掉。"""
+        html = feed_dashboard.build_feed_html({
+            "items": [self.ITEM], "corpus": [],
+            "ui": {"api_base": "https://feed.example.com/"},
+        }, variant="full")
+        self.assertIn("https://feed.example.com",
+                      self._policy(html)["connect-src"])
+
+    def test_a_bogus_api_base_is_not_pasted_into_the_policy(self):
+        """api_base 会进 CSP 文本，不是绝对 http(s) URL 就不许拼进去。"""
+        for junk in ("javascript:alert(1)", "'; script-src *; '", "not-a-url"):
+            with self.subTest(api_base=junk):
+                policy = self._policy(feed_dashboard.build_feed_html({
+                    "items": [], "corpus": [], "ui": {"api_base": junk},
+                }, variant="full"))
+                self.assertEqual(["'self'", "https://api.github.com"],
+                                 policy["connect-src"])
+                self.assertTrue(all(s.startswith("'sha256-")
+                                    for s in policy["script-src"]))
 
 
 if __name__ == "__main__":

@@ -728,10 +728,46 @@ claim 时校验。
 强上 nonce 会直接白屏。样式注入无法执行脚本，风险等级远低于 script。
 `script-src` 才是这条策略的主要目的，它是严格的。
 
-> **不在本轮范围**：`feed.json` 里 `</script>` 截断 script 块的存储型 XSS，
-> 其产物由 GitHub Pages 提供，不经过本 FastAPI 服务，服务端响应头够不着它。
-> 那份产物的 CSP 只能以 `<meta http-equiv="Content-Security-Policy">` 写进
-> `feed_dashboard.py` 生成的 HTML 里，与根因修复同属一轮。
+#### 静态产物的 CSP（已补，此前是本台账里唯一还没修的 P0）
+
+上面那张表管的是 FastAPI 的响应头。但**线上真正被访问的那份页面不经过它**：
+`index.html` / `embed.html` 由 GitHub Pages 直接吐给浏览器，服务端响应头够不着，
+所以那份产物长期处于「无 CSP」状态——而这件事本身还写在公开仓库里。
+
+现在由 `feed_dashboard._with_csp()` 在生成时把策略写进
+`<meta http-equiv="Content-Security-Policy">`。三个和上表不同的取舍：
+
+**用哈希，不用 nonce。** 静态文件每次响应给的是同一份字节，写死的 nonce
+对攻击者和对我们一样可见，等价于 `'unsafe-inline'`。nonce 只在动态响应里成立。
+
+**`script-src` 是严格的**：只有那一块内联 script 的 `sha256`，没有 `'unsafe-inline'`、
+没有 `'unsafe-eval'`、没有 `'self'`。全站没有外链脚本，也没有 `eval` /
+`new Function` / 字符串式 `setTimeout`（改动前逐条核查过），所以收得这么紧。
+代价是封面图那个内联 error 属性得改掉——哈希覆盖不到属性，它在这条策略下会
+静默失效，已改成 `document` 上捕获阶段的委托监听（`error` 事件不冒泡）。
+
+**`style-src` 分三档下发**，比上表更细：
+
+| 指令 | 取值 | 为什么 |
+|---|---|---|
+| `style-src-elem` | `sha256` + `fonts.googleapis.com` | 内联 `<style>` 收紧到哈希 |
+| `style-src-attr` | `'unsafe-inline'` | 模板里 19 处 `style=""`，哈希覆盖不到属性 |
+| `style-src` | `'unsafe-inline'` + 字体域 | **老浏览器的回退档，必须留** |
+
+最后一行是关键：`style-src-elem` / `-attr` 是 Chrome 75 / Firefox 111 /
+Safari 15.4 以后才有的，不支持的浏览器会回退到 `style-src`——那里如果不留
+`'unsafe-inline'`，内联 `<style>` 会被一起拦掉，整页变成无样式的裸 HTML。
+宁可在老浏览器上少一层 CSS 防护，也不能让页面在那里彻底不可读。
+
+`img-src` 放到 `https:` 这么宽，是因为封面图地址来自陌生人的仓库元数据，
+收窄到白名单会让相当一部分卡片没有封面。
+
+`frame-ancestors` 没法写进 meta（规范不支持），但 `embed.html` 本来就是给人嵌的，
+不需要限制。
+
+验证方式见 `tests/test_feed_dashboard.py::TestContentSecurityPolicy`：那里从
+**最终 HTML** 重新抠出内联块自己算哈希再比对，而不是复用被测代码的中间变量——
+后者两边一起错也照样绿。哈希错一个字节的后果是整页白屏，这条测试是它的唯一防线。
 
 ---
 

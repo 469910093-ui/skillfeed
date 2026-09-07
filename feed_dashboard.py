@@ -14,7 +14,10 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import re
 from pathlib import Path
 
 import scene
@@ -52,6 +55,72 @@ def _json_for_script(value: object) -> str:
     return out
 
 
+_INLINE_SCRIPT = re.compile(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S)
+_INLINE_STYLE = re.compile(r"<style[^>]*>(.*?)</style>", re.S)
+_CHARSET_META = '<meta charset="utf-8">'
+
+
+def _sha256_source(text: str) -> str:
+    """CSP 的 sha256-base64 源表达式。"""
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    return "'sha256-" + base64.b64encode(digest).decode("ascii") + "'"
+
+
+def _with_csp(html: str, *, api_base: str = "") -> str:
+    """给页面加上按实际内联内容算出哈希的 CSP。
+
+    用哈希而不是 nonce：这些产物是静态文件（GitHub Pages / 本地 file://），
+    每次响应给的是同一份字节，写死的 nonce 对攻击者和对我们一样可见，
+    等价于 'unsafe-inline'。哈希在静态托管下才是唯一有效的写法。
+
+    `script-src` 是这条策略真正的价值所在：全站只有一块内联 script、没有外链
+    脚本、没有 eval / new Function / 字符串式 setTimeout（改动前核查过），
+    所以能收到「只允许这一段字节执行」，注入进来的 <script> 与 onX= 处理器
+    一律不执行。为此把封面图的 onerror 改成了捕获阶段的委托监听。
+
+    style 那边刻意留了退路。`style-src-elem` 用哈希、`style-src-attr` 放行
+    inline，是想要的效果；但这两个指令是 Chrome 75 / Firefox 111 / Safari 15.4
+    以后才有的，不支持的浏览器会回退到 `style-src`——如果那里不写
+    'unsafe-inline'，它们就会连内联 <style> 一起拦掉，整页变成无样式的裸 HTML。
+    宁可在老浏览器上少一层 CSS 防护，也不能让页面在那里彻底不可读。
+
+    `img-src` 放到 https: 这么宽，是因为封面图地址来自陌生人的仓库元数据
+    （`opengraph.githubassets.com` 只是最常见的一个，不是唯一），
+    收窄到白名单会让相当一部分卡片没有封面。
+    """
+    sources = {
+        "default-src": ["'none'"],
+        "script-src": [_sha256_source(s) for s in _INLINE_SCRIPT.findall(html)],
+        # 老浏览器的回退档：见 docstring，这里必须留 'unsafe-inline'
+        "style-src": ["'unsafe-inline'", "https://fonts.googleapis.com"],
+        "style-src-elem": ([_sha256_source(s) for s in _INLINE_STYLE.findall(html)]
+                           + ["https://fonts.googleapis.com"]),
+        # 模板里 19 处 style=""（场景色板 + 排版微调），哈希覆盖不到属性
+        "style-src-attr": ["'unsafe-inline'"],
+        "font-src": ["https://fonts.gstatic.com"],
+        "img-src": ["'self'", "https:", "data:"],
+        "connect-src": ["'self'", "https://api.github.com"],
+        "base-uri": ["'none'"],
+        "form-action": ["'none'"],
+    }
+    if api_base.startswith(("http://", "https://")):
+        sources["connect-src"].append(api_base.rstrip("/"))
+
+    if not sources["script-src"]:
+        raise RuntimeError(
+            "没找到内联 <script>，CSP 会把页面锁死。"
+            "改过 <script> 标签的写法就要同步改 _INLINE_SCRIPT。")
+
+    policy = "; ".join(f"{k} {' '.join(v)}" for k, v in sources.items())
+    meta = f'<meta http-equiv="Content-Security-Policy" content="{policy}">'
+
+    # 必须插在 charset 之后、任何 <link>/<style> 之前：CSP 只管它被解析到
+    # 之后声明的资源，插晚了前面的字体样式表就是策略外的。
+    if _CHARSET_META not in html:
+        raise RuntimeError("没找到 charset meta，无法确定 CSP 的插入位置")
+    return html.replace(_CHARSET_META, _CHARSET_META + "\n" + meta, 1)
+
+
 def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     """生成 Feed HTML。
 
@@ -68,7 +137,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     scenes = _json_for_script(feed.get("scenes") or scene.scene_chips())
     scenes_l2 = _json_for_script(feed.get("scenes_l2") or scene.scene_l2_tree())
     page_title = "去 GitHub 发现" if variant == "lite" else "skill-feed"
-    return f"""<!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -2060,7 +2129,7 @@ function cardHtml(it, idx) {{
       ${{IS_LITE ? '' : `<button type="button" class="follow-mini js-follow-builder ${{followed ? 'on' : ''}}" data-owner="${{escapeHtml(owner)}}" title="${{escapeHtml(tr('followTitle'))}}">${{followed ? tr('following') : tr('follow')}}</button>`}}
     </div>
     <div class="media js-media${{noCoverCls}}${{bareCoverCls}}" data-idx="${{idx}}">
-      ${{cover ? `<img class="cover" src="${{escapeHtml(safeUrl(cover))}}" alt="${{escapeHtml(headName)}}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.media').classList.add('no-cover')" />` : ''}}
+      ${{cover ? `<img class="cover" src="${{escapeHtml(safeUrl(cover))}}" alt="${{escapeHtml(headName)}}" loading="lazy" referrerpolicy="no-referrer" />` : ''}}
       ${{(coverTitle || coverDesc) ? `<div class="cover-fallback">
         ${{coverTitle ? `<div class="t">${{escapeHtml(coverTitle)}}</div>` : ''}}
         ${{coverDesc ? `<div class="d">${{escapeHtml(coverDesc)}}</div>` : ''}}
@@ -2699,6 +2768,25 @@ function startDemo() {{
 }}
 
 /* —— Events —— */
+
+/* 封面图加载失败时降级到文字兜底层。原来写成 img 标签上的内联 error 属性，
+   改成这里的委托监听有两个原因，各自都足够：
+
+   1. 内联事件处理器是哈希覆盖不到的脚本执行点 —— script-src 一旦用哈希，
+      'unsafe-inline' 就会被忽略，那个属性直接失效，封面挂掉时会留一个 2:1 的
+      空黑盒而不是兜底文字。
+   2. GitHub 的 OG 图相当一部分会 404（仓库没设封面），这条路径是常态而非异常，
+      不该依赖一个会被安全策略静默关掉的机制。
+
+   error 事件**不冒泡**，所以必须用捕获阶段（第三个参数 true）在 document 上收，
+   写成 bubble 阶段的监听是收不到的。 */
+document.addEventListener('error', (e) => {{
+  const img = e.target;
+  if (!img || img.tagName !== 'IMG' || !img.classList.contains('cover')) return;
+  const media = img.closest('.media');
+  if (media) media.classList.add('no-cover');
+}}, true);
+
 document.getElementById('stories').addEventListener('click', (e) => {{
   const btn = e.target.closest('.story');
   if (!btn) return;
@@ -3025,6 +3113,7 @@ if (!IS_LITE && new URLSearchParams(location.search).get('demo') === '1') {{
 </body>
 </html>
 """
+    return _with_csp(html, api_base=str(ui.get("api_base") or ""))
 
 
 def write_feed_html(feed: dict, path: Path, *, variant: str | None = None) -> None:
