@@ -606,7 +606,7 @@ def cmd_refresh(argv: list[str]) -> int:
 
 
 def cmd_build(argv: list[str]) -> int:
-    """不联网：用现有 feed.json / corpus 重打包 + 重生 Instagram 信息流 HTML。"""
+    """不联网：用现有 feed.json / corpus 重打包 + 重生竖滑信息流 HTML。"""
     refresh_paths()
     cfg = load_config()
     ensure_data_dir(cfg)
@@ -865,7 +865,7 @@ def cmd_serve(argv: list[str]) -> int:
     self_copy()
     # 每次 serve 用最新板式重生 HTML（不强制联网）
     if FEED_JSON.exists() or corpus.corpus_root(DATA_DIR).exists():
-        print("[serve] rebuilding Instagram feed from local data...")
+        print("[serve] rebuilding feed from local data...")
         cmd_build([])
     elif not FEED_HTML.exists():
         print("[serve] no local feed — running refresh first...")

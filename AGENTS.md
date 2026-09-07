@@ -25,7 +25,7 @@ python skillfeed.py publish-site   # 独立站：site/index.html + site/embed.ht
 cd skill-feed
 python skillfeed.py corpus     # 首次：HelloGitHub → 知识库
 python skillfeed.py refresh    # 联网多源刷新
-python skillfeed.py serve      # Instagram 板式信息流（会自动 build）
+python skillfeed.py serve      # 竖滑信息流（会自动 build）
 ```
 
 数据目录：`~/.skill-feed/`（`feed.json` / `feed.html` / `corpus/` / `feedback.jsonl`）。

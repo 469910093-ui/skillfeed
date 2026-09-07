@@ -54,7 +54,7 @@ Agent 执行约定见仓库根目录 `AGENTS.md`「PRD 同步」一节。
 
 ## 1. 一句话定位
 
-**skill-feed** 是 Instagram 板式的 **Agent Skill / 开源线索发现站**：多源抓取 → 门禁 → 个性化排序 → 无限信息流 → **打开 GitHub**。  
+**skill-feed** 是竖滑卡片式的 **Agent Skill / 开源线索发现站**：多源抓取 → 门禁 → 个性化排序 → 无限信息流 → **打开 GitHub**。  
 用户可浏览官方发现流，并（规划中/进行中）登录后发布自己的 skill（UGC）。
 
 同一生成器产出两种页面变体（`ui.variant`）：
@@ -365,7 +365,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 阶段 | 名称 | 范围摘要 |
 |---|---|---|
 | **M0** | 本地发现引擎 MVP | CLI refresh/corpus/gates/scene/rank；本地 serve Feed |
-| **M1** | 消费体验产品化 | IG 信息流、Stories、意图搜、封面/亮点、发布者页、Demo |
+| **M1** | 消费体验产品化 | 竖滑信息流、Stories、意图搜、封面/亮点、发布者页、Demo |
 | **M2** | 公开可刷网站 | Actions 定时 refresh → GitHub Pages；`publish-site` |
 | **M3** | 登录 + UGC API | FastAPI OAuth、发帖、混排 Feed、发布页；前端底栏对接 |
 | **M3.5** | Stories = 关注动态 | 去掉筛选式 Stories；关注 Builder/行业（localStorage）；入口 A–F；圆环看最新 |
@@ -436,7 +436,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 里程碑 | 状态 | 说明 |
 |---|---|---|
 | **M0 本地发现引擎** | ✅ 完成 | refresh/corpus/gates/scene/rank/serve；单测覆盖 |
-| **M1 消费体验产品化** | ✅ 基本完成 | IG Feed、Stories、亮点卡、发布者页、Demo；个别文案/缓存体验可继续打磨 |
+| **M1 消费体验产品化** | ✅ 基本完成 | 竖滑 Feed、Stories、亮点卡、发布者页、Demo；个别文案/缓存体验可继续打磨 |
 | **M2 公开可刷网站** | ✅ 完成 | Actions → Pages 已上线并可定时刷新 |
 | **M3 登录 + UGC API** | 🟡 开发完成、未生产化 | `server/` + `/publish` + 混排 API + 前端底栏对接逻辑已有；缺：正式 OAuth 配置、API 常驻部署、公开站默认 `api_base` |
 | **M3.5 Stories=关注** | ✅ 前端已落地 | Stories=关注 Builder/行业最新；入口：卡片关注/场景标签/引导环/发布者页/我的；提示「最新进顶部圆环」；pills 承担行业筛选 |

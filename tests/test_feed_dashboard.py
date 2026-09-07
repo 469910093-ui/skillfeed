@@ -936,34 +936,41 @@ class TestContrastTokens(unittest.TestCase):
                     f"头像字母 {fg} on {bg} 只有 {ratio:.2f}:1")
 
 
-class TestNoInstagramTradeDress(unittest.TestCase):
-    """页面外壳不许把 Instagram 的品牌识别要素搬回来。
+class TestBrandIdentityIsOurOwn(unittest.TestCase):
+    """页面外壳的品牌要素必须是我们自己的，不得使用第三方品牌标识。
 
     断言范围是**页面外壳**（`<style>` + head + 静态 markup），刻意剔掉 `<script>`
-    里的内容数据。因为 feed 里本来就有正当提到 Instagram 的条目
-    （`instagram-curator`、"TikTok and Instagram carousel" 之类），
-    对整页 HTML 做字符串断言会在有真实内容时误报——空 feed 下还是绿的，
-    一上线就炸，属于最难查的那种假绿。
+    里的内容数据。因为 feed 里正当存在提到第三方产品的条目
+    （`instagram-curator`、"TikTok and Instagram carousel" 之类的第三方 skill），
+    指名提及真实产品是正当使用，不是我们的品牌表述。对整页 HTML 做字符串断言
+    会在有真实内容时误报——空 feed 下还是绿的、一上线就炸，属于最难查的那种假绿，
+    所以夹具里专门放了一条这样的条目来证明不会误报。
 
-    同理，源码 docstring 里写「哪些值不许用」是文档，不算违规。
-
-    这里只拦真正带识别性的东西。中性灰（#fafafa / #262626 / #dbdbdb）不在名单里，
-    浅灰不构成任何人的品牌识别，理由见 docs/brand-tokens.md。
+    中性灰（`#fafafa` / `#262626` / `#dbdbdb`）不在禁用名单里：浅灰是几千个站点
+    共用的通用值，不构成任何人的品牌识别，理由见 docs/brand-tokens.md。
     """
 
+    # 禁用清单：这些取值属于第三方的品牌标识，我们的外观里不得出现。
+    # 这是一份合规控制清单，保留具体归属是为了让人能核对与维护，别把它删成
+    # 「禁用 #ed4956」这种查无实据的规矩——那样下次就会有人换个相邻值绕过去。
     BANNED = {
-        "billabong": "Instagram 字标本身用的字体",
-        "#f09433": "IG 渐变起点",
-        "#e6683c": "IG 渐变",
-        "#dc2743": "IG 渐变",
-        "#cc2366": "IG 渐变",
-        "#bc1888": "IG 渐变终点",
-        "#ed4956": "IG 的点赞红",
-        "#00376b": "IG 的链接蓝",
+        "billabong": "Instagram 字标所用字体",
+        "#f09433": "Instagram 品牌渐变起点",
+        "#e6683c": "Instagram 品牌渐变",
+        "#dc2743": "Instagram 品牌渐变",
+        "#cc2366": "Instagram 品牌渐变",
+        "#bc1888": "Instagram 品牌渐变终点",
+        "#ed4956": "Instagram 的点赞红",
+        "#00376b": "Instagram 的链接蓝",
     }
 
-    # 内容里正当提到 Instagram 的条目：用来证明下面的断言不会对它误报
-    ITEM_MENTIONING_IG = {
+    # 我们的外观描述里不得把自己说成某个第三方产品的同款。
+    # 自称仿版是「意图」的书面证据，在侵权纠纷里比色值本身更难解释。
+    THIRD_PARTY_APPS = ("instagram", "tiktok", "douyin", "xiaohongshu",
+                        "twitter", "pinterest", "snapchat")
+
+    # 内容里正当提到第三方产品的条目：用来证明下面的断言不会对它误报
+    ITEM_NAMING_A_THIRD_PARTY_PRODUCT = {
         "full_name": "someone/instagram-curator",
         "name": "instagram-curator",
         "owner": "someone",
@@ -978,12 +985,12 @@ class TestNoInstagramTradeDress(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.html = feed_dashboard.build_feed_html(
-            {"items": [cls.ITEM_MENTIONING_IG], "corpus": []})
+            {"items": [cls.ITEM_NAMING_A_THIRD_PARTY_PRODUCT], "corpus": []})
         # 剔掉 <script>：那里面是内容数据和模板，不是我们的品牌外观
         cls.chrome = re.sub(r"<script>.*?</script>", "", cls.html, flags=re.S).lower()
 
-    def test_content_mentioning_instagram_is_present_so_the_fixture_is_meaningful(self):
-        """先确认夹具真的把 Instagram 写进了页面，否则下面两条断言是空过。"""
+    def test_third_party_product_name_in_content_is_present_so_the_fixture_is_meaningful(self):
+        """先确认夹具真的把第三方产品名写进了页面，否则下面两条断言是空过。"""
         self.assertIn("instagram", self.html.lower())
 
     def test_no_banned_brand_values_reach_the_page_chrome(self):
@@ -991,23 +998,23 @@ class TestNoInstagramTradeDress(unittest.TestCase):
             with self.subTest(token=token):
                 self.assertNotIn(
                     token, self.chrome,
-                    f"{token}（{why}）出现在页面外壳里；换个自己的值，别搬 IG 的")
+                    f"{token}（{why}）出现在页面外壳里；品牌要素要用我们自己的取值")
 
-    def test_chrome_does_not_advertise_itself_as_instagram(self):
-        """外壳里不许出现自称「Instagram 风格」的字样。
+    def test_chrome_does_not_describe_itself_as_another_product(self):
+        """外壳里不许出现自称某第三方产品同款的字样。
 
-        前向防护，不是在拦历史问题：原来那句自称写在 Python docstring 里，
-        从没进过 HTML。这条挡的是往后有人把它写进 title / meta description /
-        tagline——自称照抄是意图的书面证据，比色值本身更难解释。
+        挡的是往后有人把这类描述写进 title / meta description / tagline。
         """
-        self.assertNotIn("instagram", self.chrome)
+        for app in self.THIRD_PARTY_APPS:
+            with self.subTest(app=app):
+                self.assertNotIn(app, self.chrome)
 
     def test_wordmark_is_solid_accent_not_a_gradient_fill(self):
-        """让人一眼认成 IG 的是「手写体字标 + 渐变填充」这个组合，不是单一元素。"""
+        """辨识度来自「手写体字标 + 渐变填充」这个组合，不是单一元素，所以两样都不用。"""
         m = re.search(r"\.logo\s*\{(.*?)\}", self.html, flags=re.S)
         self.assertIsNotNone(m, "找不到 .logo 规则")
         self.assertNotIn("background-clip", m.group(1),
-                         ".logo 又变回渐变填充的字了")
+                         ".logo 变成渐变填充的字了")
         self.assertIn("var(--accent)", re.search(
             r"\.logo\s+span\s*\{(.*?)\}", self.html, flags=re.S).group(1))
 

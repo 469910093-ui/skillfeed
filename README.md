@@ -1,6 +1,6 @@
 # skill-feed
 
-Instagram 板式的 **agent skill 信息流**：多源发现 → 门禁 → 本地知识库补货 → 无限下滑刷卡 → **打开 GitHub**（不代装）。
+竖滑卡片式的 **agent skill 信息流**：多源发现 → 门禁 → 本地知识库补货 → 无限下滑刷卡 → **打开 GitHub**（不代装）。
 
 与 [skill-picker](https://github.com/469910093-ui/Skill-picker) **拆产品线**：skill-picker 管本机已装；skill-feed 管远程发现。
 
@@ -54,7 +54,7 @@ GitHub OAuth App 回调填：`{SKILLFEED_PUBLIC_URL}/auth/callback`
 cd skill-feed
 python skillfeed.py corpus      # 首次：灌 HelloGitHub 全刊进知识库
 python skillfeed.py refresh     # 六源联网刷新（见下表）
-python skillfeed.py serve       # 打开 IG 风信息流（自动 build 最新板式）
+python skillfeed.py serve       # 打开竖滑信息流（自动 build 最新板式）
 ```
 
 本地只改了 UI / 想重排时：

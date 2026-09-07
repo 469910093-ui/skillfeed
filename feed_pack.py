@@ -266,8 +266,11 @@ def pack_feed(
         "items": items,
         "corpus": browse,
         "rejected_counts": (gates_summary or {}).get("rejected", {}),
+        # 这里只放**会被读**的字段。曾经有过一个 "style" 键，值是某个第三方 App 的
+        # 名字，全库没有任何代码读它，但它会随 feed.json 发布到公开站点——等于在生产
+        # 产物里留一句机器可读的「我们是谁的仿版」。删掉了，别再加回来；
+        # tests/test_publish_site.py::TestPublishedUiBlock 会拦。
         "ui": {
-            "style": "instagram",
             "cta": "open_github",
             "demo_auto": False,
             "variant": "full",
