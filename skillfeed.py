@@ -714,7 +714,7 @@ def cmd_publish_site(argv: list[str]) -> int:
     feed_dashboard.write_feed_html(lite_feed, out / "embed.html", variant="lite")
     (out / "BUILD.txt").write_text(
         "skill-feed static web product\n"
-        "index.html = full site (Stories/follow/publish when api_base set)\n"
+        "index.html = full site (updates ring/follow/publish when api_base set)\n"
         "embed.html = lite for skill-picker (no follow/publish/me)\n"
         f"generated_at={feed.get('generated_at')}\n"
         f"items={len(feed.get('items') or [])}\n"

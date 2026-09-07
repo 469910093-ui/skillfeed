@@ -11,7 +11,7 @@
 
 | 变体 | 命令产物 | 给谁用 |
 |---|---|---|
-| **full** | `~/.skill-feed/feed.html` · `site/index.html` | 独立网页（Stories/关注/发布/我的） |
+| **full** | `~/.skill-feed/feed.html` · `site/index.html` | 独立网页（动态圆环/关注/发布/我的） |
 | **lite** | `~/.skill-feed/feed.lite.html` · `site/embed.html` | skill-picker「去 GitHub 发现」子页（无关注/发布/后台） |
 
 ```bash
@@ -58,7 +58,7 @@ UGC API：`server/`（FastAPI + SQLite）。本地可先 `SKILLFEED_DEV_AUTH=1`�
 
 产品真相源：`docs/PRD.md`（含 §0 变更纪律、§13 变更日志）。
 
-当你或用户做**任何产品调优**（IA、Stories/pills、关注、排序/门禁、文案引导、存储 key、里程碑取舍等）：
+当你或用户做**任何产品调优**（IA、动态圆环/pills、关注、排序/门禁、文案引导、存储 key、里程碑取舍等）：
 
 1. **同批更新** `docs/PRD.md` 正文对应章节  
 2. **追加** §13 变更日志一行（日期 · 摘要 · 影响）  
@@ -88,6 +88,6 @@ python scripts/xhs_bitable_loop.py audit-stars
 ## 注意
 
 - CTA 只有「打开 GitHub」；无 install / 不写宿主 skills 目录
-- Stories = 关注动态；pills = 发现筛选（见 PRD §5.0）
+- 动态圆环 = 关注动态；pills = 发现筛选（见 PRD §5.0）
 - Trending 抓取失败时回退缓存并 WARN，不编造榜单
 - 知识库只增不删；空 Feed 时用 corpus backup + 漏斗解释

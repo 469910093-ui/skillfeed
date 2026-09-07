@@ -56,7 +56,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     """生成 Feed HTML。
 
     variant:
-      - full：独立网页产品（Stories/关注/发布/我的）
+      - full：独立网页产品（动态圆环/关注/发布/我的）
       - lite：给 skill-picker 嵌入的发现子页（无关注/发布/个人后台）
     """
     variant = _resolve_variant(feed, variant)
@@ -698,7 +698,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     font-weight: 700; font-size: .9rem;
     box-shadow: 0 8px 24px rgba(0,0,0,.25);
   }}
-  /* Story 翻页热区是 <button>：原来是带 aria-label 的 div，读屏会播报「上一条」
+  /* 动态全屏的翻页热区是 <button>：原来是带 aria-label 的 div，读屏会播报「上一条」
      却无法聚焦触发，等于告诉用户有这个控件又不给用 */
   .sv-tap-left, .sv-tap-right {{
     position: absolute; top: 60px; bottom: 80px; width: 28%; z-index: 1;
@@ -708,7 +708,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .sv-tap-left {{ left: 0; }}
   .sv-tap-right {{ right: 0; }}
 
-  /* lite：skill-picker 发现子页 — 无 Stories/关注/发布/我的 */
+  /* lite：skill-picker 发现子页 — 无动态圆环/关注/发布/我的 */
   body.variant-lite .stories-wrap,
   body.variant-lite #followSheet,
   body.variant-lite .nav[data-action="publish"],
@@ -768,7 +768,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
         <span data-i18n-html="storiesHint"><b>顶部圆环 = 你关注的最新动态</b>：关注 Builder 或行业后，新内容会出现在这里优先观看。</span>
         <button type="button" class="hint-close" id="storiesHintClose" aria-label="关闭提示" data-i18n-aria="closeHint">×</button>
       </div>
-      <div class="stories" id="stories" aria-label="关注动态 Stories" data-i18n-aria="storiesAria"></div>
+      <div class="stories" id="stories" aria-label="关注动态圆环" data-i18n-aria="storiesAria"></div>
     </div>
     <div class="sr-only" id="sceneLabel" data-i18n="sceneSr">一级场景</div>
     <div class="sr-only" id="sceneL2Label" data-i18n="sceneL2Sr">二级场景</div>
@@ -855,7 +855,7 @@ const I18N = {{
     softTime: 'Soft skill · 打开 GitHub 查看',
     corpusTime: '来自知识库', suggestTime: '为你推荐',
     follow: '关注', following: '已关注',
-    followTitle: '关注后最新动态出现在顶部 Stories',
+    followTitle: '关注后最新动态出现在顶部动态圆环',
     viewPublisher: '查看发布者',
     filterByScene: '按行业筛选',
     followScene: '关注行业 · 最新进顶部圆环',
@@ -869,7 +869,7 @@ const I18N = {{
     allScenes: '全部行业', allSub: '全部二级', allSections: '全部栏目',
     srcCatalog: '策展目录', srcXhs: '小红书', srcCorpus: '知识库',
     hostSite: ' · 网站',
-    feedbackToast: '关注后最新进顶部 Stories · 双击点赞 · 书签收藏',
+    feedbackToast: '关注后最新进顶部动态圆环 · 双击点赞 · 书签收藏',
     addBuilder: '+ Builder', addIndustry: '+ 行业', closeHint: '关闭提示',
     storyGuide: '去关注，最新动态会出现在这里',
     storyView: '查看关注的最新动态',
@@ -878,7 +878,7 @@ const I18N = {{
     /* 静态骨架：标题、无障碍标签、全屏卡按钮 */
     pageTitleLite: '去 GitHub 发现',
     langGroup: '语言 / Language',
-    storiesAria: '关注动态 Stories',
+    storiesAria: '关注动态圆环',
     sceneSr: '一级场景', sceneL2Sr: '二级场景',
     sceneStripAria: '行业筛选', sectionStripAria: '栏目',
     close: '关闭', prevStory: '上一条', nextStory: '下一条',
@@ -890,12 +890,12 @@ const I18N = {{
 
     /* 关注面板（发现 Builder / 发现行业 / 单个行业） */
     sheetBuilderTitle: '发现 Builder',
-    sheetBuilderLead: '关注后，Ta 的最新 skill 会出现在<strong>顶部 Stories 圆环</strong>，方便优先观看。',
+    sheetBuilderLead: '关注后，Ta 的最新 skill 会出现在<strong>顶部动态圆环</strong>，方便优先观看。',
     sheetIndustryTitle: '发现行业',
-    sheetIndustryLead: '关注行业后，该领域最新内容会出现在<strong>顶部 Stories 圆环</strong>。',
+    sheetIndustryLead: '关注行业后，该领域最新内容会出现在<strong>顶部动态圆环</strong>。',
     feedCount: 'Feed 内 {{n}} 条',
     followedTapUndo: '已关注 · 点按取消',
-    industryLead: '关注后，该行业最新动态会出现在<strong>顶部 Stories 圆环</strong>；也可只筛选发现流。',
+    industryLead: '关注后，该行业最新动态会出现在<strong>顶部动态圆环</strong>；也可只筛选发现流。',
     unfollowIndustry: '取消关注行业', followIndustry: '关注行业',
     industryRingOff: '圆环将不再优先展示该行业',
     industryRingOn: '最新内容进顶部圆环',
@@ -905,7 +905,7 @@ const I18N = {{
     ringFollowing: '关注',
 
     /* toast */
-    followedToast: '已关注 {{who}} · 最新动态会出现在顶部 Stories 圆环',
+    followedToast: '已关注 {{who}} · 最新动态会出现在顶部动态圆环',
     unfollowedBuilder: '已取消关注 @{{who}}',
     unfollowedIndustry: '已取消关注「{{who}}」',
     publishLiteOnly: '发现子页不支持发布 · 请打开完整 skill-feed 网站',
@@ -928,7 +928,7 @@ const I18N = {{
     noDescription: '暂无描述',
     inFeed: 'Feed 内',
     pubSub: '发布者主页 · Feed 内 {{n}} 条 · GitHub 整合',
-    pubFollowNote: '关注后，最新动态会出现在<strong>顶部 Stories 圆环</strong>',
+    pubFollowNote: '关注后，最新动态会出现在<strong>顶部动态圆环</strong>',
     followBuilder: '关注 Builder',
     backToFeed: '← 返回发现',
     allRepos: '全部仓库',
@@ -948,9 +948,9 @@ const I18N = {{
 
     /* 我的 */
     unfollowAria: '取消关注',
-    meNoBuilders: '还没关注 Builder。在卡片点「关注」，最新动态会出现在顶部 Stories。',
+    meNoBuilders: '还没关注 Builder。在卡片点「关注」，最新动态会出现在顶部动态圆环。',
     meNoIndustries: '还没关注行业。点卡片上的场景标签即可关注。',
-    meLead: '关注的 Builder / 行业，其<strong>最新内容会出现在发现页顶部 Stories 圆环</strong>。赞/藏仍保存在此浏览器。',
+    meLead: '关注的 Builder / 行业，其<strong>最新内容会出现在发现页顶部动态圆环</strong>。赞/藏仍保存在此浏览器。',
     meMyBuilders: '我关注的 Builder',
     meMyIndustries: '我关注的行业',
     meLocalTitle: '本机收藏',
@@ -962,13 +962,13 @@ const I18N = {{
     meGoPublish: '去发布 Skill',
     meApiDocs: 'API 文档', meApiHome: 'API 首页', meGithubLogin: 'GitHub 登录',
     meAboutTitle: '发现站',
-    meAboutBody: 'Stories = 关注动态；下方 pills = 逛发现时的行业/栏目筛选。两者不再重复。',
+    meAboutBody: '动态圆环 = 关注动态；下方 pills = 逛发现时的行业/栏目筛选。两者不再重复。',
 
     /* 列表尾 */
     moreShown: '下滑加载更多 · 已显 <b>{{n}}</b> / {{total}}',
     allDone: '你已看完 · 共 <b>{{total}}</b> 条（含知识库 backup）',
 
-    /* Story 全屏卡 */
+    /* 动态全屏卡 */
     storyFollowing: '关注动态',
     storyWhoSuffix: ' · 关注最新',
 
@@ -977,10 +977,10 @@ const I18N = {{
     demoIdle: 'Demo 巡演中',
     demoStarting: 'Demo 巡演开始',
     demoStopped: 'Demo 已停止',
-    demoFollowIndustry: 'Demo：关注行业 → 顶部 Stories',
+    demoFollowIndustry: 'Demo：关注行业 → 顶部动态圆环',
     demoFollowToast: '关注后最新动态出现在顶部圆环',
-    demoOpenStories: 'Demo：点 Stories 看关注最新',
-    demoPills: 'Demo：pills 筛选行业（非 Stories）',
+    demoOpenStories: 'Demo：点动态圆环看关注最新',
+    demoPills: 'Demo：pills 筛选行业（非动态圆环）',
     demoSearch: 'Demo：意图搜索「{{q}}」',
     demoLike: 'Demo：双击点赞 · {{name}}',
     demoSave: 'Demo：收藏书签',
@@ -996,7 +996,7 @@ const I18N = {{
     softTime: 'Soft skill · open GitHub to check',
     corpusTime: 'From library', suggestTime: 'Suggested for you',
     follow: 'Follow', following: 'Following',
-    followTitle: 'Followed builders show up in top Stories',
+    followTitle: 'Followed builders show up in the top updates ring',
     viewPublisher: 'View publisher',
     filterByScene: 'Filter by industry',
     followScene: 'Follow industry · newest goes to top ring',
@@ -1010,7 +1010,7 @@ const I18N = {{
     allScenes: 'All industries', allSub: 'All subcategories', allSections: 'All sections',
     srcCatalog: 'Curated', srcXhs: 'Xiaohongshu', srcCorpus: 'Library',
     hostSite: ' · site',
-    feedbackToast: 'Follow to get updates in top Stories · double-tap to like · bookmark to save',
+    feedbackToast: 'Follow to get updates in the top ring · double-tap to like · bookmark to save',
     addBuilder: '+ Builder', addIndustry: '+ Industry', closeHint: 'Dismiss',
     storyGuide: 'Follow someone and their updates land here',
     storyView: 'See updates from what you follow',
@@ -1018,7 +1018,7 @@ const I18N = {{
 
     pageTitleLite: 'Discover on GitHub',
     langGroup: 'Language',
-    storiesAria: 'Stories you follow',
+    storiesAria: 'Updates you follow',
     sceneSr: 'Industry', sceneL2Sr: 'Subcategory',
     sceneStripAria: 'Filter by industry', sectionStripAria: 'Sections',
     close: 'Close', prevStory: 'Previous', nextStory: 'Next',
@@ -1027,12 +1027,12 @@ const I18N = {{
     demoAria: 'Play auto demo', feedbackAria: 'About feedback',
 
     sheetBuilderTitle: 'Discover builders',
-    sheetBuilderLead: 'Follow someone and their newest skills land in the <strong>top Stories ring</strong>, so you see them first.',
+    sheetBuilderLead: 'Follow someone and their newest skills land in the <strong>top updates ring</strong>, so you see them first.',
     sheetIndustryTitle: 'Discover industries',
-    sheetIndustryLead: 'Follow an industry and its newest work lands in the <strong>top Stories ring</strong>.',
+    sheetIndustryLead: 'Follow an industry and its newest work lands in the <strong>top updates ring</strong>.',
     feedCount: '{{n}} in feed',
     followedTapUndo: 'Following · tap to unfollow',
-    industryLead: 'Follow it and its updates land in the <strong>top Stories ring</strong>. You can also just filter the feed by it.',
+    industryLead: 'Follow it and its updates land in the <strong>top updates ring</strong>. You can also just filter the feed by it.',
     unfollowIndustry: 'Unfollow industry', followIndustry: 'Follow industry',
     industryRingOff: 'The ring will stop prioritizing this industry',
     industryRingOn: 'Newest items go to the top ring',
@@ -1041,7 +1041,7 @@ const I18N = {{
     filterAction: 'Filter',
     ringFollowing: 'Following',
 
-    followedToast: 'Following {{who}} · their updates will land in the top Stories ring',
+    followedToast: 'Following {{who}} · their updates will land in the top updates ring',
     unfollowedBuilder: 'Unfollowed @{{who}}',
     unfollowedIndustry: 'Unfollowed “{{who}}”',
     publishLiteOnly: 'Posting is not available in the embedded feed · open the full skill-feed site',
@@ -1062,7 +1062,7 @@ const I18N = {{
     noDescription: 'No description',
     inFeed: 'In feed',
     pubSub: 'Publisher profile · {{n}} in feed · merged with GitHub',
-    pubFollowNote: 'Follow to get their updates in the <strong>top Stories ring</strong>',
+    pubFollowNote: 'Follow to get their updates in the <strong>top updates ring</strong>',
     followBuilder: 'Follow builder',
     backToFeed: '← Back to feed',
     allRepos: 'All repositories',
@@ -1080,9 +1080,9 @@ const I18N = {{
     funnel: 'Funnel: ', funnelPassed: 'passed gates',
 
     unfollowAria: 'Unfollow',
-    meNoBuilders: 'No builders followed yet. Tap “Follow” on a card and their updates land in the top Stories.',
+    meNoBuilders: 'No builders followed yet. Tap “Follow” on a card and their updates land in the top updates ring.',
     meNoIndustries: 'No industries followed yet. Tap the industry tag on a card to follow it.',
-    meLead: 'Builders and industries you follow put their <strong>newest work in the Stories ring on Discover</strong>. Likes and bookmarks stay in this browser.',
+    meLead: 'Builders and industries you follow put their <strong>newest work in the updates ring on Discover</strong>. Likes and bookmarks stay in this browser.',
     meMyBuilders: 'Builders I follow',
     meMyIndustries: 'Industries I follow',
     meLocalTitle: 'Saved on this device',
@@ -1094,7 +1094,7 @@ const I18N = {{
     meGoPublish: 'Post a skill',
     meApiDocs: 'API docs', meApiHome: 'API home', meGithubLogin: 'Sign in with GitHub',
     meAboutTitle: 'About this feed',
-    meAboutBody: 'Stories are updates from what you follow. The pills below filter the feed by industry and section — the two no longer overlap.',
+    meAboutBody: 'The top updates ring shows what you follow. The pills below filter the feed by industry and section — the two no longer overlap.',
 
     moreShown: 'Scroll for more · showing <b>{{n}}</b> of {{total}}',
     allDone: 'That is everything · <b>{{total}}</b> items, library backup included',
@@ -1106,10 +1106,10 @@ const I18N = {{
     demoIdle: 'Demo running',
     demoStarting: 'Demo starting',
     demoStopped: 'Demo stopped',
-    demoFollowIndustry: 'Demo: follow an industry → top Stories',
+    demoFollowIndustry: 'Demo: follow an industry → top updates ring',
     demoFollowToast: 'Followed items show up in the top ring',
-    demoOpenStories: 'Demo: tap Stories for the latest',
-    demoPills: 'Demo: pills filter by industry (not Stories)',
+    demoOpenStories: 'Demo: tap the updates ring for the latest',
+    demoPills: 'Demo: pills filter by industry (not the updates ring)',
     demoSearch: 'Demo: intent search “{{q}}”',
     demoLike: 'Demo: double-tap to like · {{name}}',
     demoSave: 'Demo: bookmark it',
@@ -2482,7 +2482,7 @@ function toggleSave(fn, postEl) {{
   if (now) sendFeedback('useful', itemPayload(postEl));
 }}
 
-/* —— Story viewer —— */
+/* —— 动态全屏（.story-viewer） —— */
 function stopSvTimer() {{
   if (sv.timer) clearTimeout(sv.timer);
   sv.timer = null;

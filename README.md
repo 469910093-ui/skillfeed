@@ -133,7 +133,7 @@ python skillfeed.py bitable dedupe                   # 清重复行
 
 | 手势 / 入口 | 作用 |
 |---|---|
-| Stories 圆环 | 切模式 / 一级场景；点场景可进全屏 Story 轮播 |
+| 动态圆环 | 切模式 / 一级场景；点场景可进全屏动态轮播 |
 | 二级 pills | 写作润色、短视频… |
 | 双击封面 / 红心 | 有用（写入 feedback + 本地 liked） |
 | 拇指向下 | 不感兴趣，少推这类（写入 feedback `bad`） |

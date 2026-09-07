@@ -23,7 +23,7 @@
 
 | 类型 | 示例 |
 |---|---|
-| 信息架构 / 导航 | Stories 职责、底栏、pills、页面增减 |
+| 信息架构 / 导航 | 动态圆环职责、底栏、pills、页面增减 |
 | 交互与文案 | CTA、空态、引导提示、关注入口 |
 | 排序 / 门禁 / 场景 | rank 权重、gate 档位、taxonomy |
 | 数据与存储 | localStorage key、API 契约、关注/赞藏模型 |
@@ -61,7 +61,7 @@ Agent 执行约定见仓库根目录 `AGENTS.md`「PRD 同步」一节。
 
 | 变体 | 产物 | 用途 |
 |---|---|---|
-| **full** | `feed.html` / `site/index.html` | **独立网页产品**（Stories/关注/发布/我的，可接 `api_base`） |
+| **full** | `feed.html` / `site/index.html` | **独立网页产品**（动态圆环/关注/发布/我的，可接 `api_base`） |
 | **lite** | `feed.lite.html` / `site/embed.html` | **skill-picker 发现子页**（无关注、无发布、无个人后台；意图 `?q=`） |
 
 **不做：** 代用户安装 skill、写入 `~/.cursor/skills` 等宿主目录、要求账号才能刷基础信息流。
@@ -100,8 +100,8 @@ Agent 执行约定见仓库根目录 `AGENTS.md`「PRD 同步」一节。
 
 | 角色 | 核心场景 | 主路径 |
 |---|---|---|
-| 发现者 | 「有没有 skill 能做周报 / 去 AI 味」 | 打开站 → 搜意图 / pills 筛 → 看卡片 → 打开 GitHub；对感兴趣作者/行业点关注 → 用 Stories 追最新 |
-| 关注者 | 「我盯的人/行业有没有新东西」 | Stories 圆环 → Builder/行业最新动态 → 打开 GitHub |
+| 发现者 | 「有没有 skill 能做周报 / 去 AI 味」 | 打开站 → 搜意图 / pills 筛 → 看卡片 → 打开 GitHub；对感兴趣作者/行业点关注 → 用动态圆环追最新 |
+| 关注者 | 「我盯的人/行业有没有新东西」 | 动态圆环 → Builder/行业最新动态 → 打开 GitHub |
 | 收藏者 | 先攒着以后用 | 赞/书签 →「我的」看本机收藏 |
 | 创作者（UGC） | 发布自己的 skill 让别人发现 | 登录 → 发布 → 出现在混排 Feed |
 | 维护者（你） | 内容新鲜、门禁可控 | CLI refresh / Actions 定时部署 / API 配置 |
@@ -114,7 +114,7 @@ skill-picker 找技能（本机）──匹配为空──► 看板「去 GitHu
                                       ▼
                               打开 GitHub 自行安装 ──► skill-picker scan
 
-skill-feed full（独立站）── Stories/关注/UGC（可选 API）──► 打开 GitHub
+skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）──► 打开 GitHub
 ```
 
 ---
@@ -124,9 +124,9 @@ skill-feed full（独立站）── Stories/关注/UGC（可选 API）──►
 ```text
 ┌──────────────────────────────────────────────┐
 │ 发现站前端（静态 HTML / 可连 API）              │
-│  搜意图 · Stories(关注) · pills(筛选) · 卡片   │
+│  搜意图 · 动态圆环(关注) · pills(筛选) · 卡片   │
 │  底栏：发现 / 发布 / 我的                       │
-│  发布者主页 · Story 全屏 · Demo 巡演            │
+│  发布者主页 · 动态全屏 · Demo 巡演            │
 └───────────────┬──────────────────────────────┘
                 │ api_base（可选）
 ┌───────────────▼──────────────────────────────┐
@@ -146,20 +146,20 @@ skill-feed full（独立站）── Stories/关注/UGC（可选 API）──►
 
 ## 5. 前端需求（完整）
 
-### 5.0 信息架构铁律：Stories ≠ Pills
+### 5.0 信息架构铁律：动态圆环 ≠ Pills
 
-**现状问题：** Stories 圆环与下方 pills 都在做「模式/场景/栏目筛选」，功能重复，圆环没有「关系」价值。
+**现状问题：** 动态圆环与下方 pills 都在做「模式/场景/栏目筛选」，功能重复，圆环没有「关系」价值。
 
 **重新分工（必须遵守）：**
 
 | 模块 | 产品职责 | 不是什么 |
 |---|---|---|
-| **Stories 圆环** | **关注流入口**：已关注 Builder 的最新动态、已关注行业的最新动态；优先观看 | 不是全站筛选器 |
+| **动态圆环** | **关注流入口**：已关注 Builder 的最新动态、已关注行业的最新动态；优先观看 | 不是全站筛选器 |
 | **Pills（pillar）** | **当前发现 Feed 的筛选**：场景二级 / 栏目 /（可选）内容形态 | 不是关注关系 |
 | **主 Feed** | 发现浏览（未关注时默认推荐；可被 pills 收窄） | — |
 
 ```text
-Stories = 我关心的人 / 行业 · 有没有新东西（关系 + 时效）
+动态圆环 = 我关心的人 / 行业 · 有没有新东西（关系 + 时效）
 Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 ```
 
@@ -169,8 +169,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 |---|---|---|
 | 发现 Feed | 无限下滑；嵌入 `feed.json`；本地/Pages 可独立打开 | P0 |
 | 意图搜索 | 顶栏输入，实时过滤 name/desc/场景等 | P0 |
-| **Stories（关注动态）** | 见 5.4；圆环 = 关注的 Builder / 行业；点开看「最新」Story 或时间线 | P0 |
-| **Pills** | 仅作发现筛选：二级场景、栏目等；**空则隐藏**；不再放 Skills/AI/开源模式（与 Stories 脱钩） | P0 |
+| **动态圆环（关注动态）** | 见 5.4；圆环 = 关注的 Builder / 行业；点开看「最新」动态 或时间线 | P0 |
+| **Pills** | 仅作发现筛选：二级场景、栏目等；**空则隐藏**；不再放 Skills/AI/开源模式（与动态圆环脱钩） | P0 |
 | 信息流卡片 | 见 5.2 | P0 |
 | 底栏三入口 | **发现 / 发布 / 我的** | P0 |
 | 发布 | 跳转 `api_base/publish` | P0 |
@@ -209,54 +209,54 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 ### 5.5 lite 嵌入契约（skill-picker）
 
 - **有：** 意图搜、pills、信息流卡片、打开 GitHub、`?q=` 预填、lite 顶栏说明  
-- **无：** Stories、关注、发布、我的、`api_base`、Demo  
+- **无：** 动态圆环、关注、发布、我的、`api_base`、Demo  
 - picker：`discover.py` → `~/.skill-picker/discover.html`；看板第三 tab iframe；空匹配 CTA 切入  
 - 公开回退：`https://469910093-ui.github.io/skillfeed/embed.html`
 
-### 5.4 关注体系：Builder + 行业（Stories 的数据来源）
+### 5.4 关注体系：Builder + 行业（动态圆环的数据来源）
 
 #### 5.4.1 对象定义
 
 | 关注对象 | ID | 「最新动态」定义（MVP） |
 |---|---|---|
-| **Builder** | GitHub `owner` / 日后 UGC `author_login` | Feed/corpus 中该作者条目，按刷新时间/排序分取 Top N；Story 全屏轮播 |
-| **行业** | 一级场景 `scene`（如 `content` 内容创作） | 该场景下最新/高分条目 Top N；Story 全屏轮播 |
+| **Builder** | GitHub `owner` / 日后 UGC `author_login` | Feed/corpus 中该作者条目，按刷新时间/排序分取 Top N；动态全屏轮播 |
+| **行业** | 一级场景 `scene`（如 `content` 内容创作） | 该场景下最新/高分条目 Top N；动态全屏轮播 |
 
-可选后续：行业二级、HelloGitHub 栏目「语言赛道」——**不进 Stories**，只留在 pills，避免再次重叠。
+可选后续：行业二级、HelloGitHub 栏目「语言赛道」——**不进动态圆环**，只留在 pills，避免再次重叠。
 
 #### 5.4.2 用户在哪里「关注」（入口地图）
 
-必须有多处、低摩擦入口；否则 Stories 永远是空的。
+必须有多处、低摩擦入口；否则动态圆环永远是空的。
 
 | # | 入口位置 | 动作 | 对象 |
 |---|---|---|---|
 | A | **发布者主页** | 主按钮「关注 Builder」/「已关注」 | Builder |
 | B | **卡片发布者行** | 小号「关注」或长按头像菜单（MVP 可用行内按钮） | Builder |
 | C | **卡片场景标签** | 点标签 → 浮层「查看该行业 Feed」+「关注行业」 | 行业 |
-| D | **发现 Feed 空 Stories 引导** | 未关注时圆环位展示「发现 Builder」「发现行业」引导环，点进推荐列表 | 两者 |
+| D | **发现 Feed 空动态圆环引导** | 未关注时圆环位展示「发现 Builder」「发现行业」引导环，点进推荐列表 | 两者 |
 | E | **我的 → 关注** | 管理列表：取消关注；展示已关注 Builder/行业 | 两者 |
 | F | **行业落地（轻页）** | 从标签/引导进入「内容创作」页：说明 + 该行业热卡 +「关注行业」 | 行业 |
 
 **推荐默认路径（冷启动）：**
 
-1. 用户刷发现 → 点感兴趣卡片的作者 → 发布者页点关注 → Stories 出现该 Builder 环  
-2. 或点卡片上「内容创作」标签 → 关注行业 → Stories 出现行业环  
+1. 用户刷发现 → 点感兴趣卡片的作者 → 发布者页点关注 → 动态圆环出现该 Builder 环  
+2. 或点卡片上「内容创作」标签 → 关注行业 → 动态圆环出现行业环  
 3. 「我的」可清理关注，避免圆环膨胀  
 
-#### 5.4.3 Stories 圆环交互
+#### 5.4.3 动态圆环交互
 
 | 环类型 | 展示 | 点击 |
 |---|---|---|
 | 关注动态（总览） | 可选第一枚「关注」总环 | 仅看已关注 Builder∪行业的合并最新流 |
-| Builder 环 | 头像 initials / 日后真实头像；有更新时亮环 | 该 Builder 最新 3–5 条 Story |
-| 行业环 | 行业色 + 二字简称 | 该行业最新 3–5 条 Story |
+| Builder 环 | 头像 initials / 日后真实头像；有更新时亮环 | 该 Builder 最新 3–5 条动态 |
+| 行业环 | 行业色 + 二字简称 | 该行业最新 3–5 条动态 |
 | 引导环（未关注） | 「+ Builder」「+ 行业」 | 打开推荐关注列表（Feed 内高频 owner / 全场景） |
 
-**禁止：** 再在 Stories 放「全部 / Skills / AI / 开源」等与 pills 同质的筛选环。
+**禁止：** 再在动态圆环放「全部 / Skills / AI / 开源」等与 pills 同质的筛选环。
 
 #### 5.4.4 与后端演进
 
-| 阶段 | 关注存储 | Stories 数据 |
+| 阶段 | 关注存储 | 动态圆环数据 |
 |---|---|---|
 | 现在可做（M3.5） | localStorage | 前端按 owner/scene 从嵌入 `FEED` 过滤 |
 | M4 | 账号云同步 `follows` 表 | API `GET /api/following/feed`；登录多端一致 |
@@ -340,7 +340,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 ### 7.1 发现者（未登录）
 
 1. 打开 Pages 或本机 serve  
-2. 搜意图或点 pills 筛选；或点 Stories 看已关注动态 
+2. 搜意图或点 pills 筛选；或点动态圆环看已关注动态 
 3. 看「解决 + 亮点」决策  
 4. 打开 GitHub；可选赞/藏  
 5. 点作者进发布者主页浏览更多  
@@ -365,10 +365,10 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 阶段 | 名称 | 范围摘要 |
 |---|---|---|
 | **M0** | 本地发现引擎 MVP | CLI refresh/corpus/gates/scene/rank；本地 serve Feed |
-| **M1** | 消费体验产品化 | 竖滑信息流、Stories、意图搜、封面/亮点、发布者页、Demo |
+| **M1** | 消费体验产品化 | 竖滑信息流、动态圆环、意图搜、封面/亮点、发布者页、Demo |
 | **M2** | 公开可刷网站 | Actions 定时 refresh → GitHub Pages；`publish-site` |
 | **M3** | 登录 + UGC API | FastAPI OAuth、发帖、混排 Feed、发布页；前端底栏对接 |
-| **M3.5** | Stories = 关注动态 | 去掉筛选式 Stories；关注 Builder/行业（localStorage）；入口 A–F；圆环看最新 |
+| **M3.5** | 动态圆环 = 关注动态 | 去掉筛选式动态圆环；关注 Builder/行业（localStorage）；入口 A–F；圆环看最新 |
 | **M3.6** | full/lite 双变体 + picker 嵌入 | `variant`；`publish-site`→`index.html`+`embed.html`；picker「去 GitHub 发现」子页 |
 | **M4** | 生产级云服务 | API 常驻部署（Railway 等）、正式 OAuth、赞藏云同步、审核/举报 |
 | **M5** | 增长与生态 | 个性化增强、创作者主页增强、与 skill-picker 联动安装指引（仍不代装） |
@@ -381,9 +381,9 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 - [x] 底栏仅「发现 / 发布 / 我的」  
 - [x] 空场景/栏目 pills 不展示  
-- [x] Stories = 关注动态（非 Skills/AI/开源筛选）；有引导环与「最新进顶部圆环」提示  
+- [x] 动态圆环 = 关注动态（非 Skills/AI/开源筛选）；有引导环与「最新进顶部圆环」提示  
 - [x] 可关注 Builder / 行业（localStorage）；入口见 §5.4.2  
-- [x] pills 承担行业/二级/栏目筛选（与 Stories 分工）  
+- [x] pills 承担行业/二级/栏目筛选（与动态圆环分工）  
 - [x] 卡片含「解决」+ 要点，无强迫阅读大段正文  
 - [x] 无功能的 `···` 不出现  
 - [x] 点击作者进入发布者主页（含 Feed 内作品 + GitHub 仓库尝试整合）  
@@ -408,7 +408,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 风险 | 缓解 |
 |---|---|
 | GitHub API 限流 | Token、缓存 TTL、探测上限 |
-| OG 图竖屏裁切 | contain + 场景色底（Story） |
+| OG 图竖屏裁切 | contain + 场景色底（动态全屏） |
 | 静态站赞藏不同步 | M4 云同步；现阶段 localStorage 明示 |
 | OAuth 未配 | `SKILLFEED_DEV_AUTH` 本地通路 |
 | UGC 质量 | 复用 parse + 场景；后续 pending 审核 |
@@ -436,21 +436,21 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 里程碑 | 状态 | 说明 |
 |---|---|---|
 | **M0 本地发现引擎** | ✅ 完成 | refresh/corpus/gates/scene/rank/serve；单测覆盖 |
-| **M1 消费体验产品化** | ✅ 基本完成 | 竖滑 Feed、Stories、亮点卡、发布者页、Demo；个别文案/缓存体验可继续打磨 |
+| **M1 消费体验产品化** | ✅ 基本完成 | 竖滑 Feed、动态圆环、亮点卡、发布者页、Demo；个别文案/缓存体验可继续打磨 |
 | **M2 公开可刷网站** | ✅ 完成 | Actions → Pages 已上线并可定时刷新 |
 | **M3 登录 + UGC API** | 🟡 开发完成、未生产化 | `server/` + `/publish` + 混排 API + 前端底栏对接逻辑已有；缺：正式 OAuth 配置、API 常驻部署、公开站默认 `api_base` |
-| **M3.5 Stories=关注** | ✅ 前端已落地 | Stories=关注 Builder/行业最新；入口：卡片关注/场景标签/引导环/发布者页/我的；提示「最新进顶部圆环」；pills 承担行业筛选 |
+| **M3.5 动态圆环=关注** | ✅ 前端已落地 | 动态圆环=关注 Builder/行业最新；入口：卡片关注/场景标签/引导环/发布者页/我的；提示「最新进顶部圆环」；pills 承担行业筛选 |
 | **M3.6 full/lite + picker** | ✅ 已落地 | `build_feed_html(variant=)`；本机 `feed.html`+`feed.lite.html`；站点 `index.html`+`embed.html`；skill-picker 第三 tab 嵌入 lite |
 | **M4 生产级云服务** | ⬜ 未开始 | Railway/Fly 部署、赞藏云同步、审核/举报 |
 | **M5 增长与生态** | ⬜ 未开始 | 更强个性化、与 skill-picker 安装指引联动 |
 
-**综合阶段判断：处于 M2 已交付、M3「可本地跑通 / 待上线」、M3.5 关注 Stories 已落地的过渡期（约产品成熟度 70%–75%）。**
+**综合阶段判断：处于 M2 已交付、M3「可本地跑通 / 待上线」、M3.5 关注动态圆环已落地的过渡期（约产品成熟度 70%–75%）。**
 
 ### 已交付能力清单
 
 - 多源发现管道 + 门禁 + 场景 + 排序 + corpus  
 - 公开站：https://469910093-ui.github.io/skillfeed/  
-- 前端：意图搜、**Stories=关注动态**、pills=行业/栏目筛选、关注入口与顶部圆环引导、发现/发布/我的、解决+亮点、发布者主页、打开 GitHub  
+- 前端：意图搜、**动态圆环=关注动态**、pills=行业/栏目筛选、关注入口与顶部圆环引导、发现/发布/我的、解决+亮点、发布者主页、打开 GitHub  
 - 后端骨架：GitHub OAuth（或 DEV_AUTH）、发帖、混排 Feed、SQLite  
 
 ### 明确缺口（相对完整 PRD）
@@ -478,5 +478,5 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 2026-08-03 | Feed 空结果时提供 GitHub 网页搜索兜底；不代装 | §5.2 空态、`feed_dashboard.emptyHtml` |
 | 2026-07-28 | M3.6：页面拆 full（独立网页）/ lite（picker 子页，无关注·发布·我的）；`publish-site` 双写 index+embed；`?q=` 意图预填；skill-picker 第三 tab「去 GitHub 发现」 | §1、§3、§8、§12、`feed_dashboard.py`、`skillfeed.py`、picker `discover.py`/`dashboard.py` |
 | 2026-07-28 | 订立 §0 变更纪律：产品调优必须同批回写 PRD | 流程 / 全文档 |
-| 2026-07-28 | M3.5：Stories 从模式/场景筛选改为关注 Builder+行业最新动态；pills 专司筛选；多入口关注 +「最新进顶部圆环」引导 | §5.0–5.4、§8、§9、§12、`feed_dashboard.py` |
+| 2026-07-28 | M3.5：动态圆环从模式/场景筛选改为关注 Builder+行业最新动态；pills 专司筛选；多入口关注 +「最新进顶部圆环」引导 | §5.0–5.4、§8、§9、§12、`feed_dashboard.py` |
 | 2026-07-28 | 底栏收敛为发现/发布/我的；卡片解决+亮点；发布者主页；UGC API 骨架；Pages 定时站 | M1–M3 既有交付 |

@@ -87,7 +87,7 @@ if (data.device_token) localStorage.setItem("skillfeed_dtok", data.device_token)
 | `save` | 点「收藏」 | — | 正信号 |
 | `expand_detail` | 展开卡片详情 / 查看 SKILL.md | — | 弱正信号 |
 | `not_interested` | 点「不感兴趣」 | **`scope`**（必填） | 负反馈，见 §4 |
-| `focus_set` | 顶部 Stories 关注项变更 | `focus`（数组） | 显式关注权重 |
+| `focus_set` | 顶部动态圆环关注项变更 | `focus`（数组） | 显式关注权重 |
 
 ### 2.1 `impression` 的精确定义
 
@@ -186,7 +186,7 @@ if (data.device_token) localStorage.setItem("skillfeed_dtok", data.device_token)
 
 ## 5. `focus_set`
 
-Stories 环选择变更时**全量上报当前关注集**（不是增量 diff，避免状态不同步）：
+动态圆环选择变更时**全量上报当前关注集**（不是增量 diff，避免状态不同步）：
 
 ```jsonc
 {
