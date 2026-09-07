@@ -802,4 +802,97 @@ Safari 15.4 以后才有的，不支持的浏览器会回退到 `style-src`—�
 | 4 | 一级行业负反馈 0.20 / 7 天 | **采纳**。用户点「不感兴趣」的真实意图通常针对那一条，压太狠会误伤；值已进配置段，看数据再调 |
 | 5 | 是否引入 embedding | **不引**。重估触发条件见 §3.3 |
 | 6 | `/api/events` 限流 | **本期就加**，见 §12。CTR 决定首页顺序，等于排序写权限 |
+| 7 | 无查询侧信号时 G_rel 的行为 | **跳过设卡，只算分供排序**，见 §15。个性化门禁套在没有"个人"的公开站点上，筛的不是相关性 |
 ```
+
+## 15. G_rel：个性化门禁不能套在公开站点上
+
+### 15.1 症状与定位
+
+线上供给只有本机的一半。按来源做差，缺口不是均匀的：
+
+| 来源 | 线上 | 本机 | 缺口 |
+|---|---|---|---|
+| catalog | 142 | 293 | **−151** |
+| github-search | 6 | 35 | −29 |
+| xiaohongshu | 5 | 23 | −18 |
+| hellogithub | 40 | 35 | +5 |
+| github.com/trending | 5 | 2 | +3 |
+
+漏斗指向单一原因——同样的 `min_rel: 0.15`、可比的输入量，两边 G_rel 行为相反：
+
+| | 线上 | 本机 |
+|---|---|---|
+| input | 429 | 455 |
+| passed | 175 | 374 |
+| **G_rel 拒** | **253** | **0** |
+
+### 15.2 根因：退化查询侧结构性打不出分
+
+`rank.load_interest_tokens()` 在找不到 `~/.skill-picker/catalog.json` 时退回
+`DOMAIN_TOKENS`。实测两侧规模差 **687 倍**：本机 12372 个兴趣 token，CI 只有 18 个。
+
+关键不在数量，而在**那 18 个词恰好是本语料里最普遍的词**。`skill`、`agent`、`mcp`
+出现在几乎每篇文档里，`_field_coverage` 用的 `idf = log(1 + n/(1+df))` 在 df≈n 时塌到
+log(2)≈0.69。命中它们几乎不得分——域词表在这个语料里零判别力。
+
+于是阈值筛的不再是相关性，而是「凑够了几个域词命中」。被拒的 253 条分数分布证实了这点：
+
+- min = 中位数 = **0.0800**，max = 0.1480，**没有一条接近 0** —— 不是在滤垃圾
+- 0.0800 正好是 `relevance_score` 里 `skill_path` 那 `+0.08`。即被扔掉的条目**全都有真实
+  SKILL.md**，靠"确认自己是 skill"这唯一一条证据拿到了全部分数
+- 名单里是 `antfu/skills`（19 条）、`microsoft/azure-skills`（14 条）、
+  `vercel-labs/agent-skills`、`mattpocock/skills`、`larksuite/cli` —— 生态里最正典的仓库
+
+门禁在精准地扔掉那些最有资格留下的条目。
+
+### 15.3 处理：缺信号标 SKIP，不当 0 分拒
+
+```python
+rel_signal = bool((set(interest_toks) - rank.DOMAIN_TOKENS) or query_extra)
+```
+
+三种情形因此各得其所：本机有 catalog → 照常设卡；用户给了显式 `intent` → 用 intent
+当查询侧设卡；两者皆无 → 只算分供排序，不设卡。
+
+这与 `G_star` 对策展源的处理是同一条原则：**缺信号标 SKIP，不当 0 分拒**。分数照算并
+写进 `rel_score`，排序不受影响。漏斗新增 `rel_gate` 字段（`on` / `skip:no-interest-signal`），
+否则「G_rel 拒 0 条」在本机和在 CI 是两个完全不同的含义。
+
+**离线回放（同一批 388 条真实条目，同一阈值，只切换有无 catalog）**
+
+| | 修复前 | 修复后 |
+|---|---|---|
+| 本机（12372 个兴趣词） | 387 过 | 387 过 |
+| CI（18 个域词） | **164 过**（拒 223） | **387 过** |
+
+本机行为逐条未变，CI 从 164 恢复到 387，两侧完全一致——这才是「无漂移」的定义。
+
+### 15.4 为什么之前没被测出来
+
+改动前 358 个测试里**没有一个跑过"无兴趣信号"这条路径**。`TestGates.setUp` 用的
+`rank.load_interest_tokens(None)` 恰好就是退化词表，但那批用例全部把 `min_rel` 设成
+0.05，谁也没触到阈值。覆盖的形状对了、取值没对，等于没覆盖。
+
+现补 `TestRelevanceGateSignal`（5 条）。其中回归用例先自证「这些样本在原逻辑下确实低于
+阈值」再断言放行，避免哪天打分变了让样本天然过线、测试退化成永真式。9 种变异全部抛住。
+
+### 15.5 顺带修掉漂移的载体
+
+`pages.yml` 曾手抄一份完整 config 字典，14 个键里 6 个已和 `config_defaults.json`
+对不上（`hg_max_issues` 8/12、`corpus_feed_limit` 300/400、`soft_skill_limit` 30/40、
+`search_max_repos` 30/40、`search_per_page` 20/25、`search_probe_limit` 25→10），
+而且从 diff 上看不出哪个是有意调小、哪个是抄漏了。
+
+改成**读默认值 + 两层显式覆盖**：
+
+- `ci_only`：`hellogithub_repo`（runner 上的 checkout 路径）、`user_agent`、
+  `interest_from=""`（让 G_rel 的 SKIP 是明确声明的结果，而不是"CI 上恰好没这个文件"的副作用）
+- `budget`：被 45 分钟 timeout 和 API 配额压着调小的 4 个键，注释写明是刻意的
+
+`corpus_feed_limit` / `soft_skill_limit` 不进预算档——它们是本地筛选上限、不产生网络请求，
+恢复默认值 400/40。build job 实测 9 分钟（最长 14.2），timeout 余量 30 分钟，多翻两百条塞得下。
+
+`tests/test_workflow_config.py` 锁住这个结构：预算档里每个键都必须**真的不同于默认值**
+（值相同即纯复制，等着漂移）、键名必须真实存在（打错会静默无效）、`cfg = {` 这种手抄写法
+不许回来。

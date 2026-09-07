@@ -106,6 +106,21 @@ def run_gates(
     query_extra = rank.tokenize(intent, query=True) if intent else set()
     interest = set(interest_toks) | query_extra
 
+    # G_rel 是个性化门禁，查询侧要么来自本机 skill-picker catalog，要么来自显式
+    # intent。两者都缺时 interest 退化成 DOMAIN_TOKENS，而那 19 个词恰好是本语料
+    # 里最普遍的词——df≈n 把 idf 压到 log(2)，命中它们几乎不得分。于是阈值筛的不
+    # 再是「相关性」，而是「凑够了几个域词命中」。
+    #
+    # 公开站点上实测过后果：429 进 175 出，G_rel 一家拒了 253 条，被拒分数
+    # min=中位=0.0800、max=0.1480，没有一条接近 0——不是在滤垃圾。0.0800 正好是
+    # skill_path 那 +0.08，意味着被扔掉的条目全都有真实 SKILL.md，靠"确认是
+    # skill"这一条证据拿到了全部分数。名单里是 antfu/skills、microsoft/azure-skills、
+    # vercel-labs/agent-skills 这类最正典的仓库。
+    #
+    # 没有查询侧信号时就不存在"相关"这个判断，跳过比套一个假阈值诚实。这与
+    # G_star 对策展源的处理是同一条原则：缺信号标 SKIP，不当 0 分拒。
+    rel_signal = bool((set(interest_toks) - rank.DOMAIN_TOKENS) or query_extra)
+
     docs = [
         " ".join([
             c.get("name", ""),
@@ -131,6 +146,9 @@ def run_gates(
         "parse_reasons": {},
         "details": [],
         "allowed_sources": sorted(allowed),
+        # 漏斗要能自己说清 G_rel 这轮是真在筛还是被跳过了。少了这行，
+        # "G_rel 拒 0 条"在本机和在 CI 是两个完全不同的含义。
+        "rel_gate": "on" if rel_signal else "skip:no-interest-signal",
     }
     passed: list[dict] = []
 
@@ -191,9 +209,9 @@ def run_gates(
             })
             continue
 
-        # G_rel
+        # G_rel（无查询侧信号时只算分不设卡，理由见上面 rel_signal）
         score, why = rank.relevance_score(c, interest, df, n)
-        if score < min_rel:
+        if rel_signal and score < min_rel:
             summary["rejected"]["G_rel"] += 1
             summary["details"].append({
                 "repo": full_name, "gate": "G_rel", "ok": False,
@@ -209,7 +227,7 @@ def run_gates(
         item["gates"] = {
             "G_source": "PASS",
             "G_star": "PASS" if stars >= 0 else "SKIP",
-            "G_rel": "PASS",
+            "G_rel": "PASS" if rel_signal else "SKIP",
             "G_parse": "PASS",
         }
         passed.append(item)

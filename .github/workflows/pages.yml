@@ -115,28 +115,52 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
+
+          ws = Path(os.environ["GITHUB_WORKSPACE"])
           home = Path(os.environ["SKILLFEED_HOME"])
           home.mkdir(parents=True, exist_ok=True)
-          cfg = {
-              "min_stars": 20,
-              "min_rel": 0.15,
-              "since": "daily",
-              "ttl_hours": 6,
-              "gate_profile": "standard",
-              "hellogithub_repo": str(Path(os.environ["GITHUB_WORKSPACE"]) / "_hellogithub"),
+
+          # 以仓库默认值为底，只叠 CI 确实需要不一样的键。
+          #
+          # 这里曾经是一份手抄的完整字典。抄下来的 14 个键里有 6 个已经和
+          # config_defaults.json 对不上（hg_max_issues 8/12、corpus_feed_limit
+          # 300/400、soft_skill_limit 30/40、search_max_repos 30/40、
+          # search_per_page 20/25、search_probe_limit 10/25），而且没人能从
+          # diff 上看出来是有意调小还是抄漏了。改成读默认值 + 显式覆盖，
+          # 以后仓库默认值一改就自动跟上，漂移这个类别的问题就没有载体了。
+          cfg = json.loads((ws / "config_defaults.json").read_text(encoding="utf-8"))
+
+          ci_only = {
+              # 默认路径 ~/.hellogithub/HelloGitHub 在 runner 上不存在，
+              # 内容来自上面那步的 sparse checkout。
+              "hellogithub_repo": str(ws / "_hellogithub"),
+              # 让上游能从 UA 上区分「定时公开构建」和「某个人的本机跑数」。
+              "user_agent": "skill-feed/0.3 (+github-pages; recommend-only)",
+              # 公开站点没有"某个人"，个性化查询侧不存在。写空是为了让
+              # gates 里的 G_rel SKIP 是明确声明的结果，而不是"CI 上恰好
+              # 没有这个文件"的副作用。
+              "interest_from": "",
+          }
+
+          # CI 预算档：这几个不是默认值，是被 45 分钟 timeout 和 API 配额压着
+          # 调小的。留在这里必须写清楚是刻意的——上面那 6 个键之所以变成漂移，
+          # 就是因为当初没区分「有意调小」和「抄了一份」。
+          budget = {
               "hg_max_issues": 8,
-              "corpus_feed_limit": 300,
-              "soft_skill_limit": 30,
-              "search_enabled": True,
               "search_max_repos": 30,
               "search_per_page": 20,
               "search_probe_limit": 10,
-              "user_agent": "skill-feed/0.3 (+github-pages; recommend-only)",
           }
+
+          cfg.update(ci_only)
+          cfg.update(budget)
           (home / "config.json").write_text(
               json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
           )
           print("config ->", home / "config.json")
+          print("继承默认值:", len(cfg) - len(ci_only) - len(budget), "个键")
+          print("CI 覆盖:", json.dumps(ci_only, ensure_ascii=False))
+          print("预算档:", json.dumps(budget, ensure_ascii=False))
           PY
 
       - name: Refresh feed
