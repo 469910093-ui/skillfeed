@@ -888,11 +888,13 @@ class TestContrastTokens(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+        # 底色从令牌里读，不写死：写死的话，换了 --bg 就没人再验这两条了
+        cls.BACKGROUNDS = (_css_token(cls.html, "card"), _css_token(cls.html, "bg"))
 
     def test_muted_passes_aa_on_both_page_backgrounds(self):
         muted = _css_token(self.html, "muted")
-        # --muted 落在卡片白 #ffffff 和页面底 #fafafa 两种底色上
-        for bg in ("#ffffff", "#fafafa"):
+        # --muted 同时落在卡片底和页面底上
+        for bg in self.BACKGROUNDS:
             with self.subTest(bg=bg):
                 self.assertGreaterEqual(
                     _wcag_ratio(muted, bg), self.AA_TEXT,
@@ -901,7 +903,7 @@ class TestContrastTokens(unittest.TestCase):
     def test_like_ink_passes_aa_and_keeps_the_brand_hue(self):
         like = _css_token(self.html, "like")
         like_ink = _css_token(self.html, "like-ink")
-        for bg in ("#ffffff", "#fafafa"):
+        for bg in self.BACKGROUNDS:
             with self.subTest(bg=bg):
                 self.assertGreaterEqual(_wcag_ratio(like_ink, bg), self.AA_TEXT)
 
@@ -932,6 +934,119 @@ class TestContrastTokens(unittest.TestCase):
                 self.assertGreaterEqual(
                     ratio, self.AA_TEXT,
                     f"头像字母 {fg} on {bg} 只有 {ratio:.2f}:1")
+
+
+class TestNoInstagramTradeDress(unittest.TestCase):
+    """页面外壳不许把 Instagram 的品牌识别要素搬回来。
+
+    断言范围是**页面外壳**（`<style>` + head + 静态 markup），刻意剔掉 `<script>`
+    里的内容数据。因为 feed 里本来就有正当提到 Instagram 的条目
+    （`instagram-curator`、"TikTok and Instagram carousel" 之类），
+    对整页 HTML 做字符串断言会在有真实内容时误报——空 feed 下还是绿的，
+    一上线就炸，属于最难查的那种假绿。
+
+    同理，源码 docstring 里写「哪些值不许用」是文档，不算违规。
+
+    这里只拦真正带识别性的东西。中性灰（#fafafa / #262626 / #dbdbdb）不在名单里，
+    浅灰不构成任何人的品牌识别，理由见 docs/brand-tokens.md。
+    """
+
+    BANNED = {
+        "billabong": "Instagram 字标本身用的字体",
+        "#f09433": "IG 渐变起点",
+        "#e6683c": "IG 渐变",
+        "#dc2743": "IG 渐变",
+        "#cc2366": "IG 渐变",
+        "#bc1888": "IG 渐变终点",
+        "#ed4956": "IG 的点赞红",
+        "#00376b": "IG 的链接蓝",
+    }
+
+    # 内容里正当提到 Instagram 的条目：用来证明下面的断言不会对它误报
+    ITEM_MENTIONING_IG = {
+        "full_name": "someone/instagram-curator",
+        "name": "instagram-curator",
+        "owner": "someone",
+        "description": "Instagram marketing specialist for visual storytelling.",
+        "one_liner_zh": "帮你做 Instagram 视觉运营的 skill。",
+        "url": "https://github.com/someone/instagram-curator",
+        "source": "corpus",
+        "kind": "skill",
+        "stars": 12,
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = feed_dashboard.build_feed_html(
+            {"items": [cls.ITEM_MENTIONING_IG], "corpus": []})
+        # 剔掉 <script>：那里面是内容数据和模板，不是我们的品牌外观
+        cls.chrome = re.sub(r"<script>.*?</script>", "", cls.html, flags=re.S).lower()
+
+    def test_content_mentioning_instagram_is_present_so_the_fixture_is_meaningful(self):
+        """先确认夹具真的把 Instagram 写进了页面，否则下面两条断言是空过。"""
+        self.assertIn("instagram", self.html.lower())
+
+    def test_no_banned_brand_values_reach_the_page_chrome(self):
+        for token, why in self.BANNED.items():
+            with self.subTest(token=token):
+                self.assertNotIn(
+                    token, self.chrome,
+                    f"{token}（{why}）出现在页面外壳里；换个自己的值，别搬 IG 的")
+
+    def test_chrome_does_not_advertise_itself_as_instagram(self):
+        """外壳里不许出现自称「Instagram 风格」的字样。
+
+        前向防护，不是在拦历史问题：原来那句自称写在 Python docstring 里，
+        从没进过 HTML。这条挡的是往后有人把它写进 title / meta description /
+        tagline——自称照抄是意图的书面证据，比色值本身更难解释。
+        """
+        self.assertNotIn("instagram", self.chrome)
+
+    def test_wordmark_is_solid_accent_not_a_gradient_fill(self):
+        """让人一眼认成 IG 的是「手写体字标 + 渐变填充」这个组合，不是单一元素。"""
+        m = re.search(r"\.logo\s*\{(.*?)\}", self.html, flags=re.S)
+        self.assertIsNotNone(m, "找不到 .logo 规则")
+        self.assertNotIn("background-clip", m.group(1),
+                         ".logo 又变回渐变填充的字了")
+        self.assertIn("var(--accent)", re.search(
+            r"\.logo\s+span\s*\{(.*?)\}", self.html, flags=re.S).group(1))
+
+    def test_ring_gradient_stays_in_the_accent_family(self):
+        """头像环是渐变最大的曝光面：每张卡片一个。"""
+        m = re.search(r"--ring:\s*([^;]+);", self.html)
+        self.assertIsNotNone(m, "找不到 --ring")
+        self.assertIn("var(--accent)", m.group(1))
+
+
+class TestAriaLabelsAreLocalized(unittest.TestCase):
+    """aria-label 不许硬编码：中文用户开读屏时不该听到英文，反之亦然。
+
+    静态标签靠 data-i18n-aria + applyLang() 换，模板里拼出来的靠 tr()。
+    漏一个的表现是「切了语言但读屏还是旧语言」，肉眼完全看不出来，只能靠这条拦。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = Path(feed_dashboard.__file__).read_text(encoding="utf-8")
+
+    def test_every_aria_label_is_wired_to_i18n(self):
+        offenders = []
+        for lineno, line in enumerate(self.src.splitlines(), 1):
+            for m in re.finditer(r'aria-label=(["\'])(.*?)\1', line):
+                val = m.group(2)
+                if "${" in val:
+                    # 模板插值：值本身或同函数内的变量必须过 tr()
+                    if "tr(" not in val and "Aria}" not in val:
+                        offenders.append((lineno, val, "插值但没走 tr()"))
+                elif "data-i18n-aria" not in line:
+                    offenders.append((lineno, val, "静态且没挂 data-i18n-aria"))
+        self.assertEqual([], offenders, f"这些 aria-label 没接 i18n：{offenders}")
+
+    def test_applylang_actually_rewrites_aria_labels(self):
+        """光挂 data-i18n-aria 不够，还得真有代码去读它。"""
+        self.assertRegex(
+            self.src,
+            r"setAttribute\(\s*['\"]aria-label['\"]\s*,\s*tr\(")
 
 
 @unittest.skipIf(NODE is None, "需要 node 才能跑 cardHtml / renderStories")

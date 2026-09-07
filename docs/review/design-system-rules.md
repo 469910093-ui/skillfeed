@@ -34,6 +34,11 @@
 
 ### 1.1 唯一的令牌定义点
 
+> **注意：下面这份令牌快照已过期。** 本文是审计报告，保留审计当时的原样以便对照，
+> 不随代码更新。品牌令牌（`--like` / `--link` / `--ring` / `--logo`）后来因为
+> Instagram trade dress 风险已整组替换，`--muted` 也已因对比度改为 `#737373`。
+> **当前生效的值看 [`docs/brand-tokens.md`](../brand-tokens.md)。**
+
 全库只有一处 CSS 变量声明，写在 Python f-string 字面量里：
 
 ```42:54:feed_dashboard.py

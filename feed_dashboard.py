@@ -1,4 +1,23 @@
-"""生成 Instagram 风格无限下滑 Feed HTML（只推荐到 GitHub）。"""
+"""生成竖向无限下滑 skill 发现 Feed 的 HTML（只推荐到 GitHub）。
+
+版式沿用移动信息流的通用惯例（单列窄壳、卡片、story 横条、双击点赞、红心=已赞），
+这些是行业通用交互，不是谁的品牌识别，可以放心用。品牌要素则一律是自己的。
+
+下面这几样不许搬回来（`TestNoInstagramTradeDress` 会拦，理由见 docs/brand-tokens.md）：
+
+- 字标字体 ``Billabong``。它就是 Instagram 字标本身用的字体，风险最高的一项。
+  顺带一提它根本不在 Google Fonts 上，原来那行 ``family=Billabong`` 一直是空转：
+  实测加与不加，返回的 CSS 都是同样的 3724 字节 / 9 个 @font-face。
+- 那条 5 段暖色→洋红渐变 ``#f09433 → #e6683c → #dc2743 → #cc2366 → #bc1888``。
+  它是 Instagram 最可识别的品牌资产，原先同时铺在字标和每张卡片的头像环上。
+- 「手写体字标 + 暖色渐变填充」这个**组合**。单换字体或单换渐变都不够，
+  是这个组合让人一眼把页面认成 Instagram。
+- 具体色值 ``#ed4956``（IG 的点赞红）与 ``#00376b``（IG 的链接蓝）。
+
+反过来，``--bg: #fafafa`` / ``--ink: #262626`` / ``--line: #dbdbdb`` 这类中性灰
+**刻意保留**：浅灰不构成任何人的品牌识别，把它挪到 #f5f6f7 这种 12 个 RGB 单位的
+位移，肉眼看不出、也不减少任何风险，只会让 CSS 里那些实测对比度比值全部作废。
+"""
 
 from __future__ import annotations
 
@@ -64,26 +83,38 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 <title>{page_title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Billabong&family=Cookie&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+  /* 色板与字体的取值依据、以及哪些值不许搬回来，写在本文件模块 docstring
+     和 docs/brand-tokens.md，不写在这里：这段 CSS 会随页面发给每个访客。 */
   :root {{
     --bg: #fafafa;
     --ink: #262626;
-    /* #8e8e8e 是 IG 抄来的，在 #fff 上只有 3.28:1、#fafafa 上 3.14:1。这个令牌承载
-       「适合谁 / 为什么推荐」这类决策文案，是全站最需要读清的字。#737373 是同为纯灰、
-       在两种底色上都过 AA 的最亮值（4.74 / 4.54），再亮一档 #747474 就掉到 4.48。 */
+    /* 承载「适合谁 / 为什么推荐」这类决策文案，全站最需要读清的字。
+       #737373 是纯灰里在 #fff 和 #fafafa 上都过 AA 的最亮值（4.74 / 4.54），
+       再亮一档 #747474 就掉到 4.48。 */
     --muted: #737373;
     --line: #dbdbdb;
     --card: #ffffff;
-    --like: #ed4956;
-    /* --like 当文本用时只有 3.69:1。--like-ink 锁住同一色相（355.2°）与饱和度，
-       只把明度从 .93 降到 .81，换来 #fff 上 4.71:1、#fafafa 上 4.51:1。
-       图标填充/背景仍用 --like：非文本元素 3:1 即可，3.69 本来就达标。 */
-    --like-ink: #ce404b;
-    --link: #00376b;
-    --ring: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+
+    /* 全站唯一的强调色。当文本用（字标、链接）实测 5.70 / 5.46。 */
+    --accent: #1e7362;
+    --accent-strong: #155246;   /* hover / press，9.02 / 8.65 */
+
+    /* 头像环与 story 环：单一色族的两段渐变。 */
+    --ring: linear-gradient(135deg, var(--accent) 0%, #43a880 100%);
+
+    /* --like 只做图标填充与背景：非文本元素 3:1 即可，实测 4.37 / 4.18。 */
+    --like: #e0364f;
+    /* --like 当文本用在 #fafafa 上只有 4.18，掉出 AA。--like-ink 锁住同一色相
+       （偏离 0.07°）与饱和度，只把明度从 .88 降到 .84，换来 4.71 / 4.52；
+       再亮一档 #d7344c 就掉回 4.49。 */
+    --like-ink: #d6344c;
+    /* 链接复用 accent，不引入第二个「差不多但不一样」的绿。 */
+    --link: var(--accent);
+
     --font: "Outfit", "PingFang SC", "Microsoft YaHei", sans-serif;
-    --logo: "Cookie", "Billabong", cursive;
+    --logo: "Outfit", "PingFang SC", sans-serif;
     --phone: 470px;
   }}
   * {{ box-sizing: border-box; }}
@@ -109,17 +140,17 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     border-bottom: 1px solid var(--line);
   }}
   .top-left {{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }}
+  /* 字标：Outfit 800 实心字，不用手写体、不做渐变填充。实心色顺带省掉一次
+     background-clip:text（它在部分安卓 WebView 上会把字渲染成透明）。 */
   .logo {{
     font-family: var(--logo);
-    font-size: 2rem;
-    line-height: 1;
-    letter-spacing: .02em;
-    background: var(--ring);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    font-size: 1.6rem;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -.02em;
+    color: var(--ink);
   }}
-  .logo span {{ color: var(--ink); background: none; -webkit-background-clip: unset; background-clip: unset; }}
+  .logo span {{ color: var(--accent); }}
   .status {{
     font-size: .62rem; color: var(--muted); font-weight: 600;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -130,6 +161,9 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     cursor: pointer; color: var(--ink); display: inline-flex;
   }}
   .icon-btn svg {{ width: 24px; height: 24px; }}
+  /* Demo 相关的红（这里 + .demo-badge + .demo-bar .dot）是故意的：
+     它表达「正在运行」这个瞬时状态，和录制指示灯同一类语义，不是强调色。
+     别把它们一起改成 --accent。 */
   .icon-btn.demo-on {{ color: var(--like); }}
 
   .lang-toggle {{
@@ -259,7 +293,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     from {{ opacity: 0; transform: translateY(16px); }}
     to {{ opacity: 1; transform: none; }}
   }}
-  .post.focus {{ box-shadow: inset 3px 0 0 var(--like); }}
+  .post.focus {{ box-shadow: inset 3px 0 0 var(--accent); }}
 
   .post-head {{
     display: flex; align-items: center; gap: 10px;
@@ -363,7 +397,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .pitch .highlights li::before {{
     content: "✦"; position: absolute; left: 10px; top: 8px;
-    color: var(--like-ink); font-size: .75rem;
+    color: var(--accent); font-size: .75rem;   /* 在 #f6f8fa 上 5.35:1 */
   }}
   .pitch .who-for {{
     margin: 8px 0 0; font-size: .76rem; color: var(--muted); line-height: 1.4;
@@ -433,7 +467,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .sheet-row .meta {{ flex: 1; min-width: 0; }}
   .sheet-row .meta b {{ display: block; font-size: .88rem; }}
   .sheet-row .meta span {{ font-size: .72rem; color: var(--muted); }}
-  .sheet-row .act-label {{ font-size: .72rem; font-weight: 700; color: var(--like-ink); white-space: nowrap; }}
+  .sheet-row .act-label {{ font-size: .72rem; font-weight: 700; color: var(--accent); white-space: nowrap; }}
   .sheet-close {{
     appearance: none; width: 100%; margin-top: 8px; border: 0; background: #efefef;
     border-radius: 10px; padding: 10px; font: inherit; font-weight: 700; cursor: pointer;
@@ -511,7 +545,9 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     min-width: 52px;
   }}
   .nav svg {{ width: 24px; height: 24px; }}
-  .nav.on {{ color: var(--like-ink); }}
+  /* 底部导航激活态走品牌色。红色只留给「已赞」这一个语义，
+     否则页面上会同时存在绿和红两个强调色，谁是品牌就说不清了。 */
+  .nav.on {{ color: var(--accent); }}
   .me-panel {{ padding: 18px 16px 28px; }}
   .me-panel h2 {{ margin: 0 0 6px; font-size: 1.2rem; }}
   .me-panel .lead {{ color: var(--muted); font-size: .88rem; line-height: 1.45; margin: 0 0 16px; }}
