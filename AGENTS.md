@@ -35,6 +35,13 @@ python skillfeed.py serve      # Instagram 板式信息流（会自动 build）
 - `python skillfeed.py refresh [--since daily|weekly] [--force] [--intent TEXT]`
 - `python skillfeed.py xhs-crawl [--keyword TEXT] [--max N]` — 媒讯助手/Chrome 采小红书
 - `python skillfeed.py build [--intent TEXT]` — 不联网重生信息流 HTML
+- `python skillfeed.py i18n [--force] [--limit N] [--model NAME]` — 只补中英双语卡片文案
+  （需 `DASHSCOPE_API_KEY`；缓存在 `~/.skill-feed/i18n/cards.jsonl`，页面默认显示中文）
+- `python skillfeed.py bitable init --base-token TOKEN` — 在飞书 Base 里建「译稿库」表
+- `python skillfeed.py bitable pull` — 表 → 本地缓存，把人工验收/改写的译稿拉回来
+- `python skillfeed.py bitable push` — 新译稿 → 表（**永不覆盖已验收的行**）
+- `python skillfeed.py bitable sync` — pull → 重跑 i18n → push，一条命令走完
+- `python skillfeed.py bitable dedupe` — 清掉唯一键重复的行
 - `python skillfeed.py corpus [--max-issues N]`
 - `python skillfeed.py publish-site [--out site]` — 导出 GitHub Pages 静态站
 - `python skillfeed.py api [--port 8787]` — 云端 API（登录 + UGC，需 `requirements-server.txt`）
@@ -59,6 +66,24 @@ UGC API：`server/`（FastAPI + SQLite）。本地可先 `SKILLFEED_DEV_AUTH=1`�
 4. 代码与 PRD 冲突时，**先改 PRD 再改代码**（或同 PR 内两者一起改完）  
 
 未回写 PRD 的产品改动视为未完成，不得只改 `feed_dashboard.py` / 引擎参数就结束。
+
+## 小红书 → GitHub → 多维表格（强制 loop）
+
+每次收到媒讯助手 / web-collection 导出的小红书 CSV 后，**必须**跑：
+
+```bash
+cd skill-feed
+python scripts/xhs_bitable_loop.py run --note-link-limit 8
+python scripts/xhs_bitable_loop.py audit-stars
+```
+
+流程：
+1. 读**原 CSV 原地更新**（不新建 CSV）：补 `正文`，追加 `提取GitHub仓` / `校验状态` / `评星` / `是否通过门禁` / `更新时间`
+2. connector 缓存 + web-collection `noteLink`（local，限量）补正文
+3. GitHub 实网校验：存在 + `min_stars`（默认 20）+ 有 `SKILL.md`
+4. 通过者写入飞书多维表格，**来源=小红书**
+
+多维表格全量导出请用 `export_to_bitable.py --scope feed`（勿用 `--scope full`，否则会灌入 HelloGitHub 全刊 OSS，来源统计全是 HelloGitHub）。
 
 ## 注意
 

@@ -1,0 +1,78 @@
+# ruff 配置。用 ruff.toml 而不是 pyproject.toml：本仓不是可安装的 Python 包，
+# 加 pyproject 会凭空声明一个包结构，反而给别的工具制造误判。
+#
+# 规则集的选法：不是抄默认最严那套。`--select ALL` 在本仓报 5829 条，
+# 其中 1956 条是 RUF001/002/003（中文标点被当成「歧义 Unicode」）、618 条是
+# PT009（要求把 unittest 改写成 pytest 断言）、536 条 E501。这类配置没人会开，
+# 等于没接。下面这组是「现在基本能过、且拦得住真 bug」的交集。
+
+target-version = "py312"
+# 只影响 `ruff format` 和 E501；E501 目前没启用（见文末待开清单），
+# 这里给的是本仓现有代码 95 分位的宽度，将来开 E501 时不至于一次报几百条。
+line-length = 110
+
+extend-exclude = [
+    "site",                # publish-site 的产物
+    ".skill-feed-data",    # CI 里的 SKILLFEED_HOME
+    "_xss_probe",          # 一次性排查脚本，不进流水线
+    "小红书搜集",           # 采集下来的素材目录
+]
+
+[lint]
+# 每一族都是「命中即多半是缺陷」，而不是风格偏好：
+select = [
+    "F",     # pyflakes：未定义名(F821)、未使用导入(F401)、f-string 漏 f、重复参数
+    "E4",    # 导入位置（E402），配合 scripts/ 里的 sys.path hack
+    "E7",    # == None / == True、裸 except、lambda 赋值、歧义变量名
+    "E9",    # 语法错误与 IO 错误
+    "B",     # bugbear：可变默认参数、循环里捕获变量、zip 无 strict
+    "BLE",   # 裸 except Exception。本仓大量地方是故意的，靠已有的 # noqa: BLE001 抑制
+    "A",     # 遮蔽内建名
+    "N",     # 命名规范
+    "PLE",   # pylint 的 error 档
+    "ISC",   # 隐式字符串拼接（漏逗号导致两个列表元素被悄悄粘成一个）
+    "T10",   # 忘删的 breakpoint()
+    "LOG",   # logging 误用
+    "G",     # logging 格式化误用
+    "ASYNC", # 异步里的阻塞调用（server/ 是 FastAPI）
+    "RUF100",# 失效的 noqa —— 本仓正是因为缺这条，攒了一批写给不存在 linter 的注释
+]
+
+# 存量债快照（2026-09-03）。这些不是「决定长期关掉」，而是「本轮有 5 个 agent
+# 在并行改这些文件，不在同一个 diff 里混进格式改动」。清理完请删掉对应行——
+# 行留着而违规没了的话，RUF100 管不到 per-file-ignores，只能靠人删。
+[lint.per-file-ignores]
+# TODO(P0): 452 行引用了从未创建的 p_exp，main() 一进来就 NameError，
+# 这个脚本目前任何子命令都跑不起来。这是真 bug，不是风格问题，修完删掉本行。
+"scripts/export_to_bitable.py" = ["F821"]
+# scripts/ 下的运维脚本：sys.path hack 后再 import（E402）、逐条容错的采集循环（BLE001）。
+# 附带 RUF100：文件里已有一个 `# noqa: E402`，E402 被本行豁免后那个注释就成了死注释，
+# 不一起豁免会自相矛盾。E402 清干净时这两条一起删。
+"scripts/xhs_bitable_loop.py" = ["E402", "BLE001", "B007", "RUF100"]
+"ranking.py" = ["F401", "B007"]
+"server/app.py" = ["F401"]
+"server/ranking_service.py" = ["B905"]
+# 两处 `# noqa: N802`（do_GET / do_POST）在 ruff 下不成立：ruff 的 N802 不判这种
+# 形态。等 skillfeed.py 空出来直接删掉那两个注释，然后删掉本行。
+"skillfeed.py" = ["RUF100"]
+"tests/test_feed_dashboard.py" = ["ISC004"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# 后续可逐步打开的清单（按「收益 / 改动量」排序，括号内是当前违规数）。
+# 每一条单独开一轮，别一次性全开：
+#
+#   1. RUF005/RUF012/RUF015/RUF017 等 RUF 非 Unicode 部分（约 20）——真问题居多
+#   2. C4 列表/字典推导（4）、PIE（5）、RET504（5）、SIM102/103/211（12）
+#   3. PERF（7）、FURB（30）——多为可读性提升，无行为变化
+#   4. UP 现代化语法（146，其中 UP045 Optional→| None 占 130，可 --fix）
+#   5. DTZ（1）+ 补齐 datetime.now(tz=...)
+#   6. TRY（24）、EM（21）——异常信息规范，改动面大
+#   7. E501 行宽（536 @110 列）——建议先上 `ruff format` 再开，否则纯手工
+#   8. S 安全族（39）——多为 S310 urlopen / S603 subprocess，需逐条判是否误报
+#
+# 明确不打算开：
+#   - RUF001/002/003（1956）：把中文全角标点判成「歧义字符」，本仓是中文项目
+#   - PT009（618）：要求 unittest → pytest 断言，本仓刻意只用标准库 unittest
+#   - T201 print（192）：skillfeed.py 是 CLI，print 就是它的用户界面
+#   - D 文档字符串族（约 800）、ANN 类型标注族（约 440）、CPY 版权头（63）
+#   - PTH os.path→pathlib：scripts/ 里大量使用，收益低于改动风险

@@ -1,0 +1,80 @@
+# lint + 单测。pages.yml 用 workflow_call 复用本文件，所以「发布前跑测试」和
+# 「改代码就跑测试」共用同一份定义，不会两边漂移。
+#
+# 为什么 push 触发不加 paths 过滤：pages.yml 的 paths 是一份枚举清单，
+# 新文件（feedback.py / impressions.py / ranking.py / server/ 等）没进去就完全
+# 不触发 CI。这个作业只花几十秒，宁可多跑，也不要留「改了却没人测」的口子。
+# 代价是推到 main 时本文件会跑两次（一次独立触发、一次被 pages.yml 调用）。
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+# 本作业不需要任何写权限，也不接收任何 secret。
+# 被 workflow_call 调用时 GitHub 默认不传 secrets，正好保证这一点。
+permissions:
+  contents: read
+
+concurrency:
+  # 按分支收敛：同一分支连续推送时只跑最后一次。
+  # 注意不能和 pages.yml 的 `group: pages` 同名，否则发布会被 CI 取消。
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 版本钉死：linter 不钉版本的话，上游发新规则会让 CI 在零代码改动下变红。
+      # 升级要作为一次显式改动来做（顺手确认新规则的违规量）。
+      - name: Install ruff
+        run: python -m pip install --disable-pip-version-check "ruff==0.16.5"
+
+      # 规则集与存量豁免见仓库根的 ruff.toml，那里写了为什么不用默认最严那套。
+      - name: Ruff check
+        run: ruff check --output-format github .
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-server.txt
+
+      # server/ 的测试用 unittest.skipUnless 守着 fastapi 导入：不装依赖它们会
+      # 静默跳过（约 60 个用例），CI 照样绿。所以这里必须装，让跳过变成不可能。
+      - name: Install server deps
+        run: python -m pip install --disable-pip-version-check -r requirements-server.txt
+
+      - name: Unit tests
+        env:
+          # 刻意留空：单测不该依赖任何外部凭据。留空而不是不写，是为了让
+          # 「某个测试偷偷读环境变量走了真实 API」这件事在这里就暴露，
+          # 而不是等到有人在本地配了 key 才碰巧通过。
+          DASHSCOPE_API_KEY: ""
+          DASHSCOPE_BASE_URL: ""
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          # 指向 runner 临时目录：测试写数据也不碰真实 ~/.skill-feed
+          SKILLFEED_HOME: ${{ runner.temp }}/skillfeed-test-home
+          # .github/nonet/sitecustomize.py 会拦掉所有非 loopback 出网，
+          # 让「单测偷偷打真实 API」变成明确报错而不是偶发超时
+          PYTHONPATH: ${{ github.workspace }}/.github/nonet
+        run: |
+          mkdir -p "$SKILLFEED_HOME"
+          python -m unittest discover -s tests -v

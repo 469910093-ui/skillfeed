@@ -13,3 +13,7 @@ site/
 .env
 *.db
 .server-data/
+# 小红书采集的原始 CSV：含 xsec_token 分享凭据和博主昵称/笔记 ID（抓来的第三方
+# 个人信息），本仓库是公开的，不入库。scripts/xhs_bitable_loop.py 从磁盘读，
+# 目录留在本地即可。
+小红书搜集/

@@ -12,6 +12,7 @@ on:
       - "skillfeed.py"
       - "feed_dashboard.py"
       - "feed_pack.py"
+      - "i18n.py"
       - "gates.py"
       - "rank.py"
       - "scene.py"
@@ -20,8 +21,14 @@ on:
       - "github_search.py"
       - "hellogithub.py"
       - "skill_detect.py"
+      - "highlights.py"
+      - "catalog_sources.py"
+      - "xiaohongshu.py"
       - "config_defaults.json"
       - ".github/workflows/pages.yml"
+      - ".github/workflows/ci.yml"
+# 这里刻意不挂 pull_request：PR 的 lint/单测由 ci.yml 全量覆盖，
+# 在本文件再挂一次只会在 checks 列表里多出一组完全重复的作业。
 
 permissions:
   contents: read
@@ -33,7 +40,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 发布门禁：lint + 单测。复用 ci.yml，避免两份定义漂移。
+  # workflow_call 默认不向被调用的 workflow 传 secrets —— 单测因此在结构上
+  # 就拿不到 DASHSCOPE_* / 自定义 token，"单测不依赖凭据"不靠自觉。
+  gate:
+    uses: ./.github/workflows/ci.yml
+
   build:
+    # 门禁不过就不发布。取舍见下面「为什么定时任务也要被拦」。
+    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -53,6 +68,36 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      # 缺 secret 时 skillfeed 只在 36 分钟的日志里打一行 WARN，run 状态仍然是绿的。
+      # 「悄悄发一个降级站」比「明确失败」更难被发现，所以这里把降级抬到
+      # run 页面的 annotation + summary 上——不看日志也能看见。
+      - name: 预检凭据（降级要喊出来）
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
+          # 这个不需要人配：Actions 每次 run 自动注入。为空只可能是 permissions 配错。
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "### 本次发布的凭据状态" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "::error title=缺少 GITHUB_TOKEN::api.github.com 匿名访问会 403（不是限流，是拒绝），monorepo 完全展不开，供给会腰斩。检查 workflow 的 permissions.contents。"
+            echo "- ❌ GITHUB_TOKEN 为空，已中止发布" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "- ✅ GITHUB_TOKEN 由 Actions 自动注入" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "$DASHSCOPE_API_KEY" ]; then
+            echo "::warning title=降级发布（无双语人话层）::未配置 secret DASHSCOPE_API_KEY。未命中 i18n 缓存的卡片会退回 SKILL.md 原文（清一色 \"Use when...\"）。到仓库 Settings → Secrets and variables → Actions 添加即可恢复。"
+            echo "- ⚠️ **DASHSCOPE_API_KEY 未配置 → 本次为降级发布**：新条目没有中英双语文案，卡片显示 SKILL.md 原文" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -z "$DASHSCOPE_BASE_URL" ]; then
+            # sk-ws- 开头的工作空间维度 key 必须走该工作空间的专属域名，
+            # 用通用域名会每一条都失败——表现和"没配 key"一样，但更难猜。
+            echo "::warning title=DASHSCOPE_BASE_URL 未配置::如果 key 是 sk-ws- 开头的工作空间 key，必须同时配专属域名，否则每一次调用都会失败并降级。"
+            echo "- ⚠️ DASHSCOPE_API_KEY 已配，但 DASHSCOPE_BASE_URL 为空（工作空间 key 必须配对应域名）" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- ✅ DASHSCOPE_API_KEY / DASHSCOPE_BASE_URL 均已配置" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Cache skill-feed data
         uses: actions/cache@v4
@@ -99,9 +144,32 @@ jobs:
           SKILLFEED_HOME: ${{ github.workspace }}/.skill-feed-data
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 缺失时 refresh 不会失败，卡片退回 SKILL.md 原文
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          # 工作空间维度的 key 必须配对应 workspace 的专属域名
+          DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
         run: |
-          python skillfeed.py refresh --force
+          # pipefail：不加的话 tee 的退出码会盖掉 python 的，refresh 崩了这步照样绿
+          set -o pipefail
+          python skillfeed.py refresh --force 2>&1 | tee refresh.log
           python skillfeed.py publish-site --out site
+
+      # refresh 的 WARN（无 token / 无 key / 门禁异常）埋在几千行日志里没人看。
+      # 这步把它们提成 annotation，显示在 run 页面顶部。
+      - name: 汇总运行期降级告警
+        if: always()
+        run: |
+          [ -f refresh.log ] || exit 0
+          if grep -q "WARN" refresh.log; then
+            echo "### 运行期告警" >> "$GITHUB_STEP_SUMMARY"
+            grep "WARN" refresh.log | while IFS= read -r line; do
+              echo "::warning title=refresh 降级::${line}"
+              echo "- \`${line}\`" >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
+          # 门禁漏斗也一并留在 summary 里，供给突然腰斩时不用翻日志
+          grep -E "^\[(gates|i18n|scene|refresh)\]" refresh.log | tail -n 40 \
+            >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -118,3 +186,29 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # 门禁拦下发布时，说清「站点没坏，只是没更新」。
+  #
+  # 为什么定时任务也要被 gate 拦（而不是只拦 push/PR）：
+  #   1. gate 里的单测是纯离线的（无凭据、无出网，见 ci.yml），环境抖动
+  #      导致偶发红的路径基本被堵住了。它红了几乎只意味着代码真的坏了。
+  #   2. Pages 的语义是「保留上一次成功部署」。拦下来的后果是内容停在上一版，
+  #      不是站点变空——旧内容 6 小时不更新，比新内容渲染错/字段缺失轻得多。
+  #   3. 两个方向的代价不对称：发坏站要人工回滚且用户可见；少发一轮没人受伤。
+  # 残余风险是「内容悄悄停更」，所以这个 job 存在的意义就是让停更不悄悄：
+  # 定时 run 失败 GitHub 会给仓库管理员发邮件，加上这条 error 说明具体状态。
+  publish-blocked-notice:
+    needs: gate
+    if: ${{ always() && needs.gate.result == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error title=本轮未发布::lint 或单测未通过，已跳过 refresh 与 deploy。GitHub Pages 仍在提供上一次成功部署的站点（内容停更，不是站点损坏）。修好门禁后重跑本 workflow 即可恢复更新。"
+          {
+            echo "## ⛔ 本轮未发布"
+            echo "lint 或单测未通过，已跳过 refresh 与 deploy。"
+            echo ""
+            echo "- 线上站点：**仍是上一次成功部署的版本**（内容停更，非损坏）"
+            echo "- 恢复方式：修好门禁后重跑本 workflow，或等下一个 6 小时周期"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
