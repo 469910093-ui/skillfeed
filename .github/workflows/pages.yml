@@ -142,14 +142,23 @@ jobs:
               "interest_from": "",
           }
 
-          # CI 预算档：这几个不是默认值，是被 45 分钟 timeout 和 API 配额压着
-          # 调小的。留在这里必须写清楚是刻意的——上面那 6 个键之所以变成漂移，
-          # 就是因为当初没区分「有意调小」和「抄了一份」。
+          # CI 预算档：不是默认值，是被 45 分钟 timeout 和 API 配额压着调小的。
+          # 留在这里必须写清楚是刻意的——上面那 6 个键之所以变成漂移，就是因为
+          # 当初没区分「有意调小」和「抄了一份」。
+          #
+          # search_probe_limit / search_max_repos / search_per_page 三个已移出本档，
+          # 恢复默认 25/40/25。它们当初被压到 10/30/20 的理由是怕撞 timeout、怕打爆
+          # GitHub API 配额，实测两条都不成立：
+          #   - 时长：build 11.8 分钟 / timeout 45 分钟，用掉 26%
+          #   - 配额：给 12 个真实仓库的探测插桩数过，每仓 3.3 次计费 API（中位 5、
+          #     max 6，比"5 个基准目录 + 最多 12 层下钻"的纸面上限低，因为
+          #     FIND_PATHS_CAP=24 命中后就短路）。整轮 162 仓约 540 次，占
+          #     GITHUB_TOKEN 的 1000 次/小时上限 54%；加到 177 仓约 590 次、59%。
+          #     每仓另有 13–42 次打 raw.githubusercontent.com，那部分不进配额。
+          # 代价是每轮多约 40 次翻译 ≈ ¥0.04（单次 842 输入 + 183 输出 token，
+          # qwen-plus ¥0.8/¥2 每百万）。
           budget = {
               "hg_max_issues": 8,
-              "search_max_repos": 30,
-              "search_per_page": 20,
-              "search_probe_limit": 10,
           }
 
           cfg.update(ci_only)

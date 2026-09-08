@@ -888,10 +888,34 @@ rel_signal = bool((set(interest_toks) - rank.DOMAIN_TOKENS) or query_extra)
 
 - `ci_only`：`hellogithub_repo`（runner 上的 checkout 路径）、`user_agent`、
   `interest_from=""`（让 G_rel 的 SKIP 是明确声明的结果，而不是"CI 上恰好没这个文件"的副作用）
-- `budget`：被 45 分钟 timeout 和 API 配额压着调小的 4 个键，注释写明是刻意的
+- `budget`：被 45 分钟 timeout 和 API 配额压着调小的键，注释写明是刻意的
 
 `corpus_feed_limit` / `soft_skill_limit` 不进预算档——它们是本地筛选上限、不产生网络请求，
 恢复默认值 400/40。build job 实测 9 分钟（最长 14.2），timeout 余量 30 分钟，多翻两百条塞得下。
+
+### 15.6 预算档缩到 1 个键：把"怕"换成测量
+
+放开后 `budget` 只剩 `hg_max_issues` 8。`search_probe_limit` / `search_max_repos` /
+`search_per_page` 回到默认 25/40/25——它们被压到 10/30/20 的理由是怕撞 timeout、怕打爆
+GitHub API 配额，两条实测都不成立：
+
+| 约束 | 纸面担心 | 实测 | 放开后 |
+| --- | --- | --- | --- |
+| build 时长 | 撞 45 min timeout | 11.8 min（26%） | +10~30 s |
+| GitHub API | 打爆 `GITHUB_TOKEN` 1000 次/小时 | 162 仓 ≈ 540 次（54%） | 177 仓 ≈ 590 次（59%） |
+| Actions 分钟 | 计费 | 公开仓库免费 | 免费 |
+| 翻译 | — | ¥0.26/轮 | +¥0.04/轮 |
+
+API 那一行是插桩数出来的，不是估的：给 12 个真实仓库跑 `skill_detect.find_skill_paths`，
+每仓 **3.3 次**计费 API（中位 5、max 6）。比"5 个基准目录 + 最多 12 层下钻"的纸面上限低，
+因为 `FIND_PATHS_CAP=24` 命中后就短路。每仓另有 13–42 次打 `raw.githubusercontent.com`，
+那条路径不走 API 配额。
+
+翻译成本按真实调用量算：单次 842 输入 + 183 输出 token，qwen-plus ¥0.8 / ¥2 每百万，
+多探 15 个仓约多 40 次调用。
+
+留下 `hg_max_issues` 8 是因为它打的是 HelloGitHub 的 issue 列表，跟 skill 供给量没有
+线性关系，调大只是多翻页。
 
 `tests/test_workflow_config.py` 锁住这个结构：预算档里每个键都必须**真的不同于默认值**
 （值相同即纯复制，等着漂移）、键名必须真实存在（打错会静默无效）、`cfg = {` 这种手抄写法
