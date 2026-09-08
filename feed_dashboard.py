@@ -424,6 +424,10 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .media .badge.kb {{ background: rgba(237,73,86,.85); border-color: transparent; }}
   .media .badge.soft {{ background: rgba(255,193,7,.92); color: #262626; border-color: transparent; }}
+  /* 「本机已有同名」只在 skill-picker 注入了本机索引时出现，公开站上不存在。
+     用中性深色而不是绿色：它是一条装前提醒，不是「已装好」的成功态。 */
+  .media .badge.local {{ background: rgba(17,17,17,.82); border-color: rgba(255,255,255,.3); cursor: help; }}
+  .media .badge.local.drift {{ background: rgba(237,73,86,.9); border-color: transparent; }}
   .heart-burst {{
     position: absolute; left: 50%; top: 50%; width: 90px; height: 90px;
     margin: -45px 0 0 -45px; opacity: 0; pointer-events: none; z-index: 3;
@@ -910,6 +914,72 @@ const demo = {{ on: false, step: 0, timer: null, focus: -1 }};
 const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
 const publisherCache = {{}};
 
+/* ---------- 本机已装索引（可选，由 skill-picker 注入） ---------- */
+/* skill-picker 的 discover.py 把本页拷成 ~/.skill-picker/discover.html 时，会在 head
+   末尾塞一个 id=skillpicker-local、type=application/json 的数据块。
+   用数据块而不是可执行脚本，是因为本页 CSP 的 script-src 只认内联块哈希——新塞一段
+   可执行脚本会被直接拦掉（实测拦住了），而 JSON 数据块不走执行路径。
+   公开站上这个块不存在，整套标记静默关闭。
+   （这段注释刻意不写出那个标签的字面量：页面内联块里出现该序列会破坏
+     「全页只有一个 script 标签」这条不变量，tests 里有专门一条在盯。） */
+const LOCAL_SKILLS = (function () {{
+  try {{
+    const el = document.getElementById('skillpicker-local');
+    if (!el) return null;
+    const data = JSON.parse(el.textContent || 'null');
+    const names = data && data.names;
+    if (!names || typeof names !== 'object') return null;
+    return names;
+  }} catch (e) {{
+    return null;
+  }}
+}})();
+
+/* 本机 catalog 里没有任何 GitHub 坐标（只有本机绝对路径和目录名），所以唯一能和
+   feed 条目对上的键就是 skill 名。实测 483 个 feed 名对上本机 278 个名里的 50~62 个，
+   其中 4 个名字在 feed 里对应多个仓库——所以文案只能说「同名」，不能说「你装的就是这个」。 */
+function localSkillKeys(it) {{
+  const keys = [];
+  const nm = (it.name || '').trim().toLowerCase();
+  if (nm) keys.push(nm);
+  const sp = (it.skill_path || '').replace(/^\\/+/, '');
+  if (sp) {{
+    const parts = sp.split('/').filter(Boolean);
+    if (parts.length && /\\.md$/i.test(parts[parts.length - 1])) parts.pop();
+    if (parts.length) {{
+      const dir = parts[parts.length - 1].toLowerCase();
+      if (dir && keys.indexOf(dir) < 0) keys.push(dir);
+    }}
+  }}
+  return keys;
+}}
+
+function localHit(it) {{
+  if (!LOCAL_SKILLS) return null;
+  const keys = localSkillKeys(it);
+  for (let i = 0; i < keys.length; i++) {{
+    if (Object.prototype.hasOwnProperty.call(LOCAL_SKILLS, keys[i])) {{
+      const hit = LOCAL_SKILLS[keys[i]];
+      if (hit) return {{ key: keys[i], copies: Number(hit.copies) || 1, hosts: hit.hosts || [], drifted: !!hit.drifted }};
+    }}
+  }}
+  return null;
+}}
+
+function localBadgeHtml(it) {{
+  const hit = localHit(it);
+  if (!hit) return '';
+  const hosts = hit.hosts.length ? hit.hosts.join(' / ') : '—';
+  const label = hit.drifted
+    ? trn('localDrift', {{ n: hit.copies }})
+    : (hit.copies > 1 ? trn('localMany', {{ n: hit.copies }}) : tr('localOne'));
+  const tip = hit.drifted
+    ? trn('localTipDrift', {{ hosts: hosts, name: hit.key }})
+    : trn('localTip', {{ hosts: hosts, name: hit.key }});
+  const cls = hit.drifted ? 'badge local drift' : 'badge local';
+  return `<span class="${{cls}}" title="${{escapeHtml(tip)}}">${{escapeHtml(label)}}</span>`;
+}}
+
 /* ---------- 语言：默认中文，localStorage 记住，切换不发请求 ---------- */
 /* 所有面向用户的文案都必须走这张表。JS 里留中文字面量 = EN 模式下漏中文，
    而且一旦被拿去做相等判断（title === '发现行业'），切语言后分支会静默失效。
@@ -921,6 +991,10 @@ const I18N = {{
     readSkillMd: '在 GitHub 看 SKILL.md 全文 →',
     fallbackHl: '打开 GitHub 查看完整 SKILL.md 与用法',
     kb: '知识库', lead: '线索', leadLong: '知识库线索', because: '因为',
+    localOne: '本机已有同名', localMany: '本机 {{n}} 份同名',
+    localDrift: '本机 {{n}} 份不一致',
+    localTip: '本机 {{hosts}} 有同名 skill「{{name}}」。同名不等于同一个仓库，装前先比一比。',
+    localTipDrift: '本机 {{hosts}} 各有一份「{{name}}」，内容已不一致。先去看板「理技能」处理漂移，再决定要不要动。',
     softTime: 'Soft skill · 打开 GitHub 查看',
     corpusTime: '来自知识库', suggestTime: '为你推荐',
     follow: '关注', following: '已关注',
@@ -1062,6 +1136,10 @@ const I18N = {{
     readSkillMd: 'Read the full SKILL.md on GitHub →',
     fallbackHl: 'Open GitHub for the full SKILL.md and usage',
     kb: 'Library', lead: 'Lead', leadLong: 'Library lead', because: 'Because',
+    localOne: 'Same name here', localMany: '{{n}} copies here',
+    localDrift: '{{n}} copies differ',
+    localTip: 'A skill named "{{name}}" already exists on this machine under {{hosts}}. Same name is not the same repo — compare before installing.',
+    localTipDrift: '{{hosts}} each hold a copy of "{{name}}" and they have diverged. Sort the drift out in the dashboard first.',
     softTime: 'Soft skill · open GitHub to check',
     corpusTime: 'From library', suggestTime: 'Suggested for you',
     follow: 'Follow', following: 'Following',
@@ -2139,6 +2217,7 @@ function cardHtml(it, idx) {{
         ${{itemSceneL2Label(it) ? `<span class="badge">${{escapeHtml(itemSceneL2Label(it))}}</span>` : ''}}
         ${{it.from_corpus ? `<span class="badge kb">${{escapeHtml(tr('kb'))}}</span>` : ''}}
         ${{it.soft ? `<span class="badge soft">${{escapeHtml(tr('lead'))}}</span>` : ''}}
+        ${{localBadgeHtml(it)}}
       </div>
       <div class="heart-burst" id="burst-${{idx}}">${{heartSvg(true)}}</div>
     </div>

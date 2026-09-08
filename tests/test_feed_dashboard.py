@@ -101,10 +101,19 @@ class JsHarness:
         feed=None,
         follow_builders=(),
         follow_industries=(),
+        local_block=None,
     ):
         js = _script_source(html)
+        # skill-picker 注入的本机索引：把数据块的原文塞进 DOM stub，再跑模板里真正那段
+        # 解析 IIFE。传 None 就是公开站的形态（数据块不存在）。
+        seed_local = (
+            "document.getElementById('skillpicker-local').textContent = "
+            + json.dumps(local_block) + ";"
+        ) if local_block is not None else ""
         self.prelude = "\n".join([
             DOM_STUB,
+            seed_local,
+            _grab(js, r"const LOCAL_SKILLS = \(function \(\) \{.*?\n\}\)\(\);"),
             _grab(js, r"const I18N = \{.*?\n\};"),
             "let LANG = " + json.dumps(lang) + ";",
             "const SCENES = %s; const SCENES_L2 = %s;" % (
@@ -1320,6 +1329,209 @@ class TestContentSecurityPolicy(unittest.TestCase):
                                  policy["connect-src"])
                 self.assertTrue(all(s.startswith("'sha256-")
                                     for s in policy["script-src"]))
+
+
+@unittest.skipUnless(NODE, "需要 node")
+class TestLocalInstalledBadge(unittest.TestCase):
+    """「本机已有同名」徽标。
+
+    数据由 skill-picker 的 discover.py 注入，本仓库只负责读。三条必须锁住：
+
+    - 公开站上数据块不存在 → 整套标记静默关闭，不能报错也不能留空壳
+    - 对上的键只能是 skill 名（本机 catalog 里没有任何 GitHub 坐标），
+      所以 skill_path 推目录名这一步不能错
+    - 文案只能说「同名」。实测 feed 里有 17 个名字对应多个仓库，说「你装的就是这个」
+      会有 8% 左右的条目在骗人
+    """
+
+    ITEM = dict(
+        REAL_SKILL,
+        name="stop-slop",
+        skill_path="skills/stop-slop/SKILL.md",
+        url="https://github.com/hardikpandya/stop-slop",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+
+    def harness(self, index=None, lang="zh"):
+        block = None if index is None else json.dumps(index, ensure_ascii=False)
+        return JsHarness(self.html, lang=lang, local_block=block)
+
+    # ---------- 缺数据块时的降级 ----------
+
+    def test_public_site_has_no_block_and_degrades_silently(self):
+        js = self.harness()
+        self.assertIsNone(js.eval("LOCAL_SKILLS"))
+        self.assertIsNone(js.eval("localHit(" + json.dumps(self.ITEM) + ")"))
+        self.assertEqual("", js.eval("localBadgeHtml(" + json.dumps(self.ITEM) + ")"))
+
+    def test_malformed_block_is_not_fatal(self):
+        """数据块是外部写进来的文件内容，坏了也不能让整页 JS 崩掉。"""
+        for junk in ("", "{", "null", "[]", '{"names": 3}', '{"nope": {}}'):
+            with self.subTest(block=junk):
+                js = JsHarness(self.html, local_block=junk)
+                self.assertIsNone(js.eval("LOCAL_SKILLS"))
+                self.assertEqual(
+                    "", js.eval("localBadgeHtml(" + json.dumps(self.ITEM) + ")"))
+
+    # ---------- 键推导 ----------
+
+    def test_matches_on_item_name(self):
+        js = self.harness({"names": {"stop-slop": {"copies": 1, "hosts": ["cursor"], "drifted": False}}})
+        hit = js.eval("localHit(" + json.dumps(self.ITEM) + ")")
+        self.assertEqual("stop-slop", hit["key"])
+        self.assertEqual(1, hit["copies"])
+
+    def test_matches_on_dir_derived_from_skill_path(self):
+        """feed 的 name 和目录名不一致时（实测 546 条里有 73 条），要能靠路径兜上。"""
+        item = dict(self.ITEM, name="Stop Slop 去AI味", skill_path="skills/stop-slop/SKILL.md")
+        js = self.harness({"names": {"stop-slop": {"copies": 1, "hosts": ["cursor"], "drifted": False}}})
+        hit = js.eval("localHit(" + json.dumps(item) + ")")
+        self.assertEqual("stop-slop", hit["key"])
+
+    def test_nested_skill_path_uses_the_last_directory(self):
+        """真实数据里有 skills/public/find-skills/SKILL.md 这种多层路径。"""
+        item = dict(self.ITEM, name="x", skill_path="skills/public/find-skills/SKILL.md")
+        js = self.harness({"names": {"find-skills": {"copies": 1, "hosts": ["codex"], "drifted": False}}})
+        self.assertEqual("find-skills", js.eval("localHit(" + json.dumps(item) + ")")["key"])
+
+    def test_repo_root_skill_path_yields_no_dir_key(self):
+        """skill_path 就是 SKILL.md 时（实测 8 条）没有目录名可推，不能把 'skill' 当键。"""
+        item = dict(self.ITEM, name="ruflo", skill_path="SKILL.md")
+        js = self.harness({"names": {"skill": {"copies": 1, "hosts": ["cursor"], "drifted": False}}})
+        self.assertIsNone(js.eval("localHit(" + json.dumps(item) + ")"))
+        self.assertEqual(["ruflo"], js.eval("localSkillKeys(" + json.dumps(item) + ")"))
+
+    def test_case_and_leading_slash_are_normalized(self):
+        item = dict(self.ITEM, name="STOP-SLOP", skill_path="/skills/Stop-Slop/SKILL.md")
+        js = self.harness({"names": {"stop-slop": {"copies": 1, "hosts": ["cursor"], "drifted": False}}})
+        self.assertEqual("stop-slop", js.eval("localHit(" + json.dumps(item) + ")")["key"])
+
+    def test_unrelated_name_does_not_match(self):
+        js = self.harness({"names": {"work-report": {"copies": 1, "hosts": ["cursor"], "drifted": False}}})
+        self.assertIsNone(js.eval("localHit(" + json.dumps(self.ITEM) + ")"))
+
+    def test_prototype_keys_do_not_produce_phantom_hits(self):
+        """localHit 用 hasOwnProperty 而不是 in / 取值判真，否则 name 叫 constructor
+        的条目会凭空命中。"""
+        for poison in ("constructor", "toString", "__proto__", "hasOwnProperty"):
+            with self.subTest(name=poison):
+                item = dict(self.ITEM, name=poison, skill_path="skills/" + poison + "/SKILL.md")
+                js = self.harness({"names": {"stop-slop": {"copies": 1, "hosts": [], "drifted": False}}})
+                self.assertIsNone(js.eval("localHit(" + json.dumps(item) + ")"))
+
+    # ---------- 文案 ----------
+
+    def test_single_copy_says_same_name_not_installed(self):
+        """不能说「已装」：同一个名字在 feed 里可能来自另一个仓库。"""
+        js = self.harness({"names": {"stop-slop": {"copies": 1, "hosts": ["cursor"], "drifted": False}}})
+        badge = js.eval("localBadgeHtml(" + json.dumps(self.ITEM) + ")")
+        self.assertIn("本机已有同名", badge)
+        self.assertNotIn("已装", badge)
+
+    def test_copy_count_is_shown(self):
+        js = self.harness({"names": {"stop-slop": {"copies": 6, "hosts": ["cursor", "codex"], "drifted": False}}})
+        badge = js.eval("localBadgeHtml(" + json.dumps(self.ITEM) + ")")
+        self.assertIn("6", badge)
+        self.assertNotIn("{n}", badge)
+
+    def test_drift_wins_over_the_plain_count(self):
+        """漂移是 picker 的核心价值，不能被「本机 N 份」这句盖掉。"""
+        js = self.harness({"names": {"stop-slop": {"copies": 2, "hosts": ["cursor", "codex"], "drifted": True}}})
+        badge = js.eval("localBadgeHtml(" + json.dumps(self.ITEM) + ")")
+        self.assertIn("不一致", badge)
+        self.assertIn("drift", badge)
+
+    def test_hosts_land_in_the_tooltip(self):
+        js = self.harness({"names": {"stop-slop": {"copies": 2, "hosts": ["codex", "cursor"], "drifted": False}}})
+        badge = js.eval("localBadgeHtml(" + json.dumps(self.ITEM) + ")")
+        self.assertIn("codex / cursor", badge)
+        self.assertNotIn("{hosts}", badge)
+        self.assertNotIn("{name}", badge)
+
+    def test_english_has_no_chinese_left(self):
+        js = self.harness(
+            {"names": {"stop-slop": {"copies": 2, "hosts": ["cursor"], "drifted": True}}},
+            lang="en",
+        )
+        badge = js.eval("localBadgeHtml(" + json.dumps(self.ITEM) + ")")
+        self.assertFalse(
+            re.search(r"[\u4e00-\u9fff]", badge), "EN 模式漏了中文：" + badge)
+        self.assertIn("differ", badge)
+
+    def test_a_hostile_local_name_is_escaped(self):
+        """索引来自本机 frontmatter，注入方不做 HTML 转义，渲染这一侧必须做。"""
+        item = dict(self.ITEM, name='<img src=x onerror=alert(1)>', skill_path="SKILL.md")
+        js = self.harness({
+            "names": {'<img src=x onerror=alert(1)>': {"copies": 1, "hosts": ["cursor"], "drifted": False}},
+        })
+        badge = js.eval("localBadgeHtml(" + json.dumps(item) + ")")
+        self.assertNotIn("<img", badge)
+        self.assertIn("&lt;img", badge)
+
+    # ---------- 接进卡片 ----------
+
+    def test_badge_reaches_the_card(self):
+        js = self.harness({"names": {"stop-slop": {"copies": 2, "hosts": ["cursor"], "drifted": False}}})
+        card = js.eval("cardHtml(" + json.dumps(self.ITEM) + ", 0)")
+        self.assertIn("badge local", card)
+        self.assertIn("本机 2 份同名", card)
+
+    def test_card_is_unchanged_without_the_block(self):
+        """公开站的卡片一个字节都不该因为这个功能变样。"""
+        plain = self.harness().eval("cardHtml(" + json.dumps(self.ITEM) + ", 0)")
+        self.assertNotIn("badge local", plain)
+        self.assertNotIn("本机", plain)
+
+    def test_badge_does_not_add_a_row_above_the_cta(self):
+        """CTA 已经在折叠线下了，徽标必须待在封面 badges 里，不许再撑高卡片。"""
+        js = self.harness({"names": {"stop-slop": {"copies": 1, "hosts": ["cursor"], "drifted": False}}})
+        card = js.eval("cardHtml(" + json.dumps(self.ITEM) + ", 0)")
+        badges = re.search(r'<div class="badges">(.*?)</div>', card, flags=re.S)
+        self.assertIsNotNone(badges, "badges 容器没了")
+        self.assertIn("badge local", badges.group(1))
+
+
+class TestLocalBlockDoesNotBreakCsp(unittest.TestCase):
+    """注入的数据块必须不需要 CSP 配合。
+
+    script-src 用了哈希之后 'unsafe-inline' 会被忽略，所以往成品页里塞任何**可执行**
+    脚本都会被拦掉。选 type="application/json" 就是为了绕开这一点——浏览器实测确认
+    数据块不走脚本执行路径。这条测试锁的是：注入不会改动 CSP，也不会被算进哈希集。
+    """
+
+    @staticmethod
+    def _csp(html: str) -> str:
+        m = re.search(
+            r'<meta http-equiv="Content-Security-Policy" content="([^"]+)"', html)
+        assert m, "页面里没有 CSP meta"
+        return m.group(1)
+
+    def test_injecting_the_block_leaves_the_policy_untouched(self):
+        html = feed_dashboard.build_feed_html({"items": [], "corpus": []}, variant="lite")
+        before = self._csp(html)
+        block = ('<script type="application/json" id="skillpicker-local">'
+                 '{"names": {"a": {"copies": 1, "hosts": [], "drifted": false}}}</script>\n')
+        after = self._csp(html.replace("</head>", block + "</head>", 1))
+        self.assertEqual(before, after)
+
+    def test_the_data_block_is_not_a_hashed_inline_script(self):
+        """数据块若被算进哈希集，说明抽取规则把它当可执行脚本了。"""
+        html = feed_dashboard.build_feed_html({"items": [], "corpus": []}, variant="lite")
+        policy = self._csp(html)
+        payload = '{"names": {}}'
+        digest = "'sha256-" + base64.b64encode(
+            hashlib.sha256(payload.encode("utf-8")).digest()).decode("ascii") + "'"
+        self.assertNotIn(digest, policy)
+
+    def test_script_src_still_refuses_inline(self):
+        """这一条是上面那个设计的前提：可执行内联脚本确实被拦。"""
+        html = feed_dashboard.build_feed_html({"items": [], "corpus": []}, variant="lite")
+        script_src = [c for c in self._csp(html).split("; ") if c.startswith("script-src ")]
+        self.assertEqual(1, len(script_src))
+        self.assertNotIn("'unsafe-inline'", script_src[0])
 
 
 if __name__ == "__main__":
