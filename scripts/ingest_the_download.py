@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -218,7 +217,7 @@ def ingest_corpus(items: list[dict]) -> dict:
     index_path = root / corpus_mod.INDEX_NAME
     root.mkdir(parents=True, exist_ok=True)
     td_dir.mkdir(parents=True, exist_ok=True)
-    existing = corpus_mod._load_index_keys(index_path)  # noqa: SLF001
+    existing = corpus_mod._load_index_keys(index_path)
     added = 0
     updated = 0
     new_rows: list[dict] = []
@@ -240,7 +239,7 @@ def ingest_corpus(items: list[dict]) -> dict:
         new_rows.append(it)
         existing.add(cid)
         added += 1
-    corpus_mod._append_index(index_path, new_rows)  # noqa: SLF001
+    corpus_mod._append_index(index_path, new_rows)
     snap = {
         "updated_at": _now(),
         "source": "the-download",
@@ -314,51 +313,34 @@ def to_bitable_row(it: dict) -> dict:
 
 def push_bitable(items: list[dict]) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
+    # 飞书「来源」枚举暂无 The Download，统一写策展目录，关键词保留出处
     rows = [to_bitable_row(x) for x in items]
+    for r in rows:
+        r["来源"] = "策展目录"
+        kw = r.get("关键词") or ""
+        if "The Download" not in kw:
+            r["关键词"] = ("The Download · " + kw)[:200]
     batch = OUT / "batch_001.json"
     batch.write_text(json.dumps({"create_records": rows}, ensure_ascii=False), encoding="utf-8")
     (OUT / "preview.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
     target = json.loads(TARGET.read_text(encoding="utf-8"))
     bt, tid = target["base_token"], target["table_id"]
     print(f"[bitable] push {len(rows)} → {bt} / {tid}")
-    # 若「来源」枚举尚无 The Download，先试推；失败则回退策展目录
-    try:
-        run_lark(
-            [
-                "base",
-                "+record-batch-create",
-                "--as",
-                "user",
-                "--base-token",
-                bt,
-                "--table-id",
-                tid,
-                "--json",
-                "@batch_001.json",
-            ],
-            cwd=OUT,
-        )
-    except Exception as e:
-        print(f"[bitable] The Download 来源可能未建枚举，回退策展目录: {e}")
-        for r in rows:
-            r["来源"] = "策展目录"
-            r["关键词"] = ("The Download · " + (r.get("关键词") or ""))[:200]
-        batch.write_text(json.dumps({"create_records": rows}, ensure_ascii=False), encoding="utf-8")
-        run_lark(
-            [
-                "base",
-                "+record-batch-create",
-                "--as",
-                "user",
-                "--base-token",
-                bt,
-                "--table-id",
-                tid,
-                "--json",
-                "@batch_001.json",
-            ],
-            cwd=OUT,
-        )
+    run_lark(
+        [
+            "base",
+            "+record-batch-create",
+            "--as",
+            "user",
+            "--base-token",
+            bt,
+            "--table-id",
+            tid,
+            "--json",
+            "@batch_001.json",
+        ],
+        cwd=OUT,
+    )
     print(f"[bitable] done → https://trip.larkenterprise.com/base/{bt}")
 
 
