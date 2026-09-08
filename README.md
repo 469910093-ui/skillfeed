@@ -154,6 +154,7 @@ python skillfeed.py bitable dedupe                   # 清重复行
 | `github-search` | SKILL.md 召回 | GitHub Search API | `search_enabled: true` |
 | `catalog` | 策展目录 | awesome lists + skills.sh 热榜 | `catalog_enabled: true` |
 | `xiaohongshu` | 中文社区热议 | `~/.skill-feed/xhs/mentions.json` + 种子 | `xhs_enabled: true` |
+| `the-download` | GitHub The Download 点名 MCP/Skills | `scripts/ingest_the_download.py` · [`docs/the-download-mcp-skills.md`](docs/the-download-mcp-skills.md) | 人工策展灌库 |
 | `corpus` | 本地知识库补货 | `~/.skill-feed/corpus/` | 常开 |
 
 合并优先级：trending > hellogithub > catalog > xiaohongshu > github-search > corpus。  

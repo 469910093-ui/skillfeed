@@ -35,6 +35,7 @@ SOURCE_LABELS = {
     "catalog": "策展目录",
     "xiaohongshu": "小红书",
     "corpus": "知识库",
+    "the-download": "The Download",
 }
 
 SCENE_TO_CAT = {

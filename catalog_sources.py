@@ -45,6 +45,19 @@ DEFAULT_SEED_REPOS = [
     "warpdotdev/figma-skills",
     "wilwaldon/Claude-Code-Frontend-Design-Toolkit",
     "Nutlope/hallmark",
+    # GitHub The Download 点名：MCP / OpenClaw / Agent（docs/the-download-mcp-skills.md）
+    "github/github-mcp-server",
+    "modelcontextprotocol/servers",
+    "PrefectHQ/fastmcp",
+    "docker/mcp-gateway",
+    "microsoft/azure-devops-mcp",
+    "a2aproject/A2A",
+    "github/awesome-copilot",
+    "github/spec-kit",
+    "openclaw/openclaw",
+    "VoltAgent/awesome-openclaw-skills",
+    "openai/openai-agents-python",
+    "TanStack/ai",
 ]
 
 # refresh 时不按星数截断、必须探测的仓（避免设计仓因 stars=None 掉出 top N）
@@ -61,6 +74,14 @@ FORCE_PROBE_REPOS = [
     "wilwaldon/Claude-Code-Frontend-Design-Toolkit",
     "Nutlope/hallmark",
     "hardikpandya/stop-slop",
+    # The Download · MCP / skills（强制探测）
+    "github/github-mcp-server",
+    "modelcontextprotocol/servers",
+    "github/awesome-copilot",
+    "github/spec-kit",
+    "openclaw/openclaw",
+    "VoltAgent/awesome-openclaw-skills",
+    "openai/openai-agents-python",
 ]
 
 # 从 README 抽链接时优先抓这些宿主仓的 README

@@ -469,6 +469,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-08 | 策展源补 GitHub The Download 点名的 MCP/Skills/Agent 仓；`ingest_the_download.py` 灌 corpus+飞书；catalog 强制探测 | §4 信源、`catalog_sources`、`docs/the-download-mcp-skills.md`、bitable |
 | 2026-08-11 | 补齐产品设计供给侧：设计类种子强制探测、monorepo 展开 frontend-design/figma/shadcn、「产品设计」意图映射真实 skill 名 | `catalog_sources` / `skill_detect` / `scene` / `intentTokens` |
 | 2026-08-11 | Feeds 关键词改为真实词表命中（最多 2 个），禁止中文滑动切碎造「产品设/品设品」假词 | `compressIntent` / `intentTokens` |
 | 2026-08-10 | 新增 `catalog`（awesome / skills.sh / 官方仓）与 `xiaohongshu`（媒讯助手/Chrome 采集）发现源；`xhs-crawl` CLI；源 chip 展示 | §4、§6.1、`catalog_sources.py`、`xiaohongshu.py`、`skillfeed.py` |
