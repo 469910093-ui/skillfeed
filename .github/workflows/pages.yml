@@ -181,6 +181,12 @@ jobs:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           # 工作空间维度的 key 必须配对应 workspace 的专属域名
           DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
+          # 自有域名。留空 = 只用 <user>.github.io/<repo>。
+          # 别在 DNS 生效前填：Pages 认了自有域名就会把 github.io 那个地址 301
+          # 重定向过去，DNS 没指对的话两个地址一起打不开。
+          # 填法：仓库 Settings → Variables → New repository variable，
+          # 名字 SITE_DOMAIN，值 skillfeeder.cn
+          SKILLFEED_SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
         run: |
           # pipefail：不加的话 tee 的退出码会盖掉 python 的，refresh 崩了这步照样绿
           set -o pipefail

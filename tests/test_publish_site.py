@@ -59,6 +59,103 @@ class TestPublishSite(unittest.TestCase):
             self.assertIn("demo-skill", lite)
 
 
+class TestCustomDomain(unittest.TestCase):
+    """自有域名靠 artifact 里的 CNAME 生效，放仓库根没用——上传的是 site/。
+
+    默认必须是不写。Pages 一旦认了自有域名就会把 `<user>.github.io/<repo>`
+    301 重定向过去，所以 DNS 没就位时写这个文件等于把两个地址一起弄死。
+    这条顺序约束只能靠「默认关」来保证。
+    """
+
+    FEED = {
+        "generated_at": "2026-09-09T00:00:00+00:00",
+        "items": [{
+            "full_name": "acme/demo-skill",
+            "name": "demo-skill",
+            "description": "demo description long enough",
+            "url": "https://github.com/acme/demo-skill",
+            "source": "github-search",
+            "kind": "skill",
+            "scene_label": "内容创作",
+            "body_preview": "# Demo\n\nBody preview text.",
+        }],
+        "corpus": [],
+        "ui": {"cta": "open_github", "variant": "full"},
+    }
+
+    def publish(self, domain):
+        """跑一次 publish-site，返回 site 目录里 CNAME 的内容（没有则 None）。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "data"
+            home.mkdir()
+            out = Path(tmp) / "site"
+            (home / "feed.json").write_text(
+                json.dumps(self.FEED, ensure_ascii=False), encoding="utf-8",
+            )
+            keep = {k: os.environ.get(k)
+                    for k in ("SKILLFEED_HOME", "SKILLFEED_SITE_DOMAIN")}
+            try:
+                os.environ["SKILLFEED_HOME"] = str(home)
+                if domain is None:
+                    os.environ.pop("SKILLFEED_SITE_DOMAIN", None)
+                else:
+                    os.environ["SKILLFEED_SITE_DOMAIN"] = domain
+                skillfeed.refresh_paths()
+                rc = skillfeed.cmd_publish_site(["--out", str(out)])
+            finally:
+                for k, v in keep.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+                skillfeed.refresh_paths()
+            self.assertEqual(rc, 0)
+            cname = out / "CNAME"
+            return cname.read_text(encoding="utf-8") if cname.exists() else None
+
+    def test_no_cname_by_default(self):
+        self.assertIsNone(self.publish(None))
+
+    def test_empty_value_is_the_same_as_unset(self):
+        self.assertIsNone(self.publish(""))
+        self.assertIsNone(self.publish("   "))
+
+    def test_the_domain_lands_in_the_artifact(self):
+        self.assertEqual(self.publish("skillfeeder.cn"), "skillfeeder.cn\n")
+
+    def test_surrounding_whitespace_is_trimmed(self):
+        # CI 里的变量常带回车或空格，Pages 会把整行当域名
+        self.assertEqual(self.publish("  skillfeeder.cn \n"), "skillfeeder.cn\n")
+
+    def test_a_leading_dot_is_dropped(self):
+        # 有人会照 DNS 的写法填 .skillfeeder.cn
+        self.assertEqual(self.publish(".skillfeeder.cn"), "skillfeeder.cn\n")
+
+    def test_the_rest_of_the_artifact_is_unaffected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "data"
+            home.mkdir()
+            out = Path(tmp) / "site"
+            (home / "feed.json").write_text(
+                json.dumps(self.FEED, ensure_ascii=False), encoding="utf-8",
+            )
+            keep = os.environ.get("SKILLFEED_HOME")
+            try:
+                os.environ["SKILLFEED_HOME"] = str(home)
+                os.environ["SKILLFEED_SITE_DOMAIN"] = "skillfeeder.cn"
+                skillfeed.refresh_paths()
+                skillfeed.cmd_publish_site(["--out", str(out)])
+            finally:
+                os.environ.pop("SKILLFEED_SITE_DOMAIN", None)
+                if keep is None:
+                    os.environ.pop("SKILLFEED_HOME", None)
+                else:
+                    os.environ["SKILLFEED_HOME"] = keep
+                skillfeed.refresh_paths()
+            for name in ("index.html", "embed.html", "feed.json", ".nojekyll"):
+                self.assertTrue((out / name).exists(), name)
+
+
 class TestPublishedUiBlock(unittest.TestCase):
     """`ui` 块会随 feed.json 发布到公开站点，只许放我们自己的取值。
 

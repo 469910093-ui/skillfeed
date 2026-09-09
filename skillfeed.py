@@ -702,6 +702,16 @@ def cmd_publish_site(argv: list[str]) -> int:
 
     out.mkdir(parents=True, exist_ok=True)
     (out / ".nojekyll").write_text("", encoding="utf-8")
+
+    # 自有域名要靠 artifact 里的 CNAME 告诉 Pages，放仓库根没用——上传的是 site/。
+    #
+    # 顺序有个坑：Pages 一旦认了自有域名，就会把 <user>.github.io/<repo> 301 重定向
+    # 过去。所以 DNS 没就位就写这个文件，等于两个地址一起死。因此默认不写，
+    # DNS 生效之后再置 SKILLFEED_SITE_DOMAIN 打开。
+    domain = (os.environ.get("SKILLFEED_SITE_DOMAIN") or "").strip().lstrip(".")
+    if domain:
+        (out / "CNAME").write_text(domain + "\n", encoding="utf-8")
+        print(f"[publish-site] wrote {out.resolve()}/CNAME ({domain})")
     (out / "feed.json").write_text(
         json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
     )
