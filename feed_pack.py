@@ -126,14 +126,21 @@ def soft_skills_from_corpus(
     exclude: set[str],
     limit: int = 40,
 ) -> list[dict]:
-    """知识库里 HelloGitHub Skills / 已标 skill，未过本轮探测的也进信息流。"""
+    """知识库里 HelloGitHub Skills / 已标 skill，未过本轮探测的也进信息流。
+
+    调用方喂进来的池子是 skill_pool + corpus_rows 拼的，两段都从同一份 corpus
+    读，同一条 skill 会出现两次。所以自己产出的键也要挡回去——只看入参 exclude
+    的话，线上会出现 id 一模一样的两张卡（实测 4 条 hellogithub 条目中招）。
+    """
     out: list[dict] = []
+    seen: set[str] = set()
     for c in corpus_rows:
         fn = c.get("full_name") or ""
         key = item_key(c)
         # exclude 兼容旧逻辑（只含 full_name）与新逻辑（含 id）
-        if not fn or key in exclude or fn in exclude:
+        if not fn or key in exclude or fn in exclude or key in seen:
             continue
+        seen.add(key)
         sec = c.get("hg_section") or ""
         kind = c.get("kind") or ""
         if sec != "Skills" and kind != "skill":

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -40,6 +41,22 @@ DEFAULTS: dict[str, Any] = {
         "stock": 0.14,
         "freshness": 0.12,
         "completeness": 0.12,
+    },
+    # 单条 skill 自己的成色。阈值按线上 554 条实测标定：description 信息量中位
+    # 约 250、正文预览被上游截在 700-800，所以斜坡都收在截断线以内——否则截断
+    # 本身就会改分数。
+    "completeness": {
+        "p_desc": 0.30,
+        "p_structure": 0.50,
+        "p_provenance": 0.20,
+        "desc_lo": 60.0,
+        "desc_hi": 240.0,
+        "w_sections": 0.34,
+        "w_steps": 0.26,
+        "w_code": 0.20,
+        "w_body_len": 0.20,
+        "body_lo": 120.0,
+        "body_hi": 600.0,
     },
     "ctr": {
         "prior_alpha": 20.0,
@@ -400,18 +417,79 @@ def shrink_to_neutral(raw: Optional[float], neutral: float, share: float) -> flo
     return neutral + (raw - neutral) * share
 
 
-def completeness_score(item: dict) -> float:
-    s = 0.0
-    if item.get("skill_path"):
-        s += 0.30
-    desc = str(item.get("one_liner_zh") or item.get("description") or "")
-    if len(desc) >= 40:
-        s += 0.25
-    if item.get("highlights_zh") or item.get("highlights"):
-        s += 0.25
-    if item.get("body_preview"):
-        s += 0.20
-    return min(1.0, s)
+_CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
+_H2_RE = re.compile(r"^\s{0,3}#{2,}\s+\S", re.M)
+_LIST_RE = re.compile(r"^\s{0,3}(?:\d+[.)]|[-*+])\s+\S", re.M)
+_CODE_RE = re.compile(r"```|^\s{4,}\S", re.M)
+
+
+def _merge_completeness(over: Optional[dict]) -> dict:
+    out = dict(DEFAULTS["completeness"])
+    for k, v in (over or {}).items():
+        if k in out and isinstance(v, (int, float)):
+            out[k] = float(v)
+    return out
+
+
+def text_weight(s: str) -> int:
+    """按信息量而不是字符数量长度。CJK 一个字顶两个拉丁字符。
+
+    旧口径直接 `len(desc) >= 40`，对中英文是两把尺子：线上 one_liner_en 中位 83
+    字符、99.8% 过线；one_liner_zh 中位 28 字、只有 9.2% 过线。同一个 skill 翻成
+    中文就"不合格"，翻成英文就"合格"，这不是质量差异，是量纲错误。
+    """
+    text = s or ""
+    return len(text) + len(_CJK_RE.findall(text))
+
+
+def _ramp(value: float, lo: float, hi: float) -> float:
+    """lo 以下给 0、hi 以上给 1，中间线性。用斜坡而不是悬崖，阈值选偏一点不会翻盘。"""
+    if hi <= lo:
+        return 1.0 if value >= hi else 0.0
+    return max(0.0, min(1.0, (value - lo) / (hi - lo)))
+
+
+def completeness_score(item: dict, *, config: Optional[dict] = None) -> float:
+    """这条 skill 自己的成色（0-1），和母仓库星数无关。
+
+    只读**会随 feed.json 发布**的字段。旧口径读 `one_liner_zh or description`，
+    而 one_liner_zh 是 i18n 阶段才生成的，比打分晚——于是同一个函数在流水线时点
+    和事后重算时点给出两个答案（实测线上 554 条里 13.2% 不一致），静态站和 API
+    对同一条 skill 能排出不同名次，重跑一次 build 就能让分数漂移。
+
+    区分度也要够。旧口径四项里三项是常数（skill_path 命中 98.6%、highlights
+    100%、body_preview 98.6%），实测 554 条只落在 3 个取值上、96% 挤在同一档，
+    等于给 completeness 这一路权重发了张空白票。这里改成看正文结构——小节命中
+    81%、列表 57%、代码块 22%，三档叠起来才真能把条目分开。
+    """
+    cfg = (config or {}).get("completeness") if isinstance(config, dict) else None
+    c = _merge_completeness(cfg)
+
+    desc = str(item.get("description") or "")
+    body = str(item.get("body_preview") or "")
+
+    desc_part = _ramp(text_weight(desc), c["desc_lo"], c["desc_hi"])
+
+    struct = 0.0
+    if _H2_RE.search(body):
+        struct += c["w_sections"]
+    if _LIST_RE.search(body):
+        struct += c["w_steps"]
+    if _CODE_RE.search(body):
+        struct += c["w_code"]
+    struct += c["w_body_len"] * _ramp(text_weight(body), c["body_lo"], c["body_hi"])
+    struct = min(1.0, struct)
+
+    # 探测到真 SKILL.md（而不是"这个仓看起来像"）。命中率 98.6%，接近常数，
+    # 所以权重压得低——留着是因为它是唯一能把 8 条纯仓库条目挑出来的证据。
+    prov_part = 1.0 if item.get("skill_path") else 0.0
+
+    score = (
+        c["p_desc"] * desc_part
+        + c["p_structure"] * struct
+        + c["p_provenance"] * prov_part
+    )
+    return round(min(1.0, score), 4)
 
 
 def is_new_item(item: dict, stats: Optional[ItemStats], cfg: dict, now: datetime) -> bool:
@@ -460,7 +538,7 @@ def global_quality(
     stock_part = shrink_to_neutral(raw_stock(item), neutral, share)
 
     fresh_part = 0.5 ** (fresh_age / 14.0)
-    comp_part = completeness_score(item)
+    comp_part = completeness_score(item, config=cfg)
 
     score = (
         parts["ctr"] * ctr_part

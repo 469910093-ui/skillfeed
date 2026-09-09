@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import urllib.error
@@ -67,6 +68,21 @@ def skill_item_id(full_name: str, skill_path: str = "") -> str:
     fn = (full_name or "").strip()
     sp = (skill_path or "SKILL.md").strip().lstrip("/")
     return f"{fn}::{sp}"
+
+
+def _content_digest(text: str) -> str:
+    """SKILL.md 全文指纹，用来认出「同一份文件被摆在多个宿主目录」。
+
+    一个仓为了同时伺候 Claude / Codex / Cursor，常把同一份 SKILL.md 原样放进
+    `.claude/skills/x/`、`.agents/skills/x/`、`.cursor/skills/x/`。这些路径各不相同，
+    id 是 full_name::skill_path，所以按 id 去重认不出来，一个能力就摊成好几张卡
+    （实测 TanStack/ai 一家就多出 9 张）。
+
+    键必须是**全文**而不是正文：larksuite/cli 的 lark-minutes 与 lark-note 是两个
+    独立的兼容壳，正文逐字节相同、只有 frontmatter 里的名字和描述不同。拿正文当键
+    会把这两个真 skill 合掉一个。
+    """
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
 
 def _dir_name_from_path(path: str, fallback: str) -> str:
@@ -346,12 +362,20 @@ def enrich_repo_multi(
     # 若根 SKILL.md 只是索引、且已有子 skill，跳过根以免挤掉设计卡
     if len(paths) > 1 and "SKILL.md" in rest and any("/" in p for p in priority + rest):
         rest = [p for p in rest if p != "SKILL.md"]
-    chosen = (priority + rest)[: max(1, int(max_skills))]
+    ordered = priority + rest
+    limit = max(1, int(max_skills))
 
     out: list[dict] = []
-    for path in chosen:
+    seen: set[str] = set()
+    for path in ordered:
+        if len(out) >= limit:
+            break
         text = fetch_raw_skill(owner, name, path, user_agent, token) or ""
         if not text.strip():
             continue
+        digest = _content_digest(text)
+        if digest in seen:
+            continue
+        seen.add(digest)
         out.append(_build_skill_item(repo, path, text, paths))
     return out
