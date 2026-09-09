@@ -80,7 +80,7 @@ async def _send_aliyun(settings: Settings, phone: str, code: str) -> dict[str, A
         r = await client.get(ALIYUN_ENDPOINT, params=query)
     try:
         data = r.json()
-    except ValueError as e:  # noqa: BLE001
+    except ValueError as e:
         raise SmsError(f"sms gateway http {r.status_code}") from e
     if not isinstance(data, dict) or data.get("Code") != "OK":
         # 只带 Code。阿里云的 Message 会把手机号和签名名回显出来，

@@ -376,7 +376,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
 
     @app.get("/login", response_class=HTMLResponse)
-    def login_page(request: Request, next: str = "") -> Response:
+    def login_page(request: Request, next: str = "") -> Response:  # noqa: A002
         dest = _safe_next(next)
         if auth.session_user_id(request, settings) is not None:
             return RedirectResponse(dest, status_code=302)
@@ -447,7 +447,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     # —— 微信服务号网页授权（主站 V1 的主登录方式）——
     @app.get("/auth/wechat")
-    def auth_wechat(next: str = "") -> RedirectResponse:
+    def auth_wechat(next: str = "") -> RedirectResponse:  # noqa: A002
         if not settings.wechat_configured:
             raise HTTPException(
                 status_code=503,

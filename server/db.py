@@ -49,14 +49,22 @@ USERS_COLUMNS: tuple[tuple[str, str], ...] = (
 # `CREATE INDEX ... ON users(wechat_openid)` 会直接报 no such column。
 # 必须等 _migrate_users 把列补齐之后再建，见 init_db 的调用顺序。
 USER_INDEXES = (
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_github ON users(github_id) "
-    "WHERE github_id IS NOT NULL",
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_wechat ON users(wechat_openid) "
-    "WHERE wechat_openid IS NOT NULL AND wechat_openid <> ''",
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unionid ON users(unionid) "
-    "WHERE unionid IS NOT NULL AND unionid <> ''",
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) "
-    "WHERE phone IS NOT NULL AND phone <> ''",
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_github ON users(github_id) "
+        "WHERE github_id IS NOT NULL"
+    ),
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_wechat ON users(wechat_openid) "
+        "WHERE wechat_openid IS NOT NULL AND wechat_openid <> ''"
+    ),
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unionid ON users(unionid) "
+        "WHERE unionid IS NOT NULL AND unionid <> ''"
+    ),
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) "
+        "WHERE phone IS NOT NULL AND phone <> ''"
+    ),
 )
 
 SCHEMA = USERS_DDL.format(name="users") + """
