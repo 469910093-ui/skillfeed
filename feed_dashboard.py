@@ -497,12 +497,28 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     --line: #dbdbdb;
     --card: #ffffff;
 
-    /* 全站唯一的强调色。当文本用（字标、链接）实测 5.70 / 5.46。 */
-    --accent: #1e7362;
-    --accent-strong: #155246;   /* hover / press，9.02 / 8.65 */
+    /* 全站唯一的强调色。当文本用（字标、链接、导航激活态）实测 5.48 / 5.25。
+       这里的取舍是「提饱和，不提亮」：白底上饱和绿的 AA 天花板在明度 24-28%
+       那一段，想更亮就掉线（emerald-600 #059669 只有 3.77）。但同一段明度里
+       饱和度有大把空间 —— 上一版 #1e7362 饱和只有 59%，是个发灰的青绿；
+       换成 94% 饱和，对比度只从 5.70 掉到 5.48，仍远超 4.5。 */
+    --accent: #047857;
+    --accent-strong: #02503a;   /* hover / press，9.50 / 9.10，同色相 163° */
 
-    /* 头像环与 story 环：单一色族的两段渐变。 */
-    --ring: linear-gradient(135deg, var(--accent) 0%, #43a880 100%);
+    /* 头像环与动态圆环。刻意留在 accent 的单一色族内（色相跨度 2°）：
+       「圆形头像环 + 鲜艳多色渐变」这个组合本身就是别人的识别要素，换个
+       色相也还是那个结构，所以这里只动饱和与明度，不做多色扫掠。
+       这条由 TestBrandIdentityIsOurOwn 盯着，别顺手改宽。
+
+       上一版是 59% / 43% 饱和的两段，颜色本身发灰 —— 这才是「素」的真因，
+       不是渐变不够花。现在三段都是 93-94% 饱和，同样的明度段里鲜得多。
+
+       明度只跨 24% → 27% → 30%，看着窄是有原因的：环的着色是「有新内容」
+       这个状态的唯一提示，要和未激活的灰环拉开 WCAG 1.4.11 的 3:1，而同族内
+       过线的最亮档就是 #059669（明度 30%，配 #e8e8e8 是 3.08）。再亮一档
+       #06a877 就掉到 2.49。上一版最弱段只有 2.12，本来就不合格。
+       想让环既亮又鲜，得先给这个状态加一个非颜色提示，见 docs 里的待办。 */
+    --ring: linear-gradient(135deg, var(--accent) 0%, #05865c 50%, #059669 100%);
 
     /* --like 只做图标填充与背景：非文本元素 3:1 即可，实测 4.37 / 4.18。 */
     --like: #e0364f;
@@ -644,10 +660,15 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .story .ring {{
     width: 66px; height: 66px; margin: 0 auto 6px; padding: 2px;
-    border-radius: 50%; background: #dbdbdb;
+    /* 未激活底色。不用 var(--line)：这个值要和 --ring 渐变拉开 3:1（环的着色
+       是「有新内容」的唯一提示），#dbdbdb 只能到 2.69，提到 #e8e8e8 才是 3.04。
+       代价是无新内容的环对白底只剩 1.23，但环里还有 face 撑存在感。 */
+    border-radius: 50%; background: #e8e8e8;
   }}
   .story.hot .ring, .story.has-new .ring {{ background: var(--ring); }}
-  .story.guide .ring {{ background: #e8e8e8; }}
+  /* 引导环（那个 "+"）本来就刻意比未激活环更淡 —— 它是提示不是内容。
+     未激活环提到 #e8e8e8 之后要再让一档，否则两者的层级就压平了。 */
+  .story.guide .ring {{ background: #f0f0f0; }}
   .story .face {{
     width: 100%; height: 100%; border-radius: 50%;
     background: #fff; padding: 2px; display: grid; place-items: center;
@@ -801,7 +822,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .pitch .highlights li::before {{
     content: "✦"; position: absolute; left: 10px; top: 8px;
-    color: var(--accent); font-size: .75rem;   /* 在 #f6f8fa 上 5.35:1 */
+    color: var(--accent); font-size: .75rem;   /* 在 #f6f8fa 上 5.15:1 */
   }}
   .pitch .who-for {{
     margin: 8px 0 0; font-size: .76rem; color: var(--muted); line-height: 1.4;

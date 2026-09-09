@@ -896,6 +896,27 @@ class TestContrastTokens(unittest.TestCase):
     """对比度用真实数值断言，不看颜色字符串——换个「看起来更深」的值也可能仍不达标。"""
 
     AA_TEXT = 4.5
+    NON_TEXT_MIN = 3.0
+
+    # highlights 面板的底色。它不是令牌，是写死在 `.pitch .highlights li` 里的，
+    # 所以这里也只能写死；用处一变就会静默变松，由
+    # test_the_panel_background_is_still_only_used_where_we_think 盯着。
+    PANEL = "#f6f8fa"
+
+    # token → (它在哪儿当文本用, 它实际会落在哪些背景上)
+    #
+    # 背景要逐 token 列，不能一律套三种：PANEL 只铺在 `.pitch .highlights li` 上，
+    # 那个元素里唯一着色的是 `::before` 的 ✦（走 --accent）。--muted 在
+    # `.who-for`、--like-ink 在卡上的操作按钮，都是白卡背景 —— 它俩在 PANEL 上
+    # 分别只有 4.45 / 4.43，一律套宽了会逼着下次有人去动根本没这个问题的取值。
+    TEXT_TOKENS = {
+        "ink": ("正文", ("card", "bg", PANEL)),
+        "muted": ("「适合谁 / 为什么推荐」这类决策文案", ("card", "bg")),
+        "accent": (".logo span / 链接 / .act-label / .nav.on / highlights 的 ✦",
+                   ("card", "bg", PANEL)),
+        "accent-strong": ("链接的 hover / press", ("card", "bg")),
+        "like-ink": ("「已赞」的文字态", ("card", "bg")),
+    }
 
     @classmethod
     def setUpClass(cls):
@@ -903,21 +924,73 @@ class TestContrastTokens(unittest.TestCase):
         # 底色从令牌里读，不写死：写死的话，换了 --bg 就没人再验这两条了
         cls.BACKGROUNDS = (_css_token(cls.html, "card"), _css_token(cls.html, "bg"))
 
-    def test_muted_passes_aa_on_both_page_backgrounds(self):
-        muted = _css_token(self.html, "muted")
-        # --muted 同时落在卡片底和页面底上
-        for bg in self.BACKGROUNDS:
-            with self.subTest(bg=bg):
-                self.assertGreaterEqual(
-                    _wcag_ratio(muted, bg), self.AA_TEXT,
-                    f"--muted {muted} 在 {bg} 上只有 {_wcag_ratio(muted, bg):.2f}:1")
+    def bg_value(self, ref):
+        """背景既可以写令牌名（跟着 --bg 走），也可以直接写 hex（写死在规则里的）。"""
+        return ref if ref.startswith("#") else _css_token(self.html, ref)
 
-    def test_like_ink_passes_aa_and_keeps_the_brand_hue(self):
+    def test_every_text_token_clears_aa_on_every_background_it_lands_on(self):
+        """所有当文本用的令牌一次过完。
+
+        这条补的是一个真实缺口：色板注释里写满了实测值，但在它出现之前只有
+        --muted 和 --like-ink 有断言，--accent / --accent-strong 是裸的。
+        变异测试证实过：把 --accent 提到 #059669（3.77，掉出 AA）全套测试照样绿。
+        """
+        for name, (where, backgrounds) in self.TEXT_TOKENS.items():
+            value = _css_token(self.html, name)
+            for ref in backgrounds:
+                bg = self.bg_value(ref)
+                with self.subTest(token=name, bg=bg):
+                    got = _wcag_ratio(value, bg)
+                    self.assertGreaterEqual(
+                        got, self.AA_TEXT,
+                        f"--{name} = {value}（用在{where}）在 {bg} 上只有 "
+                        f"{got:.2f}:1，要 {self.AA_TEXT}。想更鲜就提饱和别提亮："
+                        f"同一明度段里饱和度有大把空间")
+
+    def test_hover_is_darker_than_rest(self):
+        """hover / press 要比常态更暗，否则「按下去」这个反馈是反的。"""
+        card = _css_token(self.html, "card")
+        self.assertGreater(
+            _wcag_ratio(_css_token(self.html, "accent-strong"), card),
+            _wcag_ratio(_css_token(self.html, "accent"), card),
+            "--accent-strong 没比 --accent 更暗")
+
+    def test_fill_only_tokens_are_not_held_to_the_text_rule(self):
+        """反向确认：--like 就是不过 4.5 的，这是设计如此，不是遗漏。
+
+        没有这条，下次有人看到 --like 只有 4.37 会「顺手修一下」，把它和
+        --like-ink 合成一个，然后「已赞」的文字态悄悄掉出 AA。
+        """
+        like = _css_token(self.html, "like")
+        bg = _css_token(self.html, "bg")
+        self.assertLess(_wcag_ratio(like, bg), self.AA_TEXT)
+        self.assertGreaterEqual(
+            _wcag_ratio(like, bg), self.NON_TEXT_MIN,
+            f"--like = {like} 连非文本的 {self.NON_TEXT_MIN}:1 都不过了")
+
+    def test_the_panel_background_is_still_only_used_where_we_think(self):
+        """TEXT_TOKENS 里的背景清单是照着当时的用法列的，用法一变它就静默变松。
+
+        PANEL 现在只铺在 highlights 上。哪天有人拿它去铺别的块，那块里的
+        --muted（在它上面只有 4.45，掉出 AA）就会悄悄不合格。
+        """
+        # 先剥 CSS 注释：这个色板的注释里写满了实测色值
+        # （`/* 在 #f6f8fa 上 5.15:1 */`），不剥会把提到它的规则一起算进来。
+        css = re.sub(r"/\*.*?\*/", "", self.html, flags=re.S)
+        rules = [m.group(1).strip() for m in re.finditer(
+            r"([^{}]+)\{[^{}]*" + re.escape(self.PANEL) + r"[^{}]*\}", css)]
+        self.assertEqual(
+            [".pitch .highlights li"], rules,
+            f"{self.PANEL} 的用处变了（现在铺在 {rules}）；"
+            f"回去核对 TEXT_TOKENS 里各令牌的背景清单")
+
+    def test_like_ink_keeps_the_brand_hue(self):
+        """--like-ink 只准调明度/饱和度，色相不许动（换品牌色是产品决策）。
+
+        AA 那半边已经由 test_every_text_token_... 一并覆盖。
+        """
         like = _css_token(self.html, "like")
         like_ink = _css_token(self.html, "like-ink")
-        for bg in self.BACKGROUNDS:
-            with self.subTest(bg=bg):
-                self.assertGreaterEqual(_wcag_ratio(like_ink, bg), self.AA_TEXT)
 
         def hue(hexstr):
             import colorsys
@@ -1035,6 +1108,96 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
         m = re.search(r"--ring:\s*([^;]+);", self.html)
         self.assertIsNotNone(m, "找不到 --ring")
         self.assertIn("var(--accent)", m.group(1))
+
+    def test_ring_gradient_is_one_hue_family(self):
+        """含 var(--accent) 还不够：另外那些写死的色站也得留在同一色族里。
+
+        上一条只查了「有没有引用 accent」，光靠它挡不住
+        `var(--accent) 0%, <一个完全不同色相的值> 100%` 这种写法 —— 而那正好
+        就是要避开的那个结构（圆形头像环 + 鲜艳多色渐变）。这里改查实际色相跨度。
+        """
+        stops = _ring_stops(self.html)
+        self.assertGreaterEqual(len(stops), 2, f"--ring 里没解出色站：{stops}")
+        hues = [_hsl(s)[0] for s in stops]
+        span = max(hues) - min(hues)
+        self.assertLessEqual(
+            span, 30,
+            f"--ring 的色相跨度 {span:.0f}°（色站 {stops}，色相 "
+            f"{[f'{h:.0f}°' for h in hues]}）。渐变要留在 accent 的单一色族内，"
+            f"多色扫掠 + 圆形头像环是别人的识别要素")
+
+
+def _hsl(hexstr):
+    h = hexstr.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    mx, mn = max(r, g, b), min(r, g, b)
+    d = mx - mn
+    if d == 0:
+        hue = 0.0
+    elif mx == r:
+        hue = ((g - b) / d) % 6
+    elif mx == g:
+        hue = (b - r) / d + 2
+    else:
+        hue = (r - g) / d + 4
+    light = (mx + mn) / 2
+    sat = 0 if d == 0 else d / (1 - abs(2 * light - 1))
+    return hue * 60, sat * 100, light * 100
+
+
+def _ring_stops(html):
+    """把 --ring 里的色站解成 hex 列表，var(--accent) 展开成实际取值。"""
+    ring = re.search(r"--ring:\s*([^;]+);", html).group(1)
+    ring = ring.replace("var(--accent)", _css_token(html, "accent"))
+    return re.findall(r"#[0-9a-fA-F]{6}", ring)
+
+
+class TestRingStillSignalsNewContent(unittest.TestCase):
+    """环的着色是「有新内容」的唯一提示，得和未激活的灰环拉开 3:1。
+
+    `.story.hot .ring` / `.has-new .ring` 上渐变，普通 story 上一片灰，两者之差
+    就是这个状态的全部表达 —— 环本身 `aria-hidden`，label 只写名字不带数量，
+    所以读屏用户拿不到，视觉用户只能靠颜色。落进 WCAG 1.4.11，门槛 3:1。
+
+    这条拦的是「为了好看把环调亮」：调亮 → 和灰环越来越近 → 状态提示静默失效，
+    页面看着更漂亮，功能悄悄没了。上一版最弱段只有 2.12，就是这么来的。
+    """
+
+    NON_TEXT_MIN = 3.0
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+
+    def inactive_grey(self):
+        m = re.search(r"\.story\s+\.ring\s*\{(.*?)\}", self.html, flags=re.S)
+        self.assertIsNotNone(m, "找不到 .story .ring 规则")
+        g = re.search(r"background:\s*(#[0-9a-fA-F]{6})", m.group(1))
+        self.assertIsNotNone(g, f"没解出未激活底色：{m.group(1)}")
+        return g.group(1)
+
+    def test_every_gradient_stop_clears_the_inactive_ring(self):
+        grey = self.inactive_grey()
+        for stop in _ring_stops(self.html):
+            with self.subTest(stop=stop):
+                got = _wcag_ratio(stop, grey)
+                self.assertGreaterEqual(
+                    got, self.NON_TEXT_MIN,
+                    f"色站 {stop} 对未激活环 {grey} 只有 {got:.2f}:1"
+                    f"（要 {self.NON_TEXT_MIN}）—— 环再亮就分不出有没有新内容了")
+
+    def test_the_guide_ring_stays_fainter_than_the_inactive_one(self):
+        """引导环（那个 "+"）是提示不是内容，刻意比未激活环更淡。
+
+        这个层级很容易在调灰阶时被压平成同一个值。
+        """
+        m = re.search(r"\.story\.guide\s+\.ring\s*\{(.*?)\}", self.html, flags=re.S)
+        self.assertIsNotNone(m, "找不到 .story.guide .ring")
+        guide = re.search(r"background:\s*(#[0-9a-fA-F]{6})", m.group(1)).group(1)
+        inactive = self.inactive_grey()
+        self.assertGreater(
+            _hsl(guide)[2], _hsl(inactive)[2],
+            f"引导环 {guide} 没比未激活环 {inactive} 更淡，两级压平了")
 
 
 class TestAriaLabelsAreLocalized(unittest.TestCase):
