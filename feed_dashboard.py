@@ -121,14 +121,352 @@ def _with_csp(html: str, *, api_base: str = "") -> str:
     return html.replace(_CHARSET_META, _CHARSET_META + "\n" + meta, 1)
 
 
+# ---------------------------------------------------------------- 装到本机
+# 「不代装」这条产品边界没有变，只是说得更准了：**skill-feed 自己一个字节都不写你的
+# 磁盘**。下面这套 UI 只出现在 lite 变体里，而 lite 就是 skill-picker 拷进
+# ~/.skill-picker/discover.html 的那份；点下去调的是 skill-picker 的本地 serve
+# （它自己的安装引擎、它自己的存证与回滚），本仓库只是把按钮画出来。
+#
+# 因此这三块按变体在**生成时**决定要不要写进去：公开的 index.html 里连一个相关字节
+# 都没有，不靠运行时判断。tests 里有一条在盯这件事。
+#
+# 位置有硬要求：这段必须插在 applyLang(LANG) 那次首屏渲染之前。cardHtml 会调
+# installBtnHtml，而它读 PICKER —— 函数声明会提升，`const PICKER` 不会。插晚了每张卡
+# 都在暂时性死区上抛 ReferenceError，整个 feed 渲成空白（踩过一次）。
+#
+# lite 也会作为 embed.html 发到 Pages 上，所以运行时还有第二道：只有
+# 127.0.0.1 / localhost 才去探端点，file:// 降级成复制命令，其余一律不显示。
+
+INSTALL_CSS = """
+  .open-row.has-install { display: flex; gap: 8px; }
+  .open-row.has-install .open-gh { flex: 1 1 0; min-width: 0; }
+  .open-gh.install {
+    appearance: none; border: 1px solid var(--ink); cursor: pointer;
+    background: #fff; color: var(--ink); font: inherit; font-weight: 700;
+    font-size: .88rem; border-radius: 10px; padding: 10px 12px;
+  }
+  .open-gh.install[disabled] { opacity: .55; cursor: progress; }
+  .install-plan { font-size: .8rem; line-height: 1.5; }
+  .install-plan dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0 0 10px; }
+  .install-plan dt { color: var(--muted); white-space: nowrap; }
+  .install-plan dd { margin: 0; word-break: break-all; }
+  .install-plan ul { margin: 0 0 10px; padding-left: 18px; color: var(--muted); }
+  /* 计划里的提示是后端逐字给的，带换行和缩进（同一份文案也要在终端里读）。
+     pre-line 让换行留住、把缩进的空白吃掉，不然在页面上糊成一长条。 */
+  .install-plan .note, .install-plan .blocker { white-space: pre-line; }
+  .install-plan .note { color: var(--muted); margin: 0 0 6px; }
+  .install-plan .blocker { color: #b42318; font-weight: 600; margin: 0 0 6px; }
+  .install-act { display: flex; gap: 8px; margin-top: 12px; }
+  .install-act button {
+    flex: 1 1 0; border-radius: 10px; padding: 10px 12px; font: inherit;
+    font-weight: 700; cursor: pointer; border: 1px solid var(--line); background: #fff;
+  }
+  .install-act button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .install-act button[disabled] { opacity: .55; cursor: not-allowed; }
+"""
+
+INSTALL_SHEET_HTML = """  <div class="sheet" id="installSheet" aria-hidden="true">
+    <div class="sheet-panel" id="installSheetPanel"></div>
+  </div>
+"""
+
+INSTALL_JS = """
+/* ---------- 装到本机（只在 lite 变体里存在） ---------- */
+/* 文案也塞在这个块里、不进共用的 I18N 表：公开产物里连「装到本机」这四个字都不该有。 */
+Object.assign(I18N.zh, {
+  installHere: '装到本机', installCopy: '复制安装命令',
+  installPlanning: '看一下…', installWorking: '安装中…',
+  installTitle: '装到本机', installConfirm: '确认安装', installCancel: '不装',
+  installLead: '下面这些是真要写进你磁盘的东西。确认前它一个字节都不会落地。',
+  installFrom: '来源', installVersion: '版本', installTarget: '装到', installContent: '内容',
+  installFiles: '{n} 个文件 · {kb} KB', installMoreFiles: '还有 {n} 个',
+  installOkTitle: '装好了', installWarnTitle: '装了，但有话说',
+  installOkToast: '装好了，已进 catalog',
+  installWrote: '写了 {n} 个文件，重扫已收进 catalog。',
+  installTwins: '本机现在有 {n} 份同名（{hosts}）。要不要留着由你定，工具不代删。',
+  installGateFail: '门禁 {gates} 没过。装的东西没问题，是索引层面要你看一眼。',
+  installRolledBack: '落盘校验没对上，已经回滚，磁盘回到装之前。',
+  installNotIndexed: '文件写进去了，但重扫没把它收进 catalog。去看板「理技能」看看目录对不对。',
+  installNoAnswer: '本机看板服务没应答。确认 skillpick serve 还在跑。',
+  installCopyTitle: '复制这条命令', installCopyBtn: '复制',
+  installCopyLead: '这个看板是用 file:// 打开的，浏览器不让页面连本机服务。'
+    + '在终端跑下面这条，或者改用 python ~/.skill-picker/skillpick.py serve 打开看板。',
+  installCopied: '已复制', installCopyFail: '浏览器不让复制，请手动选中',
+});
+Object.assign(I18N.en, {
+  installHere: 'Install here', installCopy: 'Copy install command',
+  installPlanning: 'Checking…', installWorking: 'Installing…',
+  installTitle: 'Install on this machine', installConfirm: 'Install', installCancel: 'Not now',
+  installLead: 'This is what would actually be written to your disk. Nothing lands until you confirm.',
+  installFrom: 'Source', installVersion: 'Version', installTarget: 'Target', installContent: 'Contents',
+  installFiles: '{n} files · {kb} KB', installMoreFiles: '{n} more',
+  installOkTitle: 'Installed', installWarnTitle: 'Installed, with a caveat',
+  installOkToast: 'Installed and indexed',
+  installWrote: 'Wrote {n} files; the rescan picked it up.',
+  installTwins: 'This machine now holds {n} copies of that name ({hosts}). '
+    + 'Keeping them is your call — nothing is deleted for you.',
+  installGateFail: 'Gate {gates} did not pass. The files are fine; the index wants a look.',
+  installRolledBack: 'The on-disk check did not match, so it was rolled back. Your disk is as it was.',
+  installNotIndexed: 'The files were written but the rescan did not index them. '
+    + 'Check the directory in the dashboard.',
+  installNoAnswer: 'The local dashboard service did not answer. '
+    + 'Check that skillpick serve is still running.',
+  installCopyTitle: 'Copy this command', installCopyBtn: 'Copy',
+  installCopyLead: 'This dashboard was opened over file://, so the page is not allowed to reach '
+    + 'the local service. Run the command below, or reopen the dashboard with '
+    + 'python ~/.skill-picker/skillpick.py serve.',
+  installCopied: 'Copied', installCopyFail: 'The browser refused; select it by hand',
+});
+
+/* 三种运行形态，判据只看地址栏，不看数据：
+     live —— 127.0.0.1/localhost 且 /api/session 应答 → 真能装
+     copy —— file:// 打开的看板，浏览器不让 fetch 本机服务 → 复制命令
+     off  —— 其它任何地方（包括 Pages 上的 embed.html）→ 完全不出现
+   探测失败一律退回 off：宁可没有按钮，也不要点了没反应。 */
+const PICKER = { mode: 'off', token: '', hosts: [], host: '' };
+
+function pickerIsLocalHost() {
+  return location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+}
+
+function pickerCommand(url) {
+  return 'python ~/.skill-picker/skillpick.py add ' + url + ' --yes';
+}
+
+async function pickerInit() {
+  if (location.protocol === 'file:') { PICKER.mode = 'copy'; return; }
+  if (!pickerIsLocalHost()) return;
+  try {
+    const resp = await fetch('/api/session', { headers: { 'Accept': 'application/json' } });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data || !data.token) return;
+    PICKER.mode = 'live';
+    PICKER.token = data.token;
+    PICKER.hosts = data.hosts || [];
+    PICKER.host = data.default_host || PICKER.hosts[0] || '';
+    // 空结果页那句「不代装」在这里就不成立了。改文案而不是改渲染点：
+    // 这样公开站的 index.html 里连这条替换文案都不存在。
+    I18N.zh.noInstallNote = '这台机器上可以直接装：卡片上点「装到本机」，'
+      + '装前会先给你计划，装完自动重扫进 catalog。';
+    I18N.en.noInstallNote = 'On this machine you can install directly: use “Install here” on a card. '
+      + 'You see the plan first, and the rescan indexes it for you afterwards.';
+  } catch (e) { /* serve 没开就当没这功能 */ }
+}
+
+/* 后端要的是「装哪个子目录」，而 skill_path 指到 SKILL.md 文件本身。
+   直接把文件路径递过去，后端会去找 skills/x/SKILL.md/SKILL.md（踩过一次）。 */
+function installSubdir(skillPath) {
+  const parts = String(skillPath || '').replace(/^\\/+/, '').split('/').filter(Boolean);
+  if (parts.length && /\\.md$/i.test(parts[parts.length - 1])) parts.pop();
+  return parts.join('/');
+}
+
+function installBtnHtml(it) {
+  if (PICKER.mode === 'off') return '';
+  const url = it.url || (it.full_name ? ('https://github.com/' + it.full_name) : '');
+  if (!url) return '';
+  const label = PICKER.mode === 'copy' ? tr('installCopy') : tr('installHere');
+  return '<button type="button" class="open-gh install js-install"'
+    + ' data-url="' + escapeHtml(url) + '"'
+    + ' data-path="' + escapeHtml(installSubdir(it.skill_path)) + '">'
+    + escapeHtml(label) + '</button>';
+}
+
+async function pickerPost(path, body) {
+  const resp = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Skillpick-Token': PICKER.token },
+    body: JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await resp.json(); } catch (e) { data = null; }
+  if (!data) throw new Error(tr('installNoAnswer'));
+  if (!resp.ok) throw new Error(data.error || tr('installNoAnswer'));
+  return data;
+}
+
+function closeInstallSheet() {
+  const el = document.getElementById('installSheet');
+  if (!el) return;
+  el.classList.remove('open');
+  el.setAttribute('aria-hidden', 'true');
+}
+
+function showInstallSheet(html) {
+  const panel = document.getElementById('installSheetPanel');
+  if (!panel) return;
+  panel.innerHTML = html;
+  const el = document.getElementById('installSheet');
+  el.classList.add('open');
+  el.setAttribute('aria-hidden', 'false');
+}
+
+/* 计划面板是纯函数，好测；也保证「屏幕上写的」和「等会儿真写盘的」是同一份数据 */
+function installPlanHtml(plan) {
+  const rows = [
+    [tr('installFrom'), plan.source + (plan.subdir ? ('  ' + plan.subdir) : '')],
+    [tr('installVersion'), plan.ref + (plan.commit ? ('  ' + plan.commit) : '')],
+    [tr('installTarget'), plan.target],
+    [tr('installContent'), trn('installFiles', { n: plan.file_count,
+      kb: (Number(plan.total_bytes || 0) / 1024).toFixed(1) })],
+  ];
+  const dl = rows.map(r => '<dt>' + escapeHtml(r[0]) + '</dt><dd>'
+    + escapeHtml(String(r[1] || '')) + '</dd>').join('');
+  const files = (plan.files || []).map(f => '<li>' + escapeHtml(f.path) + '</li>').join('')
+    + (plan.more_files ? ('<li>' + escapeHtml(trn('installMoreFiles', { n: plan.more_files })) + '</li>') : '');
+  const notes = (plan.notes || []).map(n => '<p class="note">' + escapeHtml(n) + '</p>').join('');
+  const blockers = (plan.blockers || []).map(b => '<p class="blocker">' + escapeHtml(b) + '</p>').join('');
+  const act = plan.ok
+    ? '<button type="button" class="primary js-install-go" data-plan="' + escapeHtml(plan.plan_id) + '">'
+      + escapeHtml(tr('installConfirm')) + '</button>'
+    : '';
+  return '<h3>' + escapeHtml(tr('installTitle')) + '</h3>'
+    + '<p class="lead">' + escapeHtml(tr('installLead')) + '</p>'
+    + '<div class="install-plan"><dl>' + dl + '</dl>'
+    + (files ? ('<ul>' + files + '</ul>') : '') + notes + blockers + '</div>'
+    + '<div class="install-act">'
+    + '<button type="button" class="js-install-cancel">' + escapeHtml(tr('installCancel')) + '</button>'
+    + act + '</div>';
+}
+
+function installDoneHtml(res) {
+  const rep = res.report || {};
+  const lines = [];
+  if (rep.rolled_back) {
+    lines.push('<p class="blocker">' + escapeHtml(tr('installRolledBack')) + '</p>');
+  } else if (rep.missing_from_catalog) {
+    lines.push('<p class="blocker">' + escapeHtml(tr('installNotIndexed')) + '</p>');
+  } else {
+    lines.push('<p class="note">' + escapeHtml(trn('installWrote', { n: res.files })) + '</p>');
+    if ((rep.twins || []).length) {
+      lines.push('<p class="note">' + escapeHtml(trn('installTwins',
+        { n: rep.twins.length, hosts: rep.twins.join(' / ') })) + '</p>');
+    }
+    if ((rep.gates_failed || []).length) {
+      lines.push('<p class="blocker">' + escapeHtml(trn('installGateFail',
+        { gates: rep.gates_failed.join(' / ') })) + '</p>');
+    }
+  }
+  return '<h3>' + escapeHtml(res.ok ? tr('installOkTitle') : tr('installWarnTitle')) + '</h3>'
+    + '<div class="install-plan">' + lines.join('') + '</div>'
+    + '<div class="install-act">'
+    + '<button type="button" class="primary js-install-cancel">' + escapeHtml(tr('close')) + '</button></div>';
+}
+
+/* file:// 打开时浏览器不让 fetch 本机服务，所以这里退成命令。
+   不直接静默写剪贴板：file:// 和 iframe 下 clipboard 权限时有时无，
+   静默失败会让人以为复制成功了。命令原文摊在面上，复制不成也能手选。 */
+function installCopyHtml(url) {
+  return '<h3>' + escapeHtml(tr('installCopyTitle')) + '</h3>'
+    + '<p class="lead">' + escapeHtml(tr('installCopyLead')) + '</p>'
+    + '<div class="install-plan"><dd id="installCmd">'
+    + escapeHtml(pickerCommand(url)) + '</dd></div>'
+    + '<div class="install-act">'
+    + '<button type="button" class="js-install-cancel">' + escapeHtml(tr('close')) + '</button>'
+    + '<button type="button" class="primary js-install-copy">' + escapeHtml(tr('installCopyBtn'))
+    + '</button></div>';
+}
+
+async function pickerCopy(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* 往下走兜底 */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return !!ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function startInstall(btn) {
+  const url = btn.dataset.url || '';
+  if (!url) return;
+  if (PICKER.mode === 'copy') {
+    showInstallSheet(installCopyHtml(url));
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = tr('installPlanning');
+  try {
+    const plan = await pickerPost('/api/install/plan',
+      { url: url, path: btn.dataset.path || '', host: PICKER.host });
+    showInstallSheet(installPlanHtml(plan));
+  } catch (e) {
+    toast(String(e.message || e));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = tr('installHere');
+  }
+}
+
+async function confirmInstall(btn) {
+  btn.disabled = true;
+  btn.textContent = tr('installWorking');
+  try {
+    const res = await pickerPost('/api/install/apply', { plan_id: btn.dataset.plan || '' });
+    // 装完立刻要能看出「已装」，不能等下一次 scan 重写数据块
+    const names = (res.local && res.local.names) || {};
+    Object.keys(names).forEach(k => { LOCAL_FRESH[k] = names[k]; });
+    showInstallSheet(installDoneHtml(res));
+    render(false);
+    toast(res.ok ? tr('installOkToast') : tr('installWarnTitle'));
+  } catch (e) {
+    toast(String(e.message || e));
+    btn.disabled = false;
+    btn.textContent = tr('installConfirm');
+  }
+}
+
+document.addEventListener('click', e => {
+  const go = e.target.closest('.js-install-go');
+  if (go) { confirmInstall(go); return; }
+  if (e.target.closest('.js-install-cancel')) { closeInstallSheet(); return; }
+  const cp = e.target.closest('.js-install-copy');
+  if (cp) {
+    const el = document.getElementById('installCmd');
+    pickerCopy(el ? el.textContent : '').then(ok => toast(tr(ok ? 'installCopied' : 'installCopyFail')));
+    return;
+  }
+  const btn = e.target.closest('.js-install');
+  if (btn) { startInstall(btn); return; }
+});
+
+document.getElementById('installSheet').addEventListener('click', e => {
+  if (e.target.id === 'installSheet') closeInstallSheet();
+});
+
+pickerInit().then(() => { if (PICKER.mode !== 'off') render(false); });
+"""
+
+
 def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     """生成 Feed HTML。
 
     variant:
       - full：独立网页产品（动态圆环/关注/发布/我的）
-      - lite：给 skill-picker 嵌入的发现子页（无关注/发布/个人后台）
+      - lite：给 skill-picker 嵌入的发现子页（无关注/发布/个人后台，含「装到本机」）
     """
     variant = _resolve_variant(feed, variant)
+    lite = variant == "lite"
+    install_css = INSTALL_CSS if lite else ""
+    install_sheet = INSTALL_SHEET_HTML if lite else ""
+    install_js = INSTALL_JS if lite else ""
+    # 卡片模板里的调用点也按变体决定：full 里连调用都不存在，而不是调了个空函数
+    install_slot = "${installBtnHtml(it)}" if lite else ""
+    install_row_cls = "${installBtnHtml(it) ? ' has-install' : ''}" if lite else ""
     feed = dict(feed)
     ui = dict(feed.get("ui") or {})
     ui["variant"] = variant
@@ -592,7 +930,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     border-radius: 10px; padding: 10px 12px;
     background: var(--ink); color: #fff; font-weight: 700; font-size: .88rem;
   }}
-
+{install_css}
   .sentinel {{ text-align: center; padding: 22px 12px; color: var(--muted); font-size: .8rem; }}
   .empty {{ text-align: center; padding: 64px 20px; color: var(--muted); }}
   .empty h2 {{ color: var(--ink); font-size: 1.1rem; }}
@@ -899,7 +1237,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   <div class="sheet" id="followSheet" aria-hidden="true">
     <div class="sheet-panel" id="followSheetPanel"></div>
   </div>
-
+{install_sheet}
 <script>
 const FEED = {payload};
 const SCENES = {scenes};
@@ -954,12 +1292,18 @@ function localSkillKeys(it) {{
   return keys;
 }}
 
+/* 刚装完的 skill 要立刻显示「已装」，而数据块是 scan 时烤进 HTML 的、这辈子不会自己更新。
+   所以安装成功后把本机索引的增量写这里，查的时候先看它。公开站上它永远是空的。 */
+const LOCAL_FRESH = {{}};
+
 function localHit(it) {{
-  if (!LOCAL_SKILLS) return null;
   const keys = localSkillKeys(it);
   for (let i = 0; i < keys.length; i++) {{
-    if (Object.prototype.hasOwnProperty.call(LOCAL_SKILLS, keys[i])) {{
-      const hit = LOCAL_SKILLS[keys[i]];
+    const src = Object.prototype.hasOwnProperty.call(LOCAL_FRESH, keys[i])
+      ? LOCAL_FRESH
+      : (LOCAL_SKILLS && Object.prototype.hasOwnProperty.call(LOCAL_SKILLS, keys[i]) ? LOCAL_SKILLS : null);
+    if (src) {{
+      const hit = src[keys[i]];
       if (hit) return {{ key: keys[i], copies: Number(hit.copies) || 1, hosts: hit.hosts || [], drifted: !!hit.drifted }};
     }}
   }}
@@ -2239,7 +2583,7 @@ function cardHtml(it, idx) {{
     <div class="likes">★ ${{stars}} · score ${{score}}</div>
     ${{why ? `<div class="why-line">${{escapeHtml(why)}}</div>` : ''}}
     <div class="time">${{escapeHtml(it.soft ? tr('softTime') : (it.from_corpus ? tr('corpusTime') : tr('suggestTime')))}}</div>
-    <div class="open-row"><a class="open-gh js-open" href="${{escapeHtml(safeUrl(url))}}" target="_blank" rel="noopener">${{escapeHtml(tr('openGithub'))}}</a></div>
+    <div class="open-row{install_row_cls}"><a class="open-gh js-open" href="${{escapeHtml(safeUrl(url))}}" target="_blank" rel="noopener">${{escapeHtml(tr('openGithub'))}}</a>{install_slot}</div>
   </article>`;
 }}
 
@@ -3170,6 +3514,7 @@ document.getElementById('langToggle').addEventListener('click', (e) => {{
   if (btn) applyLang(btn.dataset.lang);
 }});
 
+{install_js}
 try {{
   if (!IS_LITE && localStorage.getItem('sf_stories_hint_dismissed') === '1') {{
     document.getElementById('storiesHint').hidden = true;

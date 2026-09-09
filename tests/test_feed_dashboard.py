@@ -31,7 +31,7 @@ def _top_level_functions(js: str) -> str:
     lines = js.split("\n")
     i = 0
     while i < len(lines):
-        if re.match(r"^function\s+[A-Za-z0-9_$]+\s*\(", lines[i]):
+        if re.match(r"^(?:async\s+)?function\s+[A-Za-z0-9_$]+\s*\(", lines[i]):
             start = i
             i += 1
             while i < len(lines) and lines[i] != "}":
@@ -114,6 +114,7 @@ class JsHarness:
             DOM_STUB,
             seed_local,
             _grab(js, r"const LOCAL_SKILLS = \(function \(\) \{.*?\n\}\)\(\);"),
+            _grab(js, r"const LOCAL_FRESH = \{\};"),
             _grab(js, r"const I18N = \{.*?\n\};"),
             "let LANG = " + json.dumps(lang) + ";",
             "const SCENES = %s; const SCENES_L2 = %s;" % (
