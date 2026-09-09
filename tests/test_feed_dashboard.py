@@ -1049,6 +1049,14 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
         "#00376b": "Instagram 的链接蓝",
     }
 
+    # 到禁用值的最小 RGB 距离。低于这个值就当成「照着清单微调一档绕过去」。
+    MIN_DISTANCE = 40
+    # 唯一的豁免：--like / --like-ink 距禁用红只有 24 / 33，是先于这道门就存在的
+    # 取值，动它属于品牌决策不属于修 bug，记在 docs/brand-tokens.md 等决策。
+    # 豁免只给这两个已知值；新增的色一律要过 MIN_DISTANCE，免得每加一个近似色
+    # 就顺手再加一条豁免，把清单蚕食成一张白名单。
+    GRANDFATHERED = frozenset({"#e0364f", "#d6344c"})
+
     # 我们的外观描述里不得把自己说成某个第三方产品的同款。
     # 自称仿版是「意图」的书面证据，在侵权纠纷里比色值本身更难解释。
     THIRD_PARTY_APPS = ("instagram", "tiktok", "douyin", "xiaohongshu",
@@ -1073,17 +1081,89 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
             {"items": [cls.ITEM_NAMING_A_THIRD_PARTY_PRODUCT], "corpus": []})
         # 剔掉 <script>：那里面是内容数据和模板，不是我们的品牌外观
         cls.chrome = re.sub(r"<script>.*?</script>", "", cls.html, flags=re.S).lower()
+        # 再剔掉 CSS 注释，得到「真正会被画出来的东西」。
+        #
+        # 两个范围是有意分开的，判定标准不同：
+        #   - 颜色取值按**渲不渲染**判。注释里的值没有任何外观，写在那儿通常正是
+        #     为了记录「这个值被否掉了、别再用」——`--like-ink` 上面那条就是这样，
+        #     记着 #d7344c 掉出 AA。把它算成违规，等于逼着后人删掉决策记录。
+        #   - 第三方**名字**按出不出现判，仍然扫 chrome（含注释）。自称某产品同款
+        #     是意图的书面证据，注释里也不能有；归属说明该放 docs/brand-tokens.md。
+        cls.painted = re.sub(r"/\*.*?\*/", "", cls.chrome, flags=re.S)
 
     def test_third_party_product_name_in_content_is_present_so_the_fixture_is_meaningful(self):
         """先确认夹具真的把第三方产品名写进了页面，否则下面两条断言是空过。"""
         self.assertIn("instagram", self.html.lower())
 
+    def test_the_comment_stripper_does_not_eat_live_css(self):
+        """先证明 painted 没被剪坏，否则下面三条断言可能是在一个空串上空过。
+
+        `/\\*.*?\\*/` 配 DOTALL 在含 `/*` 的字符串上会吃掉整段，这类假绿最难查。
+        """
+        self.assertIn("--accent:", self.painted, "剪注释把令牌声明也剪掉了")
+        self.assertIn(".media .badge", self.painted, "剪注释把规则也剪掉了")
+        self.assertLess(len(self.painted), len(self.chrome), "一条注释都没剪掉")
+
     def test_no_banned_brand_values_reach_the_page_chrome(self):
         for token, why in self.BANNED.items():
             with self.subTest(token=token):
+                haystack = self.painted if token.startswith("#") else self.chrome
                 self.assertNotIn(
-                    token, self.chrome,
+                    token, haystack,
                     f"{token}（{why}）出现在页面外壳里；品牌要素要用我们自己的取值")
+
+    def test_banned_values_are_also_caught_when_written_as_rgb(self):
+        """同一个颜色写成 rgb()/rgba() 时上面那条完全看不见。
+
+        这不是假想的：`.badge.kb` / `.badge.local.drift` / `hintFlash` 三处曾经写的是
+        `rgba(237,73,86,.85)`，而 `237,73,86` 就是 `#ed4956`——禁用清单里的第一条。
+        只比对 hex 字符串的断言在这三处上一路是绿的。所以这里把外壳里所有
+        rgb/rgba 折算回 hex 再比一遍。
+        """
+        for hexval, where in _rgb_functions(self.painted):
+            with self.subTest(value=hexval, at=where):
+                self.assertNotIn(
+                    hexval, self.BANNED,
+                    f"{where} 写的 {hexval} 是禁用值"
+                    f"（{self.BANNED.get(hexval, '')}）的十进制写法")
+
+    def test_chrome_colours_keep_their_distance_from_the_banned_ones(self):
+        """挡「换个相邻值绕过去」：逐色算到禁用值的 RGB 欧氏距离。
+
+        清单本身挡不住这个——把 `#ed4956` 改成 `#ed4957` 就能过。文档里明写了这是
+        预期的失效模式，所以这里改成量距离。
+
+        阈值 40 是按现状定的：外壳里离禁用值最近的自有色是 `--like` `#e0364f`，
+        距 `#ed4956` 只有 24，**够不上这个阈值**，所以它被显式豁免并单独记在
+        docs/brand-tokens.md 里等决策。豁免只给这一个已知值，新增的色一律要过 40，
+        免得往后每加一个近似色就顺手再加一条豁免。
+        """
+        near = _too_close_to_banned(
+            _all_colours(self.painted), self.BANNED,
+            self.MIN_DISTANCE, self.GRANDFATHERED)
+        self.assertEqual(
+            near, [],
+            "外壳里有颜色贴着禁用值：\n  " + "\n  ".join(near))
+
+    def test_the_distance_gate_is_actually_sensitive(self):
+        """检验上面那道门自己的灵敏度。
+
+        变异测试里唯一活下来的改动就是把阈值从 40 调到 0——门还在、断言还绿，
+        但什么都不拦了。上一条断言查的是「有没有违规色」，查不出「门是不是被
+        拆了」，因为没有违规色时两种情况的结果都是空列表。
+
+        所以这里塞一个合成色进同一条代码路径：`#ea4a58` 距 `#ed4956` 只有 5，
+        必须被报出来。阈值一旦降到 5 以下，这条就炸。
+        """
+        planted = [("#ea4a58", "合成夹具")]
+        near = _too_close_to_banned(
+            planted, self.BANNED, self.MIN_DISTANCE, self.GRANDFATHERED)
+        self.assertTrue(
+            near,
+            f"阈值 {self.MIN_DISTANCE} 连距禁用值 5 的颜色都放过了，这道门是空的")
+        self.assertGreaterEqual(
+            self.MIN_DISTANCE, 30,
+            "阈值低于 30 就挡不住肉眼看不出差别的改动")
 
     def test_chrome_does_not_describe_itself_as_another_product(self):
         """外壳里不许出现自称某第三方产品同款的字样。
@@ -1125,6 +1205,60 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
             f"--ring 的色相跨度 {span:.0f}°（色站 {stops}，色相 "
             f"{[f'{h:.0f}°' for h in hues]}）。渐变要留在 accent 的单一色族内，"
             f"多色扫掠 + 圆形头像环是别人的识别要素")
+
+
+def _rgb_functions(css):
+    """外壳里所有 rgb()/rgba() 折算成 hex，附带出现位置（行号 + 该行片段）。
+
+    只认十进制三元组。`rgba(var(--like-rgb), .85)` 这种走令牌的写法解不出数字，
+    这里就直接跳过——它指向的值会在 `_all_colours` 里以 hex 形式被查到。
+    """
+    out = []
+    for m in re.finditer(r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)", css):
+        r, g, b = (int(x) for x in m.groups())
+        line = css[:m.start()].count("\n") + 1
+        out.append(("#%02x%02x%02x" % (r, g, b), f"第 {line} 行"))
+    return out
+
+
+def _all_colours(css):
+    """外壳里所有颜色，hex 与 rgb() 两种写法都算进来，用于距离检查。"""
+    out = list(_rgb_functions(css))
+    for m in re.finditer(r"#([0-9a-f]{6})\b", css):
+        line = css[:m.start()].count("\n") + 1
+        out.append(("#" + m.group(1), f"第 {line} 行"))
+    return out
+
+
+def _too_close_to_banned(colours, banned_map, threshold, exempt=()):
+    """挑出贴着禁用值的颜色，返回人能读的说明列表。
+
+    抽成函数是为了让「真实页面」和「合成夹具」走同一条代码路径——不然那条检验
+    灵敏度的测试就成了另写一遍逻辑，改了阈值它照样绿。
+    """
+    out = []
+    for hexval, where in colours:
+        if hexval in exempt:
+            continue
+        for banned, why in banned_map.items():
+            if not banned.startswith("#"):
+                continue
+            d = _rgb_distance(hexval, banned)
+            if d < threshold:
+                out.append(f"{where} 的 {hexval} 距 {banned}（{why}）只有 {d:.0f}")
+    return out
+
+
+def _rgb_distance(a, b):
+    """RGB 空间欧氏距离。
+
+    刻意不用 CIEDE2000 之类的感知色差：这道门要挡的是「照着一个值微调一档绕过
+    清单」，不是判断两个颜色人眼能否分辨。RGB 距离对这个目的够用，而且不引依赖、
+    读代码的人一眼能复算。
+    """
+    pa = tuple(int(a.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    pb = tuple(int(b.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    return sum((x - y) ** 2 for x, y in zip(pa, pb)) ** 0.5
 
 
 def _hsl(hexstr):

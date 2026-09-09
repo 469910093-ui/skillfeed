@@ -522,6 +522,10 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 
     /* --like 只做图标填充与背景：非文本元素 3:1 即可，实测 4.37 / 4.18。 */
     --like: #e0364f;
+    /* 同一个红的 RGB 三元组，只为让 rgba() 能带 alpha 复用它。
+       任何要带透明度的红都必须走这个令牌：手写十进制三元组曾经绕过品牌合规
+       检查（那道门当时只比对 hex 字符串），详见 docs/brand-tokens.md。 */
+    --like-rgb: 224, 54, 79;
     /* --like 当文本用在 #fafafa 上只有 4.18，掉出 AA。--like-ink 锁住同一色相
        （偏离 0.07°）与饱和度，只把明度从 .88 降到 .84，换来 4.71 / 4.52；
        再亮一档 #d7344c 就掉回 4.49。 */
@@ -647,7 +651,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   @keyframes hintFlash {{
     0%, 100% {{ background: transparent; }}
-    30% {{ background: rgba(237,73,86,.08); }}
+    30% {{ background: rgba(var(--like-rgb), .08); }}
   }}
   .stories {{
     display: flex; gap: 14px; overflow-x: auto; padding: 12px 12px 12px;
@@ -781,12 +785,12 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.22);
     backdrop-filter: blur(6px); border-radius: 999px; padding: 3px 8px;
   }}
-  .media .badge.kb {{ background: rgba(237,73,86,.85); border-color: transparent; }}
+  .media .badge.kb {{ background: rgba(var(--like-rgb), .85); border-color: transparent; }}
   .media .badge.soft {{ background: rgba(255,193,7,.92); color: #262626; border-color: transparent; }}
   /* 「本机已有同名」只在 skill-picker 注入了本机索引时出现，公开站上不存在。
      用中性深色而不是绿色：它是一条装前提醒，不是「已装好」的成功态。 */
   .media .badge.local {{ background: rgba(17,17,17,.82); border-color: rgba(255,255,255,.3); cursor: help; }}
-  .media .badge.local.drift {{ background: rgba(237,73,86,.9); border-color: transparent; }}
+  .media .badge.local.drift {{ background: rgba(var(--like-rgb), .9); border-color: transparent; }}
   .heart-burst {{
     position: absolute; left: 50%; top: 50%; width: 90px; height: 90px;
     margin: -45px 0 0 -45px; opacity: 0; pointer-events: none; z-index: 3;
@@ -1064,9 +1068,14 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     padding: 56px 14px 96px;
     overflow: hidden;
   }}
+  /* 全屏 story 背景的兜底。JS 随后会用 sceneGradient() 覆盖，但兜底本身也得合规：
+     这里原来是紫→洋红→橙的三段暖色扫掠，逐段 hex 都不是精确匹配所以躲过了禁用
+     清单，可「竖屏全屏 story + 暖色洋红扫掠背景」正是要避开的那个整体印象。
+     换成 accent 单一色族，和 --ring 同一条纪律。深度是按白字 + ::after 的暗压
+     选的，不是随手取的。 */
   .sv-slide {{
     position: absolute; inset: 0;
-    background: linear-gradient(160deg, #7c3aed 0%, #db2777 45%, #f59e0b 100%);
+    background: linear-gradient(160deg, var(--accent-strong) 0%, var(--accent) 55%, #05865c 100%);
     transition: background .35s ease;
   }}
   .sv-slide::after {{
