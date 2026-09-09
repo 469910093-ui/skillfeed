@@ -520,16 +520,17 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
        想让环既亮又鲜，得先给这个状态加一个非颜色提示，见 docs 里的待办。 */
     --ring: linear-gradient(135deg, var(--accent) 0%, #05865c 50%, #059669 100%);
 
-    /* --like 只做图标填充与背景：非文本元素 3:1 即可，实测 4.37 / 4.18。 */
-    --like: #e0364f;
+    /* --like 只做图标填充与背景：非文本元素 3:1 即可，实测 6.47 / 6.20。
+       上一版是 #e0364f，玫红一路，离禁用值只有 20——过得了「不相等」，过不了
+       「不相似」。这版挪到纯红 0° 并压深一档，色距 54，代价是心形比原来沉。
+       想更亮就必须往洋红走，那条路上 40 以上的余量不存在，测过 209 个候选。 */
+    --like: #b91c1c;
     /* 同一个红的 RGB 三元组，只为让 rgba() 能带 alpha 复用它。
        任何要带透明度的红都必须走这个令牌：手写十进制三元组曾经绕过品牌合规
        检查（那道门当时只比对 hex 字符串），详见 docs/brand-tokens.md。 */
-    --like-rgb: 224, 54, 79;
-    /* --like 当文本用在 #fafafa 上只有 4.18，掉出 AA。--like-ink 锁住同一色相
-       （偏离 0.07°）与饱和度，只把明度从 .88 降到 .84，换来 4.71 / 4.52；
-       再亮一档 #d7344c 就掉回 4.49。 */
-    --like-ink: #d6344c;
+    --like-rgb: 185, 28, 28;
+    /* --like-ink 当文本用，同色相同饱和再压一档明度，8.31 / 7.96，色距 79。 */
+    --like-ink: #991b1b;
     /* 链接复用 accent，不引入第二个「差不多但不一样」的绿。 */
     --link: var(--accent);
 
@@ -785,6 +786,9 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.22);
     backdrop-filter: blur(6px); border-radius: 999px; padding: 3px 8px;
   }}
+  /* 场景徽章的底色由 JS 按 scene 内联；这里只去掉共用的半透明黑与描边，
+     免得实心场景色被压在 rgba(0,0,0,.45) 底下看不出区别 */
+  .media .badge.scene {{ background: none; border-color: transparent; }}
   .media .badge.kb {{ background: rgba(var(--like-rgb), .85); border-color: transparent; }}
   .media .badge.soft {{ background: rgba(255,193,7,.92); color: #262626; border-color: transparent; }}
   /* 「本机已有同名」只在 skill-picker 注入了本机索引时出现，公开站上不存在。
@@ -996,6 +1000,84 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     background: var(--ink); color: #fff; border-color: var(--ink);
   }}
 
+  /* —— 底部 tab（发现 / 主题分类 / 发布 / 我的） ——
+     激活态原来只有一个颜色提示。WCAG 1.4.1 要求颜色不是唯一的视觉载体，所以再加
+     一条顶端指示条和一档字重：位置与形状的变化在灰度和色觉障碍下同样读得出来。
+     语义那一侧由 role=tab + aria-selected 承担，不靠这两条视觉提示。 */
+  .nav {{ position: relative; }}
+  .nav::before {{
+    content: ""; position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    width: 22px; height: 3px; border-radius: 0 0 3px 3px;
+    background: var(--accent); opacity: 0;
+  }}
+  .nav.on::before {{ opacity: 1; }}
+  .nav.on .nav-label {{ font-weight: 800; }}
+
+  /* —— 回到顶部 ——
+     滚动容器是文档本身（.shell 只是限宽，没有自己的滚动条），所以监听 window、
+     滚 window。横向位置贴住手机壳右缘：窄屏退回 14px，宽屏跟着壳走。 */
+  .to-top {{
+    position: fixed; z-index: 55;
+    bottom: calc(78px + env(safe-area-inset-bottom));
+    right: max(14px, calc(50% - (var(--phone) / 2) + 14px));
+    width: 42px; height: 42px; border-radius: 50%;
+    display: grid; place-items: center;
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.14);
+  }}
+  /* .to-top 自带 display:grid，会盖掉浏览器给 [hidden] 的 display:none */
+  .to-top[hidden] {{ display: none; }}
+  .to-top svg {{ width: 20px; height: 20px; }}
+
+  /* —— 主题分类 —— */
+  .topics-panel {{ padding: 14px 12px 28px; }}
+  .topics-panel h2 {{ margin: 0 0 4px; font-size: 1.15rem; }}
+  .topics-panel .lead {{ margin: 0 0 14px; font-size: .82rem; color: var(--muted); line-height: 1.45; }}
+  .topics-panel .sec {{
+    font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .04em;
+    text-transform: uppercase; margin: 18px 0 8px;
+  }}
+  .topic-card {{
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 0 0 10px; margin-bottom: 10px;
+  }}
+  .topic-head {{
+    appearance: none; width: 100%; border: 0; background: transparent; font: inherit;
+    color: inherit; text-align: left; cursor: pointer;
+    display: flex; align-items: center; gap: 10px; padding: 12px 12px 8px;
+  }}
+  /* 分类色只是同一分类在卡片徽章上那套色的复述，不承载任何独有信息：
+     条目数和二级场景都写成文字了 */
+  .topic-head .dot {{ width: 10px; height: 34px; border-radius: 4px; flex: 0 0 auto; }}
+  .topic-head .meta {{ flex: 1; min-width: 0; }}
+  .topic-head .meta b {{ display: block; font-size: .95rem; }}
+  .topic-head .meta span {{ font-size: .72rem; color: var(--muted); }}
+  .topic-head .go {{ font-size: .72rem; font-weight: 700; color: var(--accent); white-space: nowrap; }}
+  .topic-l2 {{ display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px; }}
+  .topic-none {{ font-size: .78rem; color: var(--muted); padding: 0 12px; margin: 0; }}
+
+  /* —— 发布 / 我的（复用 .me-panel / .me-card / .me-actions 的壳） —— */
+  .pub-form label {{
+    display: block; font-size: .74rem; font-weight: 700; color: var(--muted); margin: 10px 0 4px;
+  }}
+  .pub-form input, .pub-form textarea {{
+    width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
+    font: inherit; font-size: .85rem; background: #fff; color: var(--ink);
+  }}
+  .pub-form textarea {{ min-height: 140px; font-size: .8rem; line-height: 1.5; }}
+  .pub-form .hint {{ font-size: .72rem; color: var(--muted); margin: 4px 0 0; line-height: 1.45; }}
+  .pub-msg {{ margin: 10px 0 0; font-size: .8rem; line-height: 1.45; }}
+  .pub-msg.err {{ color: var(--like-ink); font-weight: 600; }}
+  .pub-msg.ok {{ color: var(--accent); font-weight: 600; }}
+  .acct-id {{ display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }}
+  .acct-id .ava {{
+    width: 44px; height: 44px; border-radius: 50%; flex: 0 0 auto;
+    display: grid; place-items: center; font-weight: 700; font-size: .85rem;
+  }}
+  .acct-id .meta {{ min-width: 0; }}
+  .acct-id .meta b {{ display: block; font-size: 1rem; }}
+  .acct-id .meta span {{ font-size: .75rem; color: var(--muted); }}
+
   .demo-bar {{
     position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%);
     z-index: 60; display: none; align-items: center; gap: 10px;
@@ -1149,15 +1231,16 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .sv-tap-left {{ left: 0; }}
   .sv-tap-right {{ right: 0; }}
 
-  /* lite：skill-picker 发现子页 — 无动态圆环/关注/发布/我的 */
+  /* lite：skill-picker 发现子页 — 无动态圆环/关注/发布/我的
+     「主题分类」留着：它是浏览辅助而不是社交/后台能力，而本机没有合适 skill 时
+     按分类逛远程线索恰恰是这张子页存在的理由。 */
   body.variant-lite .stories-wrap,
   body.variant-lite #followSheet,
-  body.variant-lite .nav[data-action="publish"],
+  body.variant-lite .nav[data-mode="publish"],
   body.variant-lite .nav[data-mode="me"],
   body.variant-lite .follow-mini,
   body.variant-lite #btnDemo {{ display: none !important; }}
-  body.variant-lite .bottom {{ justify-content: center; }}
-  body.variant-lite .bottom .nav[data-mode="all"] {{ min-width: 120px; }}
+  body.variant-lite .bottom {{ justify-content: space-evenly; }}
   body.variant-lite .feed {{ padding-bottom: 24px; }}
   body.variant-lite .lite-banner {{
     display: block; padding: 10px 14px; font-size: .78rem; line-height: 1.45;
@@ -1217,23 +1300,36 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     <div class="filter-strip" id="l2Strip" aria-label="二级场景" data-i18n-aria="sceneL2Sr"></div>
     <div class="filter-strip" id="sectionStrip" aria-label="栏目" data-i18n-aria="sectionStripAria"></div>
 
-    <main class="feed" id="feed"></main>
+    <!-- 一个 tabpanel 配四个 tab：aria-labelledby 跟着激活的 tab 走（renderTabs）。
+         切 tab 换的是同一块内容区，做四个常驻 panel 只会多出三块空 DOM。 -->
+    <main class="feed" id="feed" role="tabpanel" aria-labelledby="tab-all"></main>
 
-    <nav class="bottom">
-      <button class="nav on" type="button" data-mode="all">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+    <!-- 底部 tab bar 而不是顶部分段控件：这个壳是 448px 的单列信息流，顶部已经
+         被 header + 圆环 + 搜索占满，再加一排只会把内容推得更远；而底部在拇指区，
+         也是「发现/发布/我的」这类同级切换的通用位置。 -->
+    <nav class="bottom" id="tabBar" role="tablist" aria-label="主导航" data-i18n-aria="tabsAria">
+      <button class="nav on" type="button" data-mode="all" role="tab" id="tab-all" aria-selected="true" aria-controls="feed">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
         <span class="nav-label" data-i18n="navDiscover">发现</span>
       </button>
-      <button class="nav" type="button" data-action="publish">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+      <button class="nav" type="button" data-mode="topics" role="tab" id="tab-topics" aria-selected="false" aria-controls="feed" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <span class="nav-label" data-i18n="navTopics">主题分类</span>
+      </button>
+      <button class="nav" type="button" data-mode="publish" role="tab" id="tab-publish" aria-selected="false" aria-controls="feed" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
         <span class="nav-label" data-i18n="navPublish">发布</span>
       </button>
-      <button class="nav" type="button" data-mode="me">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>
+      <button class="nav" type="button" data-mode="me" role="tab" id="tab-me" aria-selected="false" aria-controls="feed" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>
         <span class="nav-label" data-i18n="navMe">我的</span>
       </button>
     </nav>
   </div>
+
+  <button class="to-top" id="toTop" type="button" hidden aria-label="回到顶部" data-i18n-aria="backToTop">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V6"/><path d="M6 12l6-6 6 6"/></svg>
+  </button>
 
   <div class="story-viewer" id="storyViewer" aria-hidden="true">
     <div class="sv-progress" id="svProgress"></div>
@@ -1281,6 +1377,14 @@ const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', sho
 const demo = {{ on: false, step: 0, timer: null, focus: -1 }};
 const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
 const publisherCache = {{}};
+/* 「我的」的服务端侧状态。loaded 分「没拉过」和「拉过但是空的」，
+   否则每次 render 都会再打一轮请求。 */
+const ACCT = {{ loading: false, loaded: false, user: null, posts: null, liked: 0, saved: 0, remote: false }};
+/* 登录页路径。另一个 agent 正在给 server/ 加强制登录墙（认证服务号 + 短信兜底），
+   落地后页面路径可能不是 /login；这里留成一个常量，改一行就能对齐。 */
+const LOGIN_PATH = '/login';
+/* 底部 tab ↔ URL 的映射。tab= 存稳定英文标识，不用展示文案（切语言会失效）。 */
+const TAB_QUERY = {{ all: 'discover', topics: 'topics', publish: 'publish', me: 'me' }};
 
 /* ---------- 本机已装索引（可选，由 skill-picker 注入） ---------- */
 /* skill-picker 的 discover.py 把本页拷成 ~/.skill-picker/discover.html 时，会在 head
@@ -1377,7 +1481,57 @@ const I18N = {{
     filterByScene: '按行业筛选',
     followScene: '关注行业 · 最新进顶部圆环',
     searchPlaceholder: '短关键词更好，如：去AI味 / 周报 / 剪视频',
-    navDiscover: '发现', navPublish: '发布', navMe: '我的',
+    navDiscover: '发现', navTopics: '主题分类', navPublish: '发布', navMe: '我的',
+    tabsAria: '主导航', backToTop: '回到顶部',
+
+    /* 主题分类 */
+    topicsTitle: '主题分类', topicsSecSection: '按栏目浏览',
+    topicsLead: '一级场景各自成块。点标题只看这一类，点二级场景直接落到更窄的一层。',
+    topicsCount: '{{n}} 条 · {{k}} 个二级场景',
+    topicsCountNoL2: '{{n}} 条',
+    topicsBrowse: '只看这类 →',
+    topicsNoL2: '这一类当前没有细分到二级场景。',
+    topicsEmpty: 'Feed 里暂时没有任何分类条目，先 refresh 一次。',
+
+    /* 发布 */
+    publishTitle: '发布 Skill',
+    publishLead: '把自己的 skill 交给这条 Feed：粘 <strong>SKILL.md</strong> 正文，或者给一个公开 GitHub 仓库地址。发布后进混排 Feed，<strong>不代装到任何人的机器</strong>。',
+    publishFieldTitle: '标题（留空则从 SKILL.md 解析）',
+    publishFieldUrl: 'GitHub 仓库地址（推荐）',
+    publishFieldDesc: '一句话简介',
+    publishFieldBody: 'SKILL.md 正文',
+    publishHint: '正文和仓库地址至少给一个；简介要写清这个 skill 做什么（约 10 字以上）。',
+    publishSubmit: '发布到 Feed', publishSubmitting: '提交中…',
+    publishOkMsg: '已发布，去「我的」看它的状态。',
+    publishNeedLogin: '发布要先登录。登录主体是认证服务号，手机号短信兜底。',
+    publishLoginBtn: '去登录',
+    publishOpenPage: '打开完整发布页',
+    publishNoBackendTitle: '这份是静态镜像',
+    publishNoBackend: '当前页面没有接云端 API，所以这里不放一个点了没反应的提交按钮。要发布请到接了后端的主站；本机看板里这个 tab 本来就不出现。',
+    publishRemoteTitle: '发布页在主站上',
+    publishRemote: '这份页面和 API 不同源，会话 Cookie 是 SameSite=Lax，不会跟着页面内的请求发出去。所以这里改成整页打开主站发布页——那边是同源，登录态正常。',
+    publishFailed: '提交失败，请稍后再试。',
+
+    /* 我的 */
+    acctTitle: '我的',
+    acctChecking: '正在确认登录状态…',
+    acctSignedIn: '已登录',
+    acctLogout: '退出登录',
+    acctLoggedOut: '已退出登录',
+    acctAnonTitle: '还没登录',
+    acctAnon: '登录后，你发布的 skill 和赞/藏会记在账号上、换设备也在。没登录时下面这些只存在这个浏览器里。',
+    acctLocalTitle: '未接云端',
+    acctLocalOnly: '当前页面没有接云端 API，所以「我的」只能显示这个浏览器里的本机态：赞、藏、关注。',
+    acctRemoteNote: '这份页面和 API 不同源，跨站请求带不上会话 Cookie，所以这里读不到你的账号。整页打开主站即可。',
+    acctOpenSite: '打开主站',
+    acctMyPosts: '我发布的',
+    acctPostsLoading: '正在读取…',
+    acctNoPosts: '还没发布过。去「发布」tab 交第一个。',
+    acctPostsNeedLogin: '登录后这里显示你发布过的 skill 及其状态。',
+    acctServerCounts: '云端记录：点赞 {{liked}} · 收藏 {{saved}}',
+    acctLocalCounts: '本机记录：点赞 {{liked}} · 书签 {{saved}}',
+    acctReactionsPending: '云端赞藏要等埋点链路接上才会有数，当前以本机记录为准。',
+
     liteBanner: '<b>本机没有合适 skill 时</b>，在这里按意图浏览远程线索，点「打开 GitHub」自行安装；装好后回 skill-picker 再扫一遍。',
     storiesHint: '<b>顶部圆环 = 你关注的最新动态</b>：关注 Builder 或行业后，新内容会出现在这里优先观看。',
     demoTitle: '自动 Demo', feedbackTitle: '反馈说明',
@@ -1479,7 +1633,7 @@ const I18N = {{
     meGoPublish: '去发布 Skill',
     meApiDocs: 'API 文档', meApiHome: 'API 首页', meGithubLogin: 'GitHub 登录',
     meAboutTitle: '发现站',
-    meAboutBody: '动态圆环 = 关注动态；下方 pills = 逛发现时的行业/栏目筛选。两者不再重复。',
+    meAboutBody: '动态圆环 = 关注动态；行业与栏目筛选搬到「主题分类」tab，只在真的筛着时才回到发现页顶部。',
 
     /* 列表尾 */
     moreShown: '下滑加载更多 · 已显 <b>{{n}}</b> / {{total}}',
@@ -1522,7 +1676,54 @@ const I18N = {{
     filterByScene: 'Filter by industry',
     followScene: 'Follow industry · newest goes to top ring',
     searchPlaceholder: 'Short keywords work best, e.g. de-slop / weekly report',
-    navDiscover: 'Discover', navPublish: 'Post', navMe: 'Me',
+    navDiscover: 'Discover', navTopics: 'Topics', navPublish: 'Post', navMe: 'Me',
+    tabsAria: 'Main navigation', backToTop: 'Back to top',
+
+    topicsTitle: 'Topics', topicsSecSection: 'Browse by section',
+    topicsLead: 'One block per top-level topic. Tap the heading to see only that topic, or a subcategory to land one level narrower.',
+    topicsCount: '{{n}} items · {{k}} subcategories',
+    topicsCountNoL2: '{{n}} items',
+    topicsBrowse: 'Show only this →',
+    topicsNoL2: 'Nothing in this topic is split into subcategories yet.',
+    topicsEmpty: 'The feed has no categorised items yet — run a refresh first.',
+
+    publishTitle: 'Post a skill',
+    publishLead: 'Hand your own skill to this feed: paste the <strong>SKILL.md</strong> body, or give a public GitHub repository URL. Posted skills join the merged feed and <strong>are never installed for anyone</strong>.',
+    publishFieldTitle: 'Title (parsed from SKILL.md when blank)',
+    publishFieldUrl: 'GitHub repository URL (recommended)',
+    publishFieldDesc: 'One-line summary',
+    publishFieldBody: 'SKILL.md body',
+    publishHint: 'Give the body or the repository URL, at least one of the two. The summary has to say what the skill does (about ten characters or more).',
+    publishSubmit: 'Post to the feed', publishSubmitting: 'Submitting…',
+    publishOkMsg: 'Posted. Check its status under “Me”.',
+    publishNeedLogin: 'Posting needs a sign-in. The account is the verification service account, with SMS as the fallback.',
+    publishLoginBtn: 'Sign in',
+    publishOpenPage: 'Open the full posting page',
+    publishNoBackendTitle: 'This is a static mirror',
+    publishNoBackend: 'This page has no cloud API attached, so there is no submit button here that would do nothing. Post from the main site, which does have the backend. In the local dashboard this tab does not appear at all.',
+    publishRemoteTitle: 'Posting lives on the main site',
+    publishRemote: 'This page and the API are on different origins, and the session cookie is SameSite=Lax, so it is not sent with requests made from this page. The button opens the posting page on the main site instead, where it is same-origin and the sign-in works.',
+    publishFailed: 'Could not submit. Try again in a moment.',
+
+    acctTitle: 'Me',
+    acctChecking: 'Checking your sign-in…',
+    acctSignedIn: 'Signed in',
+    acctLogout: 'Sign out',
+    acctLoggedOut: 'Signed out',
+    acctAnonTitle: 'Not signed in',
+    acctAnon: 'Once you sign in, the skills you post and the things you like or save live on your account and follow you across devices. Until then everything below stays in this browser.',
+    acctLocalTitle: 'No cloud attached',
+    acctLocalOnly: 'This page has no cloud API attached, so “Me” can only show what is in this browser: likes, bookmarks and follows.',
+    acctRemoteNote: 'This page and the API are on different origins, so cross-site requests carry no session cookie and your account cannot be read here. Open the main site instead.',
+    acctOpenSite: 'Open the main site',
+    acctMyPosts: 'Posted by me',
+    acctPostsLoading: 'Loading…',
+    acctNoPosts: 'Nothing posted yet. Submit your first one from the “Post” tab.',
+    acctPostsNeedLogin: 'Sign in and the skills you have posted show up here with their status.',
+    acctServerCounts: 'On your account: {{liked}} liked · {{saved}} saved',
+    acctLocalCounts: 'In this browser: {{liked}} liked · {{saved}} bookmarked',
+    acctReactionsPending: 'Server-side likes and saves need the analytics pipeline wired up; until then this browser is the source of truth.',
+
     liteBanner: '<b>When no local skill fits</b>, browse remote leads by intent here and install them yourself via “Open on GitHub”. Then run a skill-picker scan again.',
     storiesHint: '<b>Top rings = updates you follow</b>: follow a builder or industry and new items land here first.',
     demoTitle: 'Auto demo', feedbackTitle: 'About feedback',
@@ -1615,7 +1816,7 @@ const I18N = {{
     meGoPublish: 'Post a skill',
     meApiDocs: 'API docs', meApiHome: 'API home', meGithubLogin: 'Sign in with GitHub',
     meAboutTitle: 'About this feed',
-    meAboutBody: 'The top updates ring shows what you follow. The pills below filter the feed by industry and section — the two no longer overlap.',
+    meAboutBody: 'The top updates ring shows what you follow. Industry and section filters moved to the “Topics” tab and only come back to the top of Discover while a filter is on.',
 
     moreShown: 'Scroll for more · showing <b>{{n}}</b> of {{total}}',
     allDone: 'That is everything · <b>{{total}}</b> items, library backup included',
@@ -1699,19 +1900,34 @@ function chipLabel(row) {{
   return LANG === 'en' ? (row.label_en || row.label || row.id) : (row.label || row.id);
 }}
 
-const PALETTES = [
-  ['#ff6a3d','#c32bad','#7028e4'],
-  // pal[1] 是头像字母的纯色底。#0072ff 上白字 4.33、深墨 3.50，两边都过不了 AA，
-  // 是八组里唯一一个；同色相（213.2°）同饱和度只把明度 1.00 降到 .965 得 #006ef6，
-  // 白字升到 4.60。渐变端点 pal[0]/pal[2] 不动。
-  ['#00c6ff','#006ef6','#7b2ff7'],
-  ['#f7971e','#ffd200','#f53844'],
-  ['#11998e','#38ef7d','#0f766e'],
-  ['#ee0979','#ff6a00','#f9d423'],
-  ['#396afc','#2948ff','#00d2ff'],
-  ['#232526','#414345','#757F9A'],
-  ['#fc466b','#3f5efb','#00f2fe'],
-];
+/* 一场景一色族。每套三档：pal[0] 深、pal[1] 中（头像/徽章纯色底）、pal[2] 浅，
+   渐变只在同一色族内从深走到浅。这两条约束是有来由的：
+     - 键入 scene 而不是名字哈希，颜色才承载信息（蓝=工程、紫=Agent 工具链）；
+       随机哈希的颜色对读者恒等于噪声
+     - 单色族的深→浅斜推，不会凑出任何一家的多色相扇推商标外观
+   可用色相被两头挤掉：150-180 留给品牌 accent，310-360 是禁用的洋红/红。剩下约
+   280° 分十类，硬凑等距会把某几类推进禁用邻域，所以按占比分配：占比最大的三类
+   （工程 24%、Agent 18%、设计 17%）拿最拉得开的色相，最小的两类（其他 4%、
+   业务垂直 1%）走中性/低饱和，不占色相预算。
+   agent 与 design 色相只差 8°，靠明度档位错开：agent 取 violet-800、design 取
+   purple-600，肉眼是「深紫 vs 亮紫」。选值的对比度与色距见
+   docs/brand-tokens.md，测试在 test_feed_dashboard.py 逐套复核。 */
+const SCENE_PAL = {{
+  'quality':       ['#7c2d12','#c2410c','#ea580c'],  //  17° Bug与质量
+  'content':       ['#854d0e','#a16207','#ca8a04'],  //  35° 内容创作
+  'research':      ['#3f6212','#4d7c0f','#65a30d'],  //  86° 研究与知识
+  'collab':        ['#166534','#15803d','#16a34a'],  // 142° 协作办公
+  'engineering':   ['#075985','#0369a1','#0284c7'],  // 201° 工程开发
+  'data-review':   ['#4338ca','#4f46e5','#6366f1'],  // 243° 数据与复盘
+  'agent-tooling': ['#4c1d95','#5b21b6','#6d28d9'],  // 263° Agent工具链
+  'design':        ['#7e22ce','#9333ea','#a855f7'],  // 271° 设计与视觉
+  'biz-vertical':  ['#5c2508','#78350f','#9a4a16'],  //  22° 业务垂直
+  'other':         ['#334155','#475569','#64748b'],  // 215° 其他
+}};
+
+/* 发布者头像没有 scene 可依，仍走哈希——头像色是身份指纹而非分类，读者本来就
+   不会去解读它。但哈希池换成上面这十套，池子里再没有需要豁免的颜色。 */
+const PAL_POOL = Object.keys(SCENE_PAL).map(k => SCENE_PAL[k]);
 
 function loadSet(key) {{
   try {{
@@ -1783,8 +1999,9 @@ function safeUrl(u) {{
   }}
 }}
 
-/* 头像字母原来恒为白色，落在 PALETTES 里的亮色上只有 1.45:1（#ffd200）。
-   这里按背景亮度选前景，不改任何一个品牌色，只让字读得出来。
+/* 头像字母原来恒为白色，落在旧随机调色板里最亮的那组黄上只有 1.45:1。
+   现在的十套 scene 板 pal[1] 都过了白字 4.5，但这段仍留着：它防的是「以后又
+   加进来一组亮色」，而不是当下的取值。按背景亮度选前景，不改任何一个品牌色。
    INK_HEX 必须与 CSS 的 --ink 保持一致。 */
 const INK_HEX = '#262626';
 function relLum(hex) {{
@@ -1874,7 +2091,13 @@ function hashHue(s) {{
 }}
 
 function paletteFor(key) {{
-  return PALETTES[hashHue(key) % PALETTES.length];
+  return PAL_POOL[hashHue(key) % PAL_POOL.length];
+}}
+
+/* 分类色的唯一入口。未知 scene 落到 other 的中性灰蓝，而不是随机挑一套——
+   否则「没分好类」会伪装成一个有含义的分类色。 */
+function paletteForScene(sceneId) {{
+  return SCENE_PAL[sceneId] || SCENE_PAL['other'];
 }}
 
 function initials(name) {{
@@ -2056,7 +2279,7 @@ function followSheetHtml(kind) {{
   return `<h3>${{escapeHtml(tr('sheetIndustryTitle'))}}</h3>
     <p class="lead">${{tr('sheetIndustryLead')}}</p>` +
     SCENES.filter(s => countScene(s.id) > 0).map(s => {{
-      const pal = paletteFor('scene:' + s.id);
+      const pal = paletteForScene(s.id);
       const label = chipLabel(s);
       return `<button type="button" class="sheet-row js-sheet-follow-industry" data-scene="${{escapeHtml(s.id)}}">
         <div class="ava" style="background:linear-gradient(135deg,${{pal[0]}},${{pal[2]}})">${{escapeHtml(initials(label))}}</div>
@@ -2121,19 +2344,6 @@ function reopenSheetAfterIndustryToggle(sheet, sceneId) {{
 function apiUrl(path) {{
   if (!API_BASE) return '';
   return API_BASE + (path.startsWith('/') ? path : ('/' + path));
-}}
-
-function openPublish() {{
-  if (IS_LITE) {{
-    toast(tr('publishLiteOnly'));
-    return;
-  }}
-  const url = apiUrl('/publish');
-  if (url) {{
-    window.open(url, '_blank', 'noopener');
-    return;
-  }}
-  toast(tr('publishNeedApi'));
 }}
 
 const INTENT_STOP = new Set(
@@ -2555,6 +2765,9 @@ function cardHtml(it, idx) {{
   const noCoverCls = cover ? '' : ' no-cover';
   const followed = isFollowingBuilder(owner);
   const sceneId = it.scene || '';
+  // 分类徽章用场景色实心底。它压在任意封面图上，所以不能靠半透明黑——
+  // pal[1] 十套都过了白字 4.5:1，实心底才是可预测的那一种
+  const scenePal = paletteForScene(sceneId);
   const hl = tips.highlights.map(h => `<li>${{escapeHtml(h)}}</li>`).join('');
   const headName = it.name || fn;
   const pitchText = tips.problem || headName;
@@ -2587,7 +2800,7 @@ function cardHtml(it, idx) {{
         ${{coverDesc ? `<div class="d">${{escapeHtml(coverDesc)}}</div>` : ''}}
       </div>` : ''}}
       <div class="badges">
-        <button type="button" class="badge ${{IS_LITE ? 'clickable js-scene-filter' : 'clickable js-scene-tag'}}" data-scene="${{escapeHtml(sceneId)}}" title="${{escapeHtml(IS_LITE ? tr('filterByScene') : tr('followScene'))}}">${{escapeHtml(itemSceneLabel(it))}}</button>
+        <button type="button" class="badge scene ${{IS_LITE ? 'clickable js-scene-filter' : 'clickable js-scene-tag'}}" data-scene="${{escapeHtml(sceneId)}}" style="background:${{scenePal[1]}}" title="${{escapeHtml(IS_LITE ? tr('filterByScene') : tr('followScene'))}}">${{escapeHtml(itemSceneLabel(it))}}</button>
         ${{itemSceneL2Label(it) ? `<span class="badge">${{escapeHtml(itemSceneL2Label(it))}}</span>` : ''}}
         ${{it.from_corpus ? `<span class="badge kb">${{escapeHtml(tr('kb'))}}</span>` : ''}}
         ${{it.soft ? `<span class="badge soft">${{escapeHtml(tr('lead'))}}</span>` : ''}}
@@ -2755,7 +2968,11 @@ function renderStories() {{
   rings.push({{ kind: 'guide', value: 'industry', label: tr('addIndustry'), face: '+', cls: 'guide' }});
 
   el.innerHTML = rings.map(st => {{
-    const pal = paletteFor(st.kind + ':' + st.value);
+    // 关注的行业圆环取该行业的分类色，和卡片徽章、行业 sheet 对上；
+    // 关注的发布者没有分类，仍走身份哈希
+    const pal = st.kind === 'industry'
+      ? paletteForScene(st.value)
+      : paletteFor(st.kind + ':' + st.value);
     const faceBg = st.cls === 'guide'
       ? ''
       : `style="background:linear-gradient(135deg,${{pal[0]}},${{pal[2]}})"`;
@@ -2829,12 +3046,510 @@ function emptyHtml(items) {{
   </div>`;
 }}
 
+/* ---------- 四个入口：形态判定 ---------- */
+/* 三种运行形态的判据全部由已有信号推出来，不新造探测：
+     IS_LITE   —— 生成时就定了（skill-picker 的发现子页，按产品约定无关注/发布/后台）
+     API_BASE  —— FEED.ui.api_base，publish-site 从 SKILLFEED_PUBLIC_URL 写进来
+     同源与否  —— API_BASE 的 origin 和本页 origin 比
+   为什么要分「同源」这一档：会话 Cookie 是 SameSite=Lax，跨站的 fetch 根本带不上
+   它，所以 Pages 镜像即使配了 api_base 也读不到登录态。那一档只给整页跳转的入口，
+   不摆一个永远显示「未登录」的账户页。 */
+function apiSameOrigin() {{
+  if (!API_BASE) return false;
+  try {{
+    const base = typeof document !== 'undefined' ? document.baseURI : '';
+    return new URL(API_BASE).origin === new URL(base).origin;
+  }} catch (e) {{
+    return false;
+  }}
+}}
+
+function accountMode() {{
+  if (IS_LITE) return 'off';
+  if (!API_BASE) return 'local';
+  return apiSameOrigin() ? 'live' : 'linked';
+}}
+
+/* ---------- 四个入口：URL 可寻址 ---------- */
+/* tab= 存稳定英文标识而不是展示文案：切语言不会让分享出去的链接失效。
+   已有的 ?q= / ?intent= / ?demo=1 照旧，这里只多认一个键。 */
+function tabAllowed(mode) {{
+  if (!Object.prototype.hasOwnProperty.call(TAB_QUERY, mode)) return false;
+  // lite 只留发现 + 主题分类；发布/我的在那份产物里连按钮都不显示，
+  // 所以 ?tab=me 也不能把它逼出来
+  if (IS_LITE) return mode === 'all' || mode === 'topics';
+  return true;
+}}
+
+function tabFromQuery(search) {{
+  let want = '';
+  try {{
+    want = (new URLSearchParams(search || '').get('tab') || '').trim().toLowerCase();
+  }} catch (e) {{
+    want = '';
+  }}
+  if (!want) return '';
+  for (const mode of Object.keys(TAB_QUERY)) {{
+    if (TAB_QUERY[mode] === want && tabAllowed(mode)) return mode;
+  }}
+  return '';
+}}
+
+/* saved / publisher 不是独立 tab，但用户是从某个 tab 钻进去的，
+   高亮要留在那个 tab 上，不能四个都灭 */
+function tabForMode(mode) {{
+  if (mode === 'saved') return 'me';
+  if (mode === 'publisher') return 'all';
+  return tabAllowed(mode) ? mode : 'all';
+}}
+
+/* 纯函数，好测：给定当前 query 和目标 tab，算出新的 query 串 */
+function tabSearch(search, mode) {{
+  let params;
+  try {{
+    params = new URLSearchParams(search || '');
+  }} catch (e) {{
+    params = new URLSearchParams('');
+  }}
+  const tab = tabForMode(mode);
+  if (tab === 'all') params.delete('tab');
+  else params.set('tab', TAB_QUERY[tab]);
+  if (tab === 'all' && state.scene && state.scene !== 'all') params.set('scene', state.scene);
+  else params.delete('scene');
+  if (tab === 'all' && state.scene_l2 && state.scene_l2 !== 'all') params.set('l2', state.scene_l2);
+  else params.delete('l2');
+  const q = params.toString();
+  return q ? ('?' + q) : '';
+}}
+
+function syncTabUrl() {{
+  // replaceState 而不是 pushState：要的是「刷新/分享不丢当前 tab」，
+  // 不是把每次点 tab 都塞进后退栈
+  if (typeof history === 'undefined' || !history.replaceState) return;
+  if (typeof location === 'undefined') return;
+  try {{
+    history.replaceState(null, '', location.pathname
+      + tabSearch(location.search, state.mode) + location.hash);
+  }} catch (e) {{ /* file:// 下 replaceState 会抛，不影响页面 */ }}
+}}
+
+function tabButtons() {{
+  const all = Array.from(document.querySelectorAll('#tabBar .nav'));
+  return all.filter(b => tabAllowed(b.dataset.mode || ''));
+}}
+
+function renderTabs() {{
+  const active = tabForMode(state.mode);
+  const feed = document.getElementById('feed');
+  document.querySelectorAll('#tabBar .nav').forEach(n => {{
+    const mode = n.dataset.mode || '';
+    const on = mode === active;
+    n.classList.toggle('on', on);
+    n.setAttribute('aria-selected', on ? 'true' : 'false');
+    // roving tabindex：tablist 整体只占一个 Tab 位，内部用左右键走
+    n.setAttribute('tabindex', on ? '0' : '-1');
+    if (on && feed) feed.setAttribute('aria-labelledby', n.id || 'tab-all');
+  }});
+}}
+
+function switchTab(mode, opts) {{
+  if (!tabAllowed(mode)) return;
+  state.mode = mode;
+  if (mode === 'all') state.section = 'all';
+  state.shown = 0;
+  render(true);
+  syncTabUrl();
+  if (!(opts && opts.keepScroll)) scrollToTop();
+}}
+
+/* 键盘：左右键在 tab 之间走、Home/End 到两端。这是 role=tablist 的既定交互，
+   不给的话 roving tabindex 反而让键盘用户只能停在当前那一个 tab 上。 */
+function tabKeyTarget(key, current) {{
+  const modes = tabButtons().map(b => b.dataset.mode || '');
+  if (!modes.length) return '';
+  const at = Math.max(0, modes.indexOf(tabForMode(current)));
+  if (key === 'ArrowRight') return modes[(at + 1) % modes.length];
+  if (key === 'ArrowLeft') return modes[(at - 1 + modes.length) % modes.length];
+  if (key === 'Home') return modes[0];
+  if (key === 'End') return modes[modes.length - 1];
+  return '';
+}}
+
+/* ---------- 回到顶部 ---------- */
+/* 阈值一屏：低于这个值按钮会在几乎没滚的时候就冒出来，挡住第一张卡的操作行 */
+function shouldShowToTop(scrollY, viewportH) {{
+  return Number(scrollY || 0) > Math.max(240, Number(viewportH || 0));
+}}
+
+function prefersReducedMotion() {{
+  try {{
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }} catch (e) {{
+    return false;
+  }}
+}}
+
+/* 减少动态偏好下直接跳：平滑滚动本身就是这条偏好要关掉的那类动画 */
+function scrollTopBehavior() {{
+  return prefersReducedMotion() ? 'auto' : 'smooth';
+}}
+
+function scrollToTop() {{
+  window.scrollTo({{ top: 0, behavior: scrollTopBehavior() }});
+}}
+
+function syncToTop() {{
+  const btn = document.getElementById('toTop');
+  if (!btn) return;
+  // 用 hidden 而不是 opacity：隐藏时要一起退出 Tab 序和无障碍树
+  btn.hidden = !shouldShowToTop(window.scrollY || window.pageYOffset || 0, window.innerHeight || 0);
+}}
+
+/* ---------- 主题分类 ---------- */
+function countSceneL2(sceneId, l2Id) {{
+  return allPool().filter(it =>
+    (it.scene || 'other') === sceneId && (it.scene_l2 || '') === l2Id
+  ).length;
+}}
+
+function topicRows() {{
+  return SCENES
+    .map(s => {{
+      const n = countScene(s.id);
+      const kids = (SCENES_L2[s.id] || [])
+        .map(k => ({{ id: k.id || k[0], label: chipLabel(k), n: countSceneL2(s.id, k.id || k[0]) }}))
+        .filter(k => k.n > 0);
+      return {{ id: s.id, label: chipLabel(s), n, kids }};
+    }})
+    .filter(r => r.n > 0)
+    .sort((a, b) => b.n - a.n);
+}}
+
+function topicsPanelHtml() {{
+  const rows = topicRows();
+  if (!rows.length) {{
+    return `<div class="topics-panel"><h2>${{escapeHtml(tr('topicsTitle'))}}</h2>
+      <p class="lead">${{escapeHtml(tr('topicsEmpty'))}}</p></div>`;
+  }}
+  const cards = rows.map(r => {{
+    const pal = paletteForScene(r.id);
+    const count = r.kids.length
+      ? trn('topicsCount', {{ n: r.n, k: r.kids.length }})
+      : trn('topicsCountNoL2', {{ n: r.n }});
+    const kids = r.kids.length
+      ? `<div class="topic-l2">` + r.kids.map(k =>
+          `<button type="button" class="pill js-topic" data-scene="${{escapeHtml(r.id)}}" data-l2="${{escapeHtml(k.id)}}">${{escapeHtml(k.label)}} · ${{k.n}}</button>`
+        ).join('') + `</div>`
+      : `<p class="topic-none">${{escapeHtml(tr('topicsNoL2'))}}</p>`;
+    return `<div class="topic-card">
+      <button type="button" class="topic-head js-topic" data-scene="${{escapeHtml(r.id)}}" data-l2="all">
+        <span class="dot" aria-hidden="true" style="background:linear-gradient(180deg,${{pal[0]}},${{pal[2]}})"></span>
+        <span class="meta"><b>${{escapeHtml(r.label)}}</b><span>${{escapeHtml(count)}}</span></span>
+        <span class="go">${{escapeHtml(tr('topicsBrowse'))}}</span>
+      </button>
+      ${{kids}}
+    </div>`;
+  }}).join('');
+  const secs = sectionOptions().filter(s => s.id !== 'all');
+  const sections = secs.length
+    ? `<div class="sec">${{escapeHtml(tr('topicsSecSection'))}}</div>
+       <div class="topic-l2">` + secs.map(s =>
+         `<button type="button" class="pill js-topic-section" data-id="${{escapeHtml(s.id)}}">${{escapeHtml(s.label)}} · ${{countSection(s.id)}}</button>`
+       ).join('') + `</div>`
+    : '';
+  return `<div class="topics-panel">
+    <h2>${{escapeHtml(tr('topicsTitle'))}}</h2>
+    <p class="lead">${{escapeHtml(tr('topicsLead'))}}</p>
+    ${{cards}}
+    ${{sections}}
+  </div>`;
+}}
+
+function goTopic(sceneId, l2Id) {{
+  state.mode = 'all';
+  state.publisher = '';
+  state.scene = sceneId || 'all';
+  state.scene_l2 = (l2Id && l2Id !== 'all') ? l2Id : 'all';
+  state.section = 'all';
+  state.shown = 0;
+  render(true);
+  syncTabUrl();
+  scrollToTop();
+}}
+
+/* ---------- 发布 ---------- */
+function loginUrl() {{
+  return API_BASE ? (API_BASE + LOGIN_PATH) : '';
+}}
+
+function publishFormHtml() {{
+  const msg = ACCT.user === null && ACCT.loaded
+    ? `<p class="pub-msg err" id="pubMsg">${{escapeHtml(tr('publishNeedLogin'))}}</p>`
+    : `<p class="pub-msg" id="pubMsg"></p>`;
+  const login = loginUrl();
+  return `<form class="pub-form" id="pubForm">
+    <label for="pubTitle">${{escapeHtml(tr('publishFieldTitle'))}}</label>
+    <input id="pubTitle" name="title" type="text" maxlength="120" autocomplete="off">
+    <label for="pubUrl">${{escapeHtml(tr('publishFieldUrl'))}}</label>
+    <input id="pubUrl" name="github_url" type="url" inputmode="url" placeholder="https://github.com/owner/repo" autocomplete="off">
+    <label for="pubDesc">${{escapeHtml(tr('publishFieldDesc'))}}</label>
+    <input id="pubDesc" name="description" type="text" maxlength="200" autocomplete="off">
+    <label for="pubBody">${{escapeHtml(tr('publishFieldBody'))}}</label>
+    <textarea id="pubBody" name="body_md" maxlength="20000"></textarea>
+    <p class="hint">${{escapeHtml(tr('publishHint'))}}</p>
+    ${{msg}}
+    <div class="me-actions">
+      <button type="submit" class="primary" id="pubSubmit">${{escapeHtml(tr('publishSubmit'))}}</button>
+      ${{login ? `<a href="${{escapeHtml(safeUrl(login))}}">${{escapeHtml(tr('publishLoginBtn'))}}</a>` : ''}}
+      <a href="${{escapeHtml(safeUrl(API_BASE + '/publish'))}}" target="_blank" rel="noopener">${{escapeHtml(tr('publishOpenPage'))}}</a>
+    </div>
+  </form>`;
+}}
+
+function publishPanelHtml() {{
+  const mode = accountMode();
+  const head = `<h2>${{escapeHtml(tr('publishTitle'))}}</h2>
+    <p class="lead">${{tr('publishLead')}}</p>`;
+  if (mode === 'local' || mode === 'off') {{
+    // 没有后端就不摆按钮：点了没反应比没有入口更糟
+    return `<div class="me-panel">${{head}}
+      <div class="me-card">
+        <strong>${{escapeHtml(tr('publishNoBackendTitle'))}}</strong>
+        <p>${{escapeHtml(tr('publishNoBackend'))}}</p>
+      </div>
+    </div>`;
+  }}
+  if (mode === 'linked') {{
+    return `<div class="me-panel">${{head}}
+      <div class="me-card">
+        <strong>${{escapeHtml(tr('publishRemoteTitle'))}}</strong>
+        <p>${{escapeHtml(tr('publishRemote'))}}</p>
+        <div class="me-actions">
+          <a class="primary" href="${{escapeHtml(safeUrl(API_BASE + '/publish'))}}" target="_blank" rel="noopener">${{escapeHtml(tr('publishOpenPage'))}}</a>
+        </div>
+      </div>
+    </div>`;
+  }}
+  return `<div class="me-panel">${{head}}
+    <div class="me-card">${{publishFormHtml()}}</div>
+  </div>`;
+}}
+
+/* ---------- 我的：服务端拉取 ---------- */
+function acctFetch(path, opts) {{
+  const init = Object.assign({{ credentials: 'include' }}, opts || {{}});
+  return fetch(API_BASE + path, init);
+}}
+
+/* device_id 是客户端自铸的，凭据由服务端在**首次**见到它时下发一次、之后不补发，
+   所以两个都得存住。丢了就只能换一个新 device_id 重新注册。 */
+function deviceId() {{
+  try {{
+    let id = localStorage.getItem('sf_device_id');
+    if (!id) {{
+      id = 'web-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('sf_device_id', id);
+    }}
+    return id;
+  }} catch (e) {{
+    return '';
+  }}
+}}
+
+function deviceToken() {{
+  try {{ return localStorage.getItem('sf_device_token') || ''; }} catch (e) {{ return ''; }}
+}}
+
+async function ensureDeviceToken() {{
+  const id = deviceId();
+  if (!id) return '';
+  const have = deviceToken();
+  if (have) return have;
+  try {{
+    // 凭据只随注册那一次的响应返回，而注册的唯一入口是带 X-Device-Id 打一次读接口。
+    // source=ugc 是最便宜的一支（不去拉官方 feed）。
+    const resp = await acctFetch('/api/feed?limit=1&source=ugc', {{
+      headers: {{ 'Accept': 'application/json', 'X-Device-Id': id }},
+    }});
+    if (!resp.ok) return '';
+    const data = await resp.json();
+    const token = (data && data.device_token) || '';
+    if (token) localStorage.setItem('sf_device_token', token);
+    return token;
+  }} catch (e) {{
+    return '';
+  }}
+}}
+
+async function loadAccount() {{
+  if (accountMode() !== 'live' || ACCT.loading) return;
+  ACCT.loading = true;
+  try {{
+    const resp = await acctFetch('/auth/me', {{ headers: {{ 'Accept': 'application/json' }} }});
+    const data = resp.ok ? await resp.json() : null;
+    ACCT.user = (data && data.user) || null;
+  }} catch (e) {{
+    ACCT.user = null;
+  }}
+  if (ACCT.user) {{
+    try {{
+      const resp = await acctFetch('/api/posts/me', {{ headers: {{ 'Accept': 'application/json' }} }});
+      const data = resp.ok ? await resp.json() : null;
+      ACCT.posts = (data && data.posts) || [];
+    }} catch (e) {{
+      ACCT.posts = [];
+    }}
+  }} else {{
+    ACCT.posts = null;
+  }}
+  try {{
+    const token = await ensureDeviceToken();
+    if (token) {{
+      const resp = await acctFetch('/api/profile/reactions', {{
+        headers: {{
+          'Accept': 'application/json',
+          'X-Device-Id': deviceId(),
+          'X-Device-Token': token,
+        }},
+      }});
+      const data = resp.ok ? await resp.json() : null;
+      if (data && data.ok) {{
+        ACCT.remote = true;
+        ACCT.liked = (data.liked || []).length;
+        ACCT.saved = (data.saved || []).length;
+      }}
+    }}
+  }} catch (e) {{ /* 赞藏读不到就退回本机计数 */ }}
+  ACCT.loading = false;
+  ACCT.loaded = true;
+  if (state.mode === 'me' || state.mode === 'publish') render(false);
+}}
+
+async function submitPost(form) {{
+  const btn = document.getElementById('pubSubmit');
+  const msg = document.getElementById('pubMsg');
+  const val = (id) => {{
+    const el = document.getElementById(id);
+    return el ? String(el.value || '').trim() : '';
+  }};
+  const body = {{
+    title: val('pubTitle'),
+    github_url: val('pubUrl'),
+    description: val('pubDesc'),
+    body_md: val('pubBody'),
+  }};
+  if (btn) {{ btn.disabled = true; btn.textContent = tr('publishSubmitting'); }}
+  if (msg) {{ msg.className = 'pub-msg'; msg.textContent = ''; }}
+  try {{
+    const resp = await acctFetch('/api/posts', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json', 'Accept': 'application/json' }},
+      body: JSON.stringify(body),
+    }});
+    let data = null;
+    try {{ data = await resp.json(); }} catch (e) {{ data = null; }}
+    if (resp.status === 401) {{
+      if (msg) {{ msg.className = 'pub-msg err'; msg.textContent = tr('publishNeedLogin'); }}
+      return;
+    }}
+    if (!resp.ok || !data || !data.ok) {{
+      // 400 的 detail 是服务端逐字给的校验说明（描述太短 / 链接格式），照原样显示
+      const why = (data && (data.detail || data.error)) || tr('publishFailed');
+      if (msg) {{ msg.className = 'pub-msg err'; msg.textContent = String(why); }}
+      return;
+    }}
+    if (form && form.reset) form.reset();
+    if (msg) {{ msg.className = 'pub-msg ok'; msg.textContent = tr('publishOkMsg'); }}
+    toast(tr('publishOkMsg'));
+    ACCT.posts = null;
+    ACCT.loaded = false;
+    loadAccount();
+  }} catch (e) {{
+    if (msg) {{ msg.className = 'pub-msg err'; msg.textContent = tr('publishFailed'); }}
+  }} finally {{
+    if (btn) {{ btn.disabled = false; btn.textContent = tr('publishSubmit'); }}
+  }}
+}}
+
+async function logoutAccount() {{
+  try {{
+    await acctFetch('/auth/logout', {{ method: 'POST' }});
+  }} catch (e) {{ /* 服务端不在也要把本地态清掉 */ }}
+  ACCT.user = null;
+  ACCT.posts = null;
+  ACCT.loaded = true;
+  toast(tr('acctLoggedOut'));
+  render(false);
+}}
+
+function acctIdentityHtml() {{
+  const mode = accountMode();
+  if (mode === 'local') {{
+    return `<div class="me-card">
+      <strong>${{escapeHtml(tr('acctLocalTitle'))}}</strong>
+      <p>${{escapeHtml(tr('acctLocalOnly'))}}</p>
+    </div>`;
+  }}
+  if (mode === 'linked') {{
+    return `<div class="me-card">
+      <strong>${{escapeHtml(tr('acctAnonTitle'))}}</strong>
+      <p>${{escapeHtml(tr('acctRemoteNote'))}}</p>
+      <div class="me-actions">
+        <a class="primary" href="${{escapeHtml(safeUrl(API_BASE + '/'))}}" target="_blank" rel="noopener">${{escapeHtml(tr('acctOpenSite'))}}</a>
+      </div>
+    </div>`;
+  }}
+  if (!ACCT.loaded) {{
+    return `<div class="me-card"><p>${{escapeHtml(tr('acctChecking'))}}</p></div>`;
+  }}
+  if (!ACCT.user) {{
+    const login = loginUrl();
+    return `<div class="me-card">
+      <strong>${{escapeHtml(tr('acctAnonTitle'))}}</strong>
+      <p>${{escapeHtml(tr('acctAnon'))}}</p>
+      <div class="me-actions">
+        ${{login ? `<a class="primary" href="${{escapeHtml(safeUrl(login))}}">${{escapeHtml(tr('publishLoginBtn'))}}</a>` : ''}}
+        <a href="${{escapeHtml(safeUrl(API_BASE + '/auth/github'))}}">${{escapeHtml(tr('meGithubLogin'))}}</a>
+      </div>
+    </div>`;
+  }}
+  const login = String(ACCT.user.login || '');
+  const pal = paletteFor(login || 'me');
+  const name = String(ACCT.user.name || '') || ('@' + login);
+  return `<div class="me-card">
+    <div class="acct-id">
+      <span class="ava" aria-hidden="true" style="background:${{pal[1]}};color:${{readableOn(pal[1])}}">${{escapeHtml(initials(login))}}</span>
+      <span class="meta"><b>${{escapeHtml(name)}}</b><span>@${{escapeHtml(login)}} · ${{escapeHtml(tr('acctSignedIn'))}}</span></span>
+    </div>
+    <div class="me-actions">
+      <button type="button" class="js-acct-logout">${{escapeHtml(tr('acctLogout'))}}</button>
+    </div>
+  </div>`;
+}}
+
+function acctPostsHtml() {{
+  const mode = accountMode();
+  if (mode !== 'live') return '';
+  let inner;
+  if (!ACCT.loaded) inner = `<p>${{escapeHtml(tr('acctPostsLoading'))}}</p>`;
+  else if (!ACCT.user) inner = `<p>${{escapeHtml(tr('acctPostsNeedLogin'))}}</p>`;
+  else if (!ACCT.posts || !ACCT.posts.length) inner = `<p>${{escapeHtml(tr('acctNoPosts'))}}</p>`;
+  else {{
+    inner = ACCT.posts.map(p => `<div class="pub-item">
+      <strong>${{escapeHtml(String(p.title || p.name || ''))}}</strong>
+      <p>${{escapeHtml(String(p.description || '').slice(0, 160))}}</p>
+      <div class="meta">${{escapeHtml(String(p.scene_label || ''))}} · ${{escapeHtml(String(p.status || ''))}} · ${{escapeHtml(String(p.created_at || '').slice(0, 19))}}</div>
+    </div>`).join('');
+  }}
+  return `<div class="me-card">
+    <strong>${{escapeHtml(tr('acctMyPosts'))}}</strong>
+    <div style="margin-top:8px">${{inner}}</div>
+  </div>`;
+}}
+
 function mePanelHtml() {{
   const nLiked = liked.size;
   const nSaved = saved.size;
-  const pub = apiUrl('/publish') || '';
-  const docs = apiUrl('/docs') || '';
-  const home = apiUrl('/') || '';
   const builders = [...followBuilders];
   const industries = [...followIndustries];
   const unfollowAria = escapeHtml(tr('unfollowAria'));
@@ -2844,9 +3559,26 @@ function mePanelHtml() {{
   const industryChips = industries.length
     ? industries.map(id => `<span class="follow-chip">${{escapeHtml(sceneLabelOf(id))}} <button type="button" class="js-unfollow-industry" data-scene="${{escapeHtml(id)}}" aria-label="${{unfollowAria}}">×</button></span>`).join('')
     : `<p style="margin:0;font-size:.82rem;color:var(--muted)">${{escapeHtml(tr('meNoIndustries'))}}</p>`;
+  // 云端赞藏读到了就以它为准，读不到（无后端 / 埋点链路还没接）才退回本机计数。
+  // 两句文案不同，用户能看出这个数是从哪来的。
+  const counts = ACCT.remote
+    ? escapeHtml(trn('acctServerCounts', {{ liked: ACCT.liked, saved: ACCT.saved }}))
+    : escapeHtml(trn('acctLocalCounts', {{ liked: nLiked, saved: nSaved }}));
+  const countsNote = (accountMode() === 'live' && !ACCT.remote)
+    ? `<p>${{escapeHtml(tr('acctReactionsPending'))}}</p>` : '';
   return `<div class="me-panel">
-    <h2>${{escapeHtml(tr('navMe'))}}</h2>
+    <h2>${{escapeHtml(tr('acctTitle'))}}</h2>
     <p class="lead">${{tr('meLead')}}</p>
+    ${{acctIdentityHtml()}}
+    ${{acctPostsHtml()}}
+    <div class="me-card">
+      <strong>${{escapeHtml(tr('meLocalTitle'))}}</strong>
+      <p>${{counts}}</p>
+      ${{countsNote}}
+      <div class="me-actions">
+        <button type="button" class="primary js-me-saved">${{escapeHtml(tr('meViewSaved'))}}</button>
+      </div>
+    </div>
     <div class="me-card">
       <strong>${{escapeHtml(tr('meMyBuilders'))}}</strong>
       <div style="margin-top:8px">${{builderChips}}</div>
@@ -2859,24 +3591,6 @@ function mePanelHtml() {{
       <div style="margin-top:8px">${{industryChips}}</div>
       <div class="me-actions">
         <button type="button" class="primary js-me-find-industry">${{escapeHtml(tr('sheetIndustryTitle'))}}</button>
-      </div>
-    </div>
-    <div class="me-card">
-      <strong>${{escapeHtml(tr('meLocalTitle'))}}</strong>
-      <p>${{escapeHtml(trn('meCounts', {{ liked: nLiked, saved: nSaved }}))}}</p>
-      <div class="me-actions">
-        <button type="button" class="primary js-me-saved">${{escapeHtml(tr('meViewSaved'))}}</button>
-      </div>
-    </div>
-    <div class="me-card">
-      <strong>${{escapeHtml(tr('mePublishTitle'))}}</strong>
-      <p>${{API_BASE ? (escapeHtml(tr('meApiPrefix')) + escapeHtml(API_BASE)) : escapeHtml(tr('meNoApi'))}}</p>
-      <div class="me-actions">
-        ${{pub ? `<a class="primary" href="${{escapeHtml(safeUrl(pub))}}" target="_blank" rel="noopener">${{escapeHtml(tr('meGoPublish'))}}</a>` :
-          `<button type="button" class="primary js-me-publish">${{escapeHtml(tr('meGoPublish'))}}</button>`}}
-        ${{docs ? `<a href="${{escapeHtml(safeUrl(docs))}}" target="_blank" rel="noopener">${{escapeHtml(tr('meApiDocs'))}}</a>` : ''}}
-        ${{home ? `<a href="${{escapeHtml(safeUrl(home))}}" target="_blank" rel="noopener">${{escapeHtml(tr('meApiHome'))}}</a>` : ''}}
-        ${{API_BASE ? `<a href="${{escapeHtml(safeUrl(apiUrl('/auth/github')))}}" target="_blank" rel="noopener">${{escapeHtml(tr('meGithubLogin'))}}</a>` : ''}}
       </div>
     </div>
     <div class="me-card">
@@ -2904,21 +3618,31 @@ function render(reset) {{
   renderIntentKeys();
   renderStories();
 
-  const hideChrome = state.mode === 'me' || state.mode === 'publisher';
+  const hideChrome = state.mode === 'me' || state.mode === 'publisher'
+    || state.mode === 'topics' || state.mode === 'publish';
   const scenes = sceneOptions();
   const secs = sectionOptions();
   const l2s = l2Options();
-  renderPills(document.getElementById('sceneStrip'), scenes, 'scene', !hideChrome && scenes.length > 0);
-  renderPills(document.getElementById('l2Strip'), l2s, 'scene_l2', !hideChrome && l2s.length > 0);
-  renderPills(document.getElementById('sectionStrip'), secs, 'section', !hideChrome && secs.length > 0);
+  // 场景 / 二级场景 / 栏目这三排 chips 搬到「主题分类」tab 去了。这里只在真的筛着
+  // 的时候才长出来，此时它们的作用是「看清在筛什么、并且能清掉」——每排都带一个
+  // 「全部…」。不筛的时候首屏因此省掉约 120px 控件，第一张卡直接进视口。
+  const showFilters = !hideChrome && (state.scene !== 'all' || state.section !== 'all');
+  renderPills(document.getElementById('sceneStrip'), scenes, 'scene', showFilters && scenes.length > 0);
+  renderPills(document.getElementById('l2Strip'), l2s, 'scene_l2', showFilters && l2s.length > 0);
+  renderPills(document.getElementById('sectionStrip'), secs, 'section', showFilters && secs.length > 0);
 
-  document.querySelectorAll('.bottom .nav').forEach(n => {{
-    const mode = n.dataset.mode;
-    n.classList.toggle('on', !!mode && mode === state.mode);
-  }});
+  renderTabs();
 
   document.getElementById('searchWrap').style.display = hideChrome ? 'none' : '';
 
+  if (state.mode === 'topics') {{
+    feed.innerHTML = topicsPanelHtml();
+    return;
+  }}
+  if (state.mode === 'publish') {{
+    feed.innerHTML = publishPanelHtml();
+    return;
+  }}
   if (state.mode === 'me') {{
     feed.innerHTML = mePanelHtml();
     return;
@@ -3011,8 +3735,11 @@ function stopSvTimer() {{
 }}
 
 function sceneGradient(it) {{
-  const key = it.scene || it.full_name || it.name || 'x';
-  const pal = paletteFor(key);
+  // 有 scene 就用分类色——全屏 story 的背景是这张卡属于哪一类的最大一块面积。
+  // 没有 scene 才退回名字哈希，免得全部落成 other 的灰蓝一片
+  const pal = it.scene
+    ? paletteForScene(it.scene)
+    : paletteFor(it.full_name || it.name || 'x');
   return `linear-gradient(160deg, ${{pal[0]}} 0%, ${{pal[1]}} 48%, ${{pal[2]}} 100%)`;
 }}
 
@@ -3319,23 +4046,24 @@ document.getElementById('storiesHintClose').addEventListener('click', () => {{
   try {{ localStorage.setItem('sf_stories_hint_dismissed', '1'); }} catch (e) {{}}
 }});
 
-document.querySelector('.bottom').addEventListener('click', (e) => {{
+document.getElementById('tabBar').addEventListener('click', (e) => {{
   const nav = e.target.closest('.nav');
   if (!nav) return;
-  if (nav.dataset.action === 'publish') {{
-    if (IS_LITE) return;
-    openPublish();
-    return;
-  }}
-  if (IS_LITE && nav.dataset.mode === 'me') return;
-  state.mode = nav.dataset.mode || 'all';
-  if (state.mode === 'all') {{
-    state.section = 'all';
-  }}
-  state.shown = 0;
-  render(true);
-  window.scrollTo({{ top: 0, behavior: 'smooth' }});
+  switchTab(nav.dataset.mode || 'all');
+  if (state.mode === 'me' || state.mode === 'publish') loadAccount();
 }});
+
+document.getElementById('tabBar').addEventListener('keydown', (e) => {{
+  const next = tabKeyTarget(e.key, state.mode);
+  if (!next) return;
+  e.preventDefault();
+  switchTab(next);
+  if (state.mode === 'me' || state.mode === 'publish') loadAccount();
+  const btn = tabButtons().find(b => (b.dataset.mode || '') === next);
+  if (btn && btn.focus) btn.focus();
+}});
+
+document.getElementById('toTop').addEventListener('click', scrollToTop);
 
 const intentEl = document.getElementById('intent');
 intentEl.addEventListener('input', (e) => {{
@@ -3371,14 +4099,32 @@ document.getElementById('feed').addEventListener('click', (e) => {{
   const t = e.target;
   if (!(t instanceof Element)) return;
 
+  const topic = t.closest('.js-topic');
+  if (topic) {{
+    goTopic(topic.dataset.scene || 'all', topic.dataset.l2 || 'all');
+    return;
+  }}
+  const topicSec = t.closest('.js-topic-section');
+  if (topicSec) {{
+    state.mode = 'all';
+    state.scene = 'all';
+    state.scene_l2 = 'all';
+    state.section = topicSec.dataset.id || 'all';
+    state.shown = 0;
+    render(true);
+    syncTabUrl();
+    scrollToTop();
+    return;
+  }}
+  if (t.closest('.js-acct-logout')) {{
+    logoutAccount();
+    return;
+  }}
   if (t.closest('.js-me-saved')) {{
     state.mode = 'saved';
     state.shown = 0;
     render(true);
-    return;
-  }}
-  if (t.closest('.js-me-publish')) {{
-    openPublish();
+    syncTabUrl();
     return;
   }}
   if (t.closest('.js-me-find-builder')) {{
@@ -3502,7 +4248,16 @@ document.getElementById('svBody').addEventListener('touchend', (e) => {{
   if (Math.abs(dx) > 40) svAdvance(dx < 0 ? 1 : -1);
 }}, {{ passive: true }});
 
-window.addEventListener('scroll', () => maybeLoadMore(), {{ passive: true }});
+/* 发布表单是 render() 写进 #feed 的，所以在容器上收 submit（submit 会冒泡）。
+   不用 form 的 action/method：那会整页跳转，而 form-action 在本页 CSP 里是 'none'。 */
+document.getElementById('feed').addEventListener('submit', (e) => {{
+  const form = e.target.closest('#pubForm');
+  if (!form) return;
+  e.preventDefault();
+  submitPost(form);
+}});
+
+window.addEventListener('scroll', () => {{ maybeLoadMore(); syncToTop(); }}, {{ passive: true }});
 document.getElementById('btnDemo').addEventListener('click', startDemo);
 document.getElementById('demoStop').addEventListener('click', stopDemo);
 document.getElementById('btnHeart').addEventListener('click', () => toast(tr('feedbackToast')));
@@ -3557,8 +4312,24 @@ try {{
   applyIntentInput(q, {{ forceCompress: true, silent: true }});
 }})();
 
+/* 深链：?tab= 决定落在哪个入口，?scene= / ?l2= 直接落到发现流的某个分类。
+   在 applyLang() 那次首屏渲染之前跑完，免得先渲一遍发现再跳走。 */
+(function openTabFromQuery() {{
+  const params = new URLSearchParams(location.search);
+  const scene = (params.get('scene') || '').trim();
+  const l2 = (params.get('l2') || '').trim();
+  if (scene) {{
+    state.scene = scene;
+    state.scene_l2 = l2 || 'all';
+  }}
+  const tab = tabFromQuery(location.search);
+  if (tab && !scene) state.mode = tab;
+}})();
+
 renderIntentKeys();
 applyLang(LANG);
+syncToTop();
+if (state.mode === 'me' || state.mode === 'publish') loadAccount();
 
 if (!IS_LITE && new URLSearchParams(location.search).get('demo') === '1') {{
   setTimeout(startDemo, 400);

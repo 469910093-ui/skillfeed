@@ -24,6 +24,30 @@ def _env(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()
 
 
+def _env_any(*names: str, default: str = "") -> str:
+    """按顺序取第一个非空的变量名。
+
+    任务清单里给的名字是 `WECHAT_APP_ID` 这种裸名，仓库其余配置一律 `SKILLFEED_`
+    前缀。两种都读、前缀版优先：既不违背清单，也不在同一个进程里搞出两套命名。
+    """
+    for n in names:
+        v = _env(n)
+        if v:
+            return v
+    return default
+
+
+def _flag(name: str, default: str = "0") -> bool:
+    return _env(name, default).lower() in ("1", "true", "yes", "on")
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(_env(name, str(default)))
+    except ValueError:
+        return default
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -59,9 +83,59 @@ class Settings:
         self.public_url = _env("SKILLFEED_PUBLIC_URL", "http://127.0.0.1:8787").rstrip("/")
         self.github_client_id = _env("SKILLFEED_GITHUB_CLIENT_ID")
         self.github_client_secret = _env("SKILLFEED_GITHUB_CLIENT_SECRET")
-        self.official_feed_url = _env(
-            "SKILLFEED_OFFICIAL_FEED_URL",
-            "https://469910093-ui.github.io/skillfeed/feed.json",
+        # GitHub 登录在 V1 降级为可选「绑定」：代码保留，登录页默认不给入口。
+        # 设 1 才把按钮显示出来（比如给自己用的运维通道）
+        self.github_login_visible = _flag("SKILLFEED_GITHUB_LOGIN_VISIBLE", "0")
+
+        # —— 主站强制登录 ——
+        # 默认 1 而不是 0：V1 的定案就是强制登录，而「漏配一个环境变量」的后果
+        # 应该是站点更严，不是门禁静默消失。本地要开着门调试就显式设 0。
+        self.require_login = (
+            _env("SKILLFEED_REQUIRE_LOGIN", "1").lower() not in ("0", "false", "no", "off")
+        )
+
+        # —— 微信服务号网页授权 ——
+        self.wechat_app_id = _env_any("SKILLFEED_WECHAT_APP_ID", "WECHAT_APP_ID")
+        # ⚠️ AppSecret 只在服务端 → 微信 API 的这一跳里出现。
+        # 不进任何响应体、不进日志、不进 __repr__（见本类 __repr__）
+        self.wechat_app_secret = _env_any("SKILLFEED_WECHAT_APP_SECRET", "WECHAT_APP_SECRET")
+        # snsapi_userinfo 要用户点一次授权、能拿昵称头像；snsapi_base 静默只给 openid。
+        # 默认要昵称头像，因为「我的账户」要显示人。
+        self.wechat_scope = _env("SKILLFEED_WECHAT_SCOPE", "snsapi_userinfo")
+        self.oauth_state_ttl_s = _int_env("SKILLFEED_OAUTH_STATE_TTL_S", 600)
+
+        # —— 短信验证码兜底 ——
+        # provider: "" = 未配置（/auth/sms/send 直接 503）；"aliyun" = 阿里云短信；
+        # "console" = 只打到服务端日志，仅 SKILLFEED_DEV=1 时可用
+        self.sms_provider = _env_any("SKILLFEED_SMS_PROVIDER", "SMS_PROVIDER").lower()
+        self.sms_sign_name = _env_any("SKILLFEED_SMS_SIGN_NAME", "SMS_SIGN_NAME")
+        self.sms_template_code = _env_any("SKILLFEED_SMS_TEMPLATE_CODE", "SMS_TEMPLATE_CODE")
+        # ⚠️ 同 AppSecret：只往上游走，不往下游走
+        self.sms_access_key_id = _env_any("SKILLFEED_SMS_ACCESS_KEY_ID", "SMS_ACCESS_KEY_ID")
+        self.sms_access_key_secret = _env_any(
+            "SKILLFEED_SMS_ACCESS_KEY_SECRET", "SMS_ACCESS_KEY_SECRET",
+        )
+        self.sms_region = _env_any(
+            "SKILLFEED_SMS_REGION", "SMS_REGION", default="cn-hangzhou",
+        )
+        self.sms_code_ttl_s = _int_env("SKILLFEED_SMS_CODE_TTL_S", 300)
+        self.sms_max_attempts = _int_env("SKILLFEED_SMS_MAX_ATTEMPTS", 5)
+        self.sms_resend_cooldown_s = _int_env("SKILLFEED_SMS_RESEND_COOLDOWN_S", 60)
+        self.sms_window_s = _int_env("SKILLFEED_SMS_WINDOW_S", 3600)
+        self.sms_max_per_phone = _int_env("SKILLFEED_SMS_MAX_PER_PHONE", 5)
+        self.sms_max_per_ip = _int_env("SKILLFEED_SMS_MAX_PER_IP", 20)
+        self.sms_max_verify_per_ip = _int_env("SKILLFEED_SMS_MAX_VERIFY_PER_IP", 30)
+
+        # 官方发现源。**默认不再指向 github.io**：主站是国内域名，浏览器从国内
+        # 拉 github.io 时快时慢时不通，而 Feed 是首屏内容。默认走服务器本地产物
+        # （`python skillfeed.py publish-site --out site` 的输出），
+        # 同源、无出网、无跨境延迟。
+        self.official_feed_url = _env("SKILLFEED_OFFICIAL_FEED_URL")
+        site = _env("SKILLFEED_SITE_DIR")
+        self.site_dir = Path(site).expanduser() if site else (data_home() / "site")
+        feed_file = _env("SKILLFEED_OFFICIAL_FEED_FILE")
+        self.official_feed_file = (
+            Path(feed_file).expanduser() if feed_file else (self.site_dir / "feed.json")
         )
         db = _env("SKILLFEED_DB")
         self.db_path = Path(db).expanduser() if db else (data_home() / "server.db")
@@ -105,9 +179,54 @@ class Settings:
     def ranking_config(self) -> dict[str, Any]:
         return self.config
 
+    def __repr__(self) -> str:  # pragma: no cover - 仅影响日志/调试输出
+        """脱敏的 repr。
+
+        Settings 里现在装着 AppSecret 和短信 AK。默认 repr 虽然不打属性，
+        但只要有人写了 `logging.info("settings=%s", vars(settings))`
+        或者某个异常处理把对象整个塞进 traceback 附注，凭据就进日志了。
+        显式定义一个只打非敏感项的 repr，把这条路堵死。
+        """
+        return (
+            f"Settings(public_url={self.public_url!r}, require_login={self.require_login}, "
+            f"wechat_configured={self.wechat_configured}, sms_configured={self.sms_configured}, "
+            f"dev_mode={self.dev_mode})"
+        )
+
     @property
     def oauth_configured(self) -> bool:
         return bool(self.github_client_id and self.github_client_secret)
+
+    @property
+    def wechat_configured(self) -> bool:
+        return bool(self.wechat_app_id and self.wechat_app_secret)
+
+    @property
+    def sms_configured(self) -> bool:
+        """短信是否真能发出去。
+
+        console provider 只在 dev 下算「配置好了」：它把验证码打到服务端日志，
+        谁能看日志谁就能登任意手机号，生产环境必须当成未配置。
+        """
+        if self.sms_provider == "console":
+            return self.dev_mode
+        if self.sms_provider == "aliyun":
+            return bool(
+                self.sms_access_key_id
+                and self.sms_access_key_secret
+                and self.sms_sign_name
+                and self.sms_template_code
+            )
+        return False
+
+    @property
+    def any_login_available(self) -> bool:
+        return bool(
+            self.wechat_configured
+            or self.sms_configured
+            or self.oauth_configured
+            or self.dev_login_allowed
+        )
 
     @property
     def dev_login_allowed(self) -> bool:
@@ -150,6 +269,30 @@ class Settings:
                 "[warn] 无凭据登录 /auth/dev-login 已启用（SKILLFEED_DEV=1 + "
                 "SKILLFEED_DEV_AUTH=1 + 非 https）。任何人访问该地址即可获得会话，"
                 "不要暴露到公网。"
+            )
+        if self.require_login and not self.any_login_available:
+            # 刻意只是 warn 不是 raise：第 2 期的代码要能在拿到服务号凭据之前
+            # 先合进来。但必须响一声，否则「站点起来了但谁也登不进去」
+            # 只能靠用户报障发现。
+            notes.append(
+                "[warn] SKILLFEED_REQUIRE_LOGIN=1 但没有任何可用登录方式："
+                "微信（SKILLFEED_WECHAT_APP_ID/SECRET）、短信（SKILLFEED_SMS_*）、"
+                "GitHub OAuth 都未配置。现在全站会 302 到 /login 且登不进去。"
+            )
+        if not self.require_login:
+            notes.append(
+                "[warn] 登录门禁已关闭（SKILLFEED_REQUIRE_LOGIN=0）。"
+                "Feed 与各 API 对未登录者开放，仅供本地开发。"
+            )
+        if self.sms_provider == "console" and self.dev_mode:
+            notes.append(
+                "[warn] 短信走 console provider：验证码只打印到服务端日志，"
+                "任何能看日志的人都能登任意手机号。不要用于公网。"
+            )
+        if self.require_login and not self.public_url.startswith("https://"):
+            notes.append(
+                "[info] SKILLFEED_PUBLIC_URL 不是 https，会话 cookie 不会带 Secure。"
+                "公网部署务必配 https 并把该变量改成 https 地址。"
             )
         if not (self.trusted_proxy_hops and self.trusted_proxy_ips):
             notes.append(

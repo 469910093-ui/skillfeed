@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import secrets
+from html import escape as html_escape
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 from fastapi import Body, FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,14 +19,17 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import ranking
-from server import auth, db, metrics, ranking_service, ugc
+from server import auth, db, metrics, ranking_service, sms, ugc
 from server.config import Settings, get_settings
-from server.ratelimit import EventLimiter
+from server.ratelimit import EventLimiter, SmsLimiter
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATES = ROOT / "templates"
 
 MAX_EVENTS_PER_REQUEST = 200
+
+# 登录成功后回跳的落点。只存已消毒的站内路径，见 _safe_next
+LOGIN_NEXT_COOKIE = "skillfeed_login_next"
 
 
 class PostCreate(BaseModel):
@@ -47,6 +53,66 @@ class EventsBody(BaseModel):
 class ClaimBody(BaseModel):
     device_id: str = ""
     device_token: str = ""
+
+
+class SmsSendBody(BaseModel):
+    phone: str = ""
+
+
+class SmsVerifyBody(BaseModel):
+    phone: str = ""
+    code: str = ""
+    next: str = ""
+
+
+# —— 登录门禁的豁免表 ——
+#
+# 这是一份**白名单**，中间件的逻辑是「不在表里就要登录」。
+# 反过来写（黑名单：列出需要登录的路径）的话，以后新增一个路由忘了登记，
+# 它就默认是公开的 —— 而「忘了」是一定会发生的。默认拒绝意味着忘记的代价是
+# 「这个接口 302 到登录页」，能立刻被发现；而不是「这个接口悄悄对全网开放」。
+#
+# 每一条豁免都要有理由：
+GATE_PUBLIC_EXACT = frozenset({
+    "/health",      # 外部 uptime 探针，不可能带登录态
+    "/login",       # 登录页自己。它要是被拦，就是无限重定向
+    "/favicon.ico",  # 浏览器自动请求，拦了也只是产生一条 302 噪音
+})
+GATE_PUBLIC_PREFIXES = (
+    # 所有登录相关端点：发起跳转、各家回调、短信收发、退出、/auth/me。
+    # 微信回调必须公开 —— 那一跳的目的正是「还没有会话，去建一个」。
+    "/auth/",
+    # 登录页要用到的静态资源；这个目录里不放任何用户数据
+    "/static/",
+)
+
+
+def _is_gate_public(path: str) -> bool:
+    return path in GATE_PUBLIC_EXACT or path.startswith(GATE_PUBLIC_PREFIXES)
+
+
+def _safe_next(raw: str) -> str:
+    """把 `?next=` 收敛成本站内部路径，挡开放重定向。
+
+    `next` 会被写进登录成功后的 302 Location。不校验的话
+    `/login?next=https://evil.example` 就是一个挂在本站域名下的钓鱼跳板。
+
+    只接受以单个 `/` 开头的路径：`//evil.com` 在浏览器里等价于协议相对 URL，
+    反斜杠也被部分浏览器当成路径分隔符，两者都要排除。
+
+    控制字符也要排除：`next` 会进 `Location` 响应头，夹一个 CRLF 就是响应头注入。
+    引号和尖括号同样排除 —— 这个值还会被写进登录页的 HTML（那里另有转义，
+    但两道都做，任一处被改坏另一处还在）。
+    """
+    nxt = (raw or "").strip()
+    if not nxt.startswith("/") or nxt.startswith("//") or "\\" in nxt:
+        return "/"
+    if any(ch in nxt for ch in "\r\n\t\"'<>") or any(ord(ch) < 0x20 for ch in nxt):
+        return "/"
+    if nxt.startswith("/login"):
+        # 登录成功又跳回登录页，用户会以为没登上
+        return "/"
+    return nxt[:512]
 
 
 def _client_ip(
@@ -84,6 +150,24 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _age_s(ts: Optional[str]) -> Optional[float]:
+    """距 `ts` 过了多少秒。未来时间返回负数，解析不了返回 None。
+
+    不用 metrics.staleness：那个函数把结果 clamp 到 >=0，用它判断
+    「expires_at 是否已过」会把「还没过期」误判成「刚好过期」，
+    等于验证码永不过期。
+    """
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt).total_seconds()
+
+
 def _device_id(request: Request, query_value: str = "") -> str:
     """优先读请求头。
 
@@ -116,6 +200,25 @@ CSP_HTML = (
 # JSON 响应不需要任何子资源，能锁死就锁死
 CSP_API = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
 
+# 由 feed_dashboard.py 生成、publish-site 落盘的那份主站 HTML。
+# 它把脚本整段内联在 <script> 里，nonce 注入不到（模板生成器在另一支演进中，
+# 本次改动不碰它），所以这条策略必须放开 script-src 的 'unsafe-inline'，
+# 否则页面直接白屏。
+#
+# 取舍说明：这份产物是**我们自己的构建输出**，不是用户提交的内容，内联脚本
+# 就是我们的代码。它此前一直挂在 GitHub Pages 上、**完全没有 CSP**，
+# 所以这条策略相对现状是净收紧（object-src/base-uri/frame-ancestors 全锁）。
+# 后续 feed_dashboard.py 改造完成后应该换成 nonce，见 README 的待办。
+CSP_SITE = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' data: https://fonts.gstatic.com; "
+    "img-src 'self' data: https:; "
+    "connect-src 'self' https:; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
+
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or get_settings()
@@ -134,6 +237,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         ttl_s=float(app.state.ranking_config["session"]["order_ttl_s"]),
     )
     app.state.ingest_metrics = metrics.IngestMetrics()
+    app.state.sms_limiter = SmsLimiter(
+        window_s=settings.sms_window_s,
+        max_per_phone=settings.sms_max_per_phone,
+        max_per_ip=settings.sms_max_per_ip,
+        max_verify_per_ip=settings.sms_max_verify_per_ip,
+    )
 
     def require_ops(request: Request) -> None:
         """运维端点的门禁：登录态或运维令牌，二者取其一。
@@ -158,6 +267,33 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # 注意添加顺序：Starlette 里**后加的在外层**。login_gate 加在
+    # security_headers 之前，于是 security_headers 包在外面，
+    # 门禁吐出的那条 302 也会带上安全响应头。
+    @app.middleware("http")
+    async def login_gate(request: Request, call_next):
+        """主站强制登录。未登录 → 302 /login。
+
+        默认拒绝：只有 `_is_gate_public` 认的路径能免登录，其余（包括以后新增的
+        路由、/docs、/openapi.json）一律要会话。
+
+        对 `/api/*` 也发 302 而不是 401 —— 这是产品侧定的口径（未登录一律回登录页）。
+        前端用 fetch 时靠 `response.redirected` / `response.url` 判断，
+        或者读这里带的 `X-Login-Required` 头（redirect: "manual" 时可见）。
+        """
+        if settings.require_login and not _is_gate_public(request.url.path):
+            if auth.session_user_id(request, settings) is None:
+                target = request.url.path
+                if request.url.query:
+                    target = f"{target}?{request.url.query}"
+                dest = "/login"
+                if target not in ("/", ""):
+                    dest = f"/login?next={quote(target, safe='')}"
+                resp = RedirectResponse(dest, status_code=302)
+                resp.headers["X-Login-Required"] = "1"
+                return resp
+        return await call_next(request)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -191,8 +327,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {
             "ok": True,
             "oauth": settings.oauth_configured,
+            "wechat": settings.wechat_configured,
+            # 只报「通道配好没有」，不报签名/模板/AK 任何取值
+            "sms": settings.sms_configured,
+            "require_login": settings.require_login,
             "dev_auth": settings.dev_auth,
-            "official_feed": bool(settings.official_feed_url),
+            "official_feed": bool(
+                settings.official_feed_url or settings.official_feed_file.exists()
+            ),
             "events_total": int(row["n"] or 0),
             "last_event_age_s": round(age, 1) if age is not None else None,
             "ingest_stale": bool(age is not None and age > stale_after),
@@ -200,8 +342,59 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def home() -> HTMLResponse:
+        """登录后的落地页。
+
+        有 publish-site 产物就直接把主站信息流发出去（同源、无出网），
+        没有就退回这个 API 说明页。产物由 `python skillfeed.py publish-site
+        --out <SKILLFEED_SITE_DIR>` 生成，本函数只读不写，
+        模板生成器 feed_dashboard.py 不在本次改动范围内。
+        """
+        index = settings.site_dir / "index.html"
+        if index.is_file():
+            resp = HTMLResponse(index.read_text(encoding="utf-8"))
+            resp.headers["Content-Security-Policy"] = CSP_SITE
+            return resp
         nonce = secrets.token_urlsafe(16)
         html = (TEMPLATES / "home.html").read_text(encoding="utf-8")
+        return html_response(html.replace("{{csp_nonce}}", nonce), nonce)
+
+    @app.get("/feed.json")
+    def feed_json() -> JSONResponse:
+        """同源的 full feed 产物。
+
+        取代「前端直连 github.io 拉 feed.json」：主站在国内域名上，
+        跨境拉首屏数据时快时慢时不通。这个端点在门禁后面，
+        所以它同时也是「登录后才给 full Feed」的落点。
+        """
+        path = settings.official_feed_file
+        if not path.is_file():
+            raise HTTPException(
+                404,
+                "本地 feed 产物不存在。先跑 "
+                "`python skillfeed.py publish-site --out <SKILLFEED_SITE_DIR>`。",
+            )
+        return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login_page(request: Request, next: str = "") -> Response:
+        dest = _safe_next(next)
+        if auth.session_user_id(request, settings) is not None:
+            return RedirectResponse(dest, status_code=302)
+        nonce = secrets.token_urlsafe(16)
+        html = (TEMPLATES / "login.html").read_text(encoding="utf-8")
+        # 只注入布尔开关和已消毒的 next。AppID 都不注入 —— 微信跳转是服务端
+        # 拼的（/auth/wechat），前端不需要知道 AppID，更不需要知道任何 secret
+        for key, value in (
+            ("{{wechat_enabled}}", "1" if settings.wechat_configured else "0"),
+            ("{{sms_enabled}}", "1" if settings.sms_configured else "0"),
+            ("{{github_enabled}}", "1" if (
+                settings.github_login_visible and settings.oauth_configured
+            ) else "0"),
+            ("{{dev_login}}", "1" if settings.dev_login_allowed else "0"),
+            ("{{next}}", html_escape(dest, quote=True)),
+            ("{{sms_cooldown}}", str(settings.sms_resend_cooldown_s)),
+        ):
+            html = html.replace(key, value)
         return html_response(html.replace("{{csp_nonce}}", nonce), nonce)
 
     @app.get("/publish", response_class=HTMLResponse)
@@ -224,17 +417,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 status_code=503,
                 detail="未配置 GitHub OAuth（SKILLFEED_GITHUB_CLIENT_ID/SECRET）。",
             )
-        state = secrets.token_urlsafe(16)
+        # 与微信流程用同一套签名 state（见 server/auth.py 的说明）：
+        # 原来这里是「随机串 + Cookie 比对」，能挡 CSRF 但不能证明这串是我们签的
+        state = auth.issue_state(settings, "github")
         resp = RedirectResponse(auth.github_authorize_url(settings, state), status_code=302)
-        resp.set_cookie("skillfeed_oauth_state", state, httponly=True, max_age=600, samesite="lax", path="/")
+        auth.set_state_cookie(resp, settings, "github", state)
         return resp
 
     @app.get("/auth/callback")
     async def auth_callback(request: Request, code: str = "", state: str = "") -> RedirectResponse:
         if not code:
             raise HTTPException(400, "missing code")
-        expect = request.cookies.get("skillfeed_oauth_state") or ""
-        if not state or state != expect:
+        cookie = request.cookies.get(auth.STATE_COOKIE["github"]) or ""
+        if not auth.verify_state(settings, "github", state, cookie):
             raise HTTPException(400, "bad oauth state")
         gh = await auth.exchange_github_code(settings, code)
         with db.db_session(settings.db_path) as conn:
@@ -247,7 +442,168 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             )
         resp = RedirectResponse("/publish", status_code=302)
         auth.set_session_cookie(resp, settings, int(user["id"]), user["login"])
-        resp.delete_cookie("skillfeed_oauth_state", path="/")
+        auth.clear_state_cookie(resp, "github")
+        return resp
+
+    # —— 微信服务号网页授权（主站 V1 的主登录方式）——
+    @app.get("/auth/wechat")
+    def auth_wechat(next: str = "") -> RedirectResponse:
+        if not settings.wechat_configured:
+            raise HTTPException(
+                status_code=503,
+                detail="未配置微信服务号（SKILLFEED_WECHAT_APP_ID / "
+                       "SKILLFEED_WECHAT_APP_SECRET）。",
+            )
+        state = auth.issue_state(settings, "wechat")
+        resp = RedirectResponse(auth.wechat_authorize_url(settings, state), status_code=302)
+        auth.set_state_cookie(resp, settings, "wechat", state)
+        # 登录成功后回到用户原本想去的地方。放 Cookie 而不是塞进 state：
+        # state 要参与签名比对，往里拼可变内容就得考虑分隔符转义，没必要
+        resp.set_cookie(
+            LOGIN_NEXT_COOKIE, _safe_next(next),
+            max_age=settings.oauth_state_ttl_s, **auth.cookie_flags(settings),
+        )
+        return resp
+
+    @app.get("/auth/wechat/callback")
+    async def auth_wechat_callback(
+        request: Request, code: str = "", state: str = "",
+    ) -> RedirectResponse:
+        if not settings.wechat_configured:
+            raise HTTPException(503, "未配置微信服务号")
+        if not code:
+            raise HTTPException(400, "missing code")
+        # state 的服务端校验：签名有效 + 未过期 + 与 HttpOnly Cookie 一致。
+        # 三条全在服务端判定，回传值本身不被信任
+        cookie = request.cookies.get(auth.STATE_COOKIE["wechat"]) or ""
+        if not auth.verify_state(settings, "wechat", state, cookie):
+            raise HTTPException(400, "bad oauth state")
+        token = await auth.exchange_wechat_code(settings, code)
+        info: dict[str, Any] = {}
+        if settings.wechat_scope == "snsapi_userinfo":
+            # 拿不到昵称头像不该让登录失败：openid 已经足够认人
+            info = await auth.fetch_wechat_userinfo(
+                settings, str(token.get("access_token") or ""), str(token["openid"]),
+            )
+        with db.db_session(settings.db_path) as conn:
+            user = db.upsert_wechat_user(
+                conn,
+                openid=str(token["openid"]),
+                unionid=str(token.get("unionid") or info.get("unionid") or ""),
+                nickname=str(info.get("nickname") or ""),
+                avatar_url=str(info.get("headimgurl") or ""),
+            )
+        dest = _safe_next(request.cookies.get(LOGIN_NEXT_COOKIE) or "/")
+        resp = RedirectResponse(dest, status_code=302)
+        auth.set_session_cookie(resp, settings, int(user["id"]), user["login"])
+        auth.clear_state_cookie(resp, "wechat")
+        resp.delete_cookie(LOGIN_NEXT_COOKIE, path="/")
+        return resp
+
+    # —— 手机号验证码兜底（小红书 / 抖音内置浏览器里微信授权走不通时用）——
+    @app.post("/auth/sms/send")
+    async def auth_sms_send(request: Request, body: SmsSendBody) -> dict[str, Any]:
+        phone = auth.normalize_phone(body.phone)
+        if not phone:
+            raise HTTPException(400, "手机号格式不正确")
+        if not settings.sms_configured:
+            raise HTTPException(503, "短信通道未配置")
+        ip = _client_ip(request, settings.trusted_proxy_hops, settings.trusted_proxy_ips)
+        # 进程内滑动窗口：同手机号频次 + 同 IP 频次
+        hit = app.state.sms_limiter.allow_send(phone=phone, ip=ip)
+        if hit == "phone":
+            raise HTTPException(429, "该手机号请求过于频繁，请稍后再试")
+        if hit == "ip":
+            raise HTTPException(429, "请求过于频繁，请稍后再试")
+
+        code = auth.new_sms_code()
+        # 库里的重发冷却，和上面那道并存：滑动窗口在进程内，重启就清零；
+        # 冷却读的是 sms_codes.created_at，重启后依然有效
+        with db.db_session(settings.db_path) as conn:
+            db.prune_sms_codes(conn)
+            current = db.get_sms_code(conn, phone)
+            cooling = bool(
+                current
+                and _age_s(current["created_at"]) is not None
+                and _age_s(current["created_at"]) < settings.sms_resend_cooldown_s
+            )
+            if not cooling:
+                db.put_sms_code(
+                    conn,
+                    phone=phone,
+                    # 入库的是 HMAC 摘要，明文只活在这个函数的栈上
+                    code_hash=auth.hash_sms_code(settings.session_secret, phone, code),
+                    ttl_s=settings.sms_code_ttl_s,
+                )
+        if cooling:
+            raise HTTPException(429, f"请求过于频繁，请 {settings.sms_resend_cooldown_s} 秒后再试")
+
+        try:
+            # 出网放在事务外：别让一次网关超时把 SQLite 的写锁按住
+            await sms.send_code(settings, phone, code)
+        except sms.SmsError as e:
+            # 发送失败就把码作废，否则用户会被自己的冷却锁在门外
+            with db.db_session(settings.db_path) as conn:
+                db.drop_sms_code(conn, phone)
+            raise HTTPException(502, "短信发送失败，请稍后重试") from e
+        # 响应体里没有验证码，也没有任何凭据 —— 只有前端做倒计时需要的两个数
+        return {
+            "ok": True,
+            "expires_in": settings.sms_code_ttl_s,
+            "cooldown_s": settings.sms_resend_cooldown_s,
+        }
+
+    @app.post("/auth/sms/verify")
+    def auth_sms_verify(request: Request, body: SmsVerifyBody) -> JSONResponse:
+        phone = auth.normalize_phone(body.phone)
+        code = (body.code or "").strip()
+        if not phone or len(code) != 6 or not code.isdigit():
+            raise HTTPException(400, "手机号或验证码格式不正确")
+        ip = _client_ip(request, settings.trusted_proxy_hops, settings.trusted_proxy_ips)
+        # 跨手机号的爆破由这道挡；单个码的猜测次数由 sms_codes.attempts 挡
+        if not app.state.sms_limiter.allow_verify(ip=ip):
+            raise HTTPException(429, "尝试次数过多，请稍后再试")
+
+        # ⚠️ 不在 db_session 里抛异常：db_session 的异常分支会 rollback，
+        # 那样失败计数 +1 会被一起回滚掉，验证码就变成可以无限次猜。
+        # 所以这里先把结论算出来（并提交），再在事务外决定抛什么。
+        error = ""
+        user: Optional[dict[str, Any]] = None
+        with db.db_session(settings.db_path) as conn:
+            row = db.get_sms_code(conn, phone)
+            expired = bool(row and (_age_s(row["expires_at"]) or 0) > 0)
+            if not row or expired:
+                if row:
+                    db.drop_sms_code(conn, phone)
+                error = "expired"
+            elif int(row["attempts"]) >= settings.sms_max_attempts:
+                db.drop_sms_code(conn, phone)
+                error = "too_many"
+            elif not hmac.compare_digest(
+                auth.hash_sms_code(settings.session_secret, phone, code),
+                str(row["code_hash"]),
+            ):
+                if db.bump_sms_attempt(conn, phone) >= settings.sms_max_attempts:
+                    db.drop_sms_code(conn, phone)
+                error = "bad_code"
+            else:
+                # 单次有效：验证通过立刻删行，同一个码不可能被用第二次
+                db.drop_sms_code(conn, phone)
+                user = db.upsert_phone_user(conn, phone=phone)
+
+        if error == "expired":
+            raise HTTPException(400, "验证码已过期，请重新获取")
+        if error == "too_many":
+            raise HTTPException(429, "验证码错误次数过多，请重新获取")
+        if error == "bad_code":
+            raise HTTPException(400, "验证码不正确")
+        assert user is not None
+        resp = JSONResponse({
+            "ok": True,
+            "user": db.user_public(user),
+            "next": _safe_next(body.next),
+        })
+        auth.set_session_cookie(resp, settings, int(user["id"]), user["login"])
         return resp
 
     @app.get("/auth/dev-login")
@@ -282,16 +638,27 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/auth/me")
     def auth_me(request: Request) -> dict[str, Any]:
+        """当前登录用户。**这个端点本身免登录**（在门禁豁免表里）。
+
+        必须免登录：前端要用它回答「我登了没有」。如果它也 302 到登录页，
+        前端就只能靠「请求别的接口看有没有被重定向」来推断登录态，
+        每次判断都要多打一个可能重定向的请求。
+        未登录时返回 200 + `user: null`，不是 401。
+        """
+        base = {
+            "oauth": settings.oauth_configured,
+            "wechat": settings.wechat_configured,
+            "sms": settings.sms_configured,
+            "dev_auth": settings.dev_auth,
+            "require_login": settings.require_login,
+            "login_url": "/login",
+        }
         uid = auth.session_user_id(request, settings)
         if uid is None:
-            return {"user": None, "oauth": settings.oauth_configured, "dev_auth": settings.dev_auth}
+            return {"user": None, **base}
         with db.db_session(settings.db_path) as conn:
             user = db.get_user(conn, uid)
-        return {
-            "user": db.user_public(user) if user else None,
-            "oauth": settings.oauth_configured,
-            "dev_auth": settings.dev_auth,
-        }
+        return {"user": db.user_public(user) if user else None, **base}
 
     # —— Feed ——
     @app.get("/api/feed")
@@ -316,7 +683,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
         official: list[dict] = []
         if source in ("all", "official"):
-            official = await ugc.load_official_items(settings.official_feed_url)
+            # 有显式 URL 就走 URL（部署方可以指到国内同源地址或内网地址），
+            # 没有就读服务器本地的 publish-site 产物。默认不再是 github.io：
+            # 主站在国内域名上，跨境拉首屏数据不可靠
+            if settings.official_feed_url:
+                official = await ugc.load_official_items(settings.official_feed_url)
+            else:
+                official = ugc.load_official_items_from_file(settings.official_feed_file)
 
         # UGC 置顶是既有产品行为，排序在各自块内进行，不跨块打散
         if source == "ugc":

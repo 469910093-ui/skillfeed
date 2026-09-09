@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录 · skill-feed</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#1a1a1a; --muted:#6b7280; --line:#e5e7eb; --accent:#db2777; --wx:#07c160; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: Outfit, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--ink); min-height: 100vh;
+    background: linear-gradient(160deg, #fff7ed 0%, #fdf2f8 45%, #eff6ff 100%);
+    display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  }
+  .card {
+    width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--line);
+    border-radius: 18px; padding: 32px 24px 28px; box-shadow: 0 18px 48px rgba(0,0,0,.07);
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; letter-spacing: -.02em; }
+  h1 span { color: var(--accent); }
+  .lead { color: var(--muted); font-size: .9rem; line-height: 1.5; margin: 0 0 22px; }
+  .btn {
+    appearance: none; border: 0; border-radius: 12px; padding: 13px 16px; width: 100%;
+    background: var(--ink); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+    text-decoration: none; display: block; text-align: center;
+  }
+  .btn.wx { background: var(--wx); }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; }
+  .row .btn { width: auto; flex: 0 0 auto; padding: 11px 14px; font-size: .85rem; }
+  .sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .78rem; margin: 18px 0; }
+  .sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  label { display: block; font-size: .78rem; font-weight: 600; margin: 12px 0 6px; }
+  input {
+    width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px;
+    font: inherit; background: #fff;
+  }
+  .hint { font-size: .75rem; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+  .warn {
+    background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
+    border-radius: 12px; padding: 12px 14px; font-size: .82rem; line-height: 1.55;
+    margin-bottom: 18px;
+  }
+  .err {
+    background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
+    border-radius: 10px; padding: 10px 12px; font-size: .82rem; margin-top: 12px;
+  }
+  .ok {
+    background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46;
+    border-radius: 10px; padding: 10px 12px; font-size: .82rem; margin-top: 12px;
+  }
+  .hide { display: none; }
+  code { background: #f9fafb; border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: .9em; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>登录 skill<span>feed</span></h1>
+    <p class="lead">发现别人在用的 agent skills。登录后进入信息流。</p>
+
+    <!-- 2.7 环境检测：文案由脚本按 UA 填，默认不显示 -->
+    <div id="envWarn" class="warn hide"></div>
+
+    <a id="btnWechat" class="btn wx hide" href="/auth/wechat">微信一键登录</a>
+    <p id="wechatOff" class="hint hide">微信登录暂未开通（服务端未配置服务号）。</p>
+
+    <div id="smsBlock" class="hide">
+      <div class="sep">或使用手机号</div>
+      <label for="phone">手机号</label>
+      <input id="phone" type="tel" inputmode="numeric" autocomplete="tel"
+             maxlength="11" placeholder="11 位手机号">
+      <label for="code">短信验证码</label>
+      <div class="row">
+        <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" placeholder="6 位数字">
+        <button id="btnSend" class="btn ghost" type="button">获取验证码</button>
+      </div>
+      <p style="margin:16px 0 0"><button id="btnVerify" class="btn" type="button">登录</button></p>
+    </div>
+    <p id="smsOff" class="hint hide">手机号登录暂未开通（服务端未配置短信通道）。</p>
+
+    <div id="msg"></div>
+
+    <!--
+      2.13：GitHub 登录降级为可选「绑定」，V1 默认不给入口。
+      代码和 /auth/github 路由都保留，只是这个按钮由服务端开关决定是否渲染。
+    -->
+    <div id="githubBlock" class="hide">
+      <div class="sep">开发者</div>
+      <a class="btn ghost" href="/auth/github">使用 GitHub 登录</a>
+    </div>
+    <div id="devBlock" class="hide">
+      <div class="sep">本地开发</div>
+      <a class="btn ghost" href="/auth/dev-login">无凭据登录（dev）</a>
+      <p class="hint">仅当 <code>SKILLFEED_DEV=1</code> + <code>SKILLFEED_DEV_AUTH=1</code> 且非 https 时可用。</p>
+    </div>
+  </div>
+
+<script nonce="{{csp_nonce}}">
+// 服务端注入的开关。这里**没有** AppID、没有任何 secret：
+// 微信跳转是服务端在 /auth/wechat 里拼的，前端只需要知道「这个入口开不开」。
+const WECHAT_ON = "{{wechat_enabled}}" === "1";
+const SMS_ON = "{{sms_enabled}}" === "1";
+const GITHUB_ON = "{{github_enabled}}" === "1";
+const DEV_ON = "{{dev_login}}" === "1";
+const NEXT = "{{next}}";
+const COOLDOWN = parseInt("{{sms_cooldown}}", 10) || 60;
+
+const $ = (id) => document.getElementById(id);
+
+// —— 2.7 运行环境检测 ——
+//
+// 微信网页授权只能在微信客户端里完成。小红书 / 抖音的内置浏览器打不开
+// open.weixin.qq.com 的授权页（会白屏或直接被拦），而我们的宣发渠道恰恰是
+// 小红书 / 抖音 —— 也就是说**大部分首次访问都落在走不通的环境里**。
+// 所以这里不是锦上添花的提示，是主路径：检测到这些环境就把微信按钮藏掉、
+// 把手机号登录顶上来，并明确告诉用户怎么换环境。
+function detectEnv() {
+  const ua = (navigator.userAgent || "").toLowerCase();
+  if (/micromessenger/.test(ua)) return "wechat";
+  if (/xhsdiscover|xhs_?app|hongshu/.test(ua)) return "xhs";
+  if (/aweme|douyin|bytedance|bytelo/.test(ua)) return "douyin";
+  if (/weibo/.test(ua)) return "weibo";
+  if (/qq\//.test(ua) && !/mqqbrowser/.test(ua)) return "qq";
+  return "browser";
+}
+
+const ENV_TEXT = {
+  xhs: "你正在<b>小红书内置浏览器</b>里打开本页，微信登录在这里走不通。" +
+       "请点右上角「…」→「在浏览器打开」，或复制本页链接到微信里打开；" +
+       "也可以直接用下面的手机号验证码登录。",
+  douyin: "你正在<b>抖音内置浏览器</b>里打开本页，微信登录在这里走不通。" +
+          "请点右上角「…」→「在浏览器打开」，或复制本页链接到微信里打开；" +
+          "也可以直接用下面的手机号验证码登录。",
+  weibo: "你正在<b>微博内置浏览器</b>里打开本页，微信登录可能无法完成。" +
+         "建议用系统浏览器打开，或用手机号验证码登录。",
+  qq: "你正在 <b>QQ 内置浏览器</b>里打开本页，微信登录可能无法完成。" +
+      "建议用系统浏览器打开，或用手机号验证码登录。",
+};
+
+const env = detectEnv();
+const inAppBlocked = ENV_TEXT[env] !== undefined;
+
+if (inAppBlocked) {
+  const box = $("envWarn");
+  box.innerHTML = ENV_TEXT[env] +
+    '<p style="margin:10px 0 0"><button class="btn ghost" type="button" id="btnCopy" ' +
+    'style="width:auto;padding:8px 12px;font-size:.8rem">复制本页链接</button></p>';
+  box.classList.remove("hide");
+  $("btnCopy").addEventListener("click", async () => {
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      $("btnCopy").textContent = "已复制，去微信粘贴打开";
+    } catch (e) {
+      // 内置浏览器常常没有 clipboard 权限，退回让用户自己长按地址栏
+      $("btnCopy").textContent = "复制失败，请长按地址栏复制";
+    }
+  });
+}
+
+// 微信按钮：配置开了、且当前环境不是已知走不通的内置浏览器，才显示
+if (WECHAT_ON && !inAppBlocked) {
+  const a = $("btnWechat");
+  a.href = "/auth/wechat?next=" + encodeURIComponent(NEXT || "/");
+  a.classList.remove("hide");
+} else if (!WECHAT_ON) {
+  $("wechatOff").classList.remove("hide");
+}
+if (SMS_ON) $("smsBlock").classList.remove("hide");
+else $("smsOff").classList.remove("hide");
+if (GITHUB_ON) $("githubBlock").classList.remove("hide");
+if (DEV_ON) $("devBlock").classList.remove("hide");
+
+function say(kind, text) {
+  $("msg").innerHTML = '<div class="' + kind + '"></div>';
+  $("msg").firstChild.textContent = text;
+}
+
+async function postJSON(url, payload) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  let data = {};
+  try { data = await r.json(); } catch (e) { /* 空体或非 JSON */ }
+  return { ok: r.ok, status: r.status, data };
+}
+
+let ticking = 0;
+function startCooldown(seconds) {
+  const btn = $("btnSend");
+  ticking = seconds;
+  btn.disabled = true;
+  const tick = () => {
+    if (ticking <= 0) {
+      btn.disabled = false;
+      btn.textContent = "获取验证码";
+      return;
+    }
+    btn.textContent = ticking + " 秒后重发";
+    ticking -= 1;
+    setTimeout(tick, 1000);
+  };
+  tick();
+}
+
+if (SMS_ON) {
+  $("btnSend").addEventListener("click", async () => {
+    const phone = $("phone").value.trim();
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      say("err", "请输入 11 位中国大陆手机号");
+      return;
+    }
+    const { ok, status, data } = await postJSON("/auth/sms/send", { phone });
+    if (!ok) {
+      say("err", data.detail || (status === 429
+        ? "请求过于频繁，请稍后再试" : "验证码发送失败"));
+      // 429 也起倒计时：否则用户会一直点，把限流桶继续打满
+      if (status === 429) startCooldown(COOLDOWN);
+      return;
+    }
+    say("ok", "验证码已发送，" + (data.expires_in || 300) + " 秒内有效");
+    startCooldown(data.cooldown_s || COOLDOWN);
+  });
+
+  $("btnVerify").addEventListener("click", async () => {
+    const phone = $("phone").value.trim();
+    const code = $("code").value.trim();
+    if (!/^1[3-9]\d{9}$/.test(phone) || !/^\d{6}$/.test(code)) {
+      say("err", "请填写手机号和 6 位验证码");
+      return;
+    }
+    const { ok, data } = await postJSON("/auth/sms/verify", { phone, code, next: NEXT });
+    if (!ok) {
+      say("err", data.detail || "登录失败");
+      return;
+    }
+    // 服务端已消毒过 next，这里直接用它返回的值
+    location.href = data.next || "/";
+  });
+
+  $("code").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("btnVerify").click();
+  });
+}
+</script>
+</body>
+</html>

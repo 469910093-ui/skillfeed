@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 import highlights as hl
@@ -121,6 +122,22 @@ def post_to_feed_item(post: dict[str, Any]) -> dict[str, Any]:
         "from_corpus": False,
         "ugc": True,
     }
+
+
+def load_official_items_from_file(path: Any) -> list[dict]:
+    """从服务器本地的 publish-site 产物读官方流。
+
+    国内主站的默认取法：同源、零出网，也就不存在「跨境拉 feed.json 超时导致
+    首屏空白」。产物由 `skillfeed.py publish-site` 生成，本函数只读。
+    """
+    from pathlib import Path
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    return list(data.get("items") or [])
 
 
 async def load_official_items(feed_url: str) -> list[dict]:

@@ -22,30 +22,37 @@ python skillfeed.py publish-site --out site
 # 把 site/ 丢到任意静态托管即可
 ```
 
-## 云端 API（登录 + UGC）
+## 云端主站（强制登录 + UGC）
 
-第二步：用户可 **GitHub 登录并发布自己的 skill**，与官方发现流混排。
+第 2 期定案：**未登录打不开 Feed**。主登录是**微信服务号网页授权**，兜底是**手机号短信**。GitHub 登录代码还在，登录页默认不给入口（`SKILLFEED_GITHUB_LOGIN_VISIBLE=0`）。
 
 ```bash
 pip install -r requirements-server.txt
-cp .env.example .env   # 填入 GitHub OAuth App 的 Client ID/Secret
-# 本地无 OAuth 时可先：
-#   set SKILLFEED_DEV_AUTH=1   (Windows) 或 export SKILLFEED_DEV_AUTH=1
+cp .env.example .env
+# 必填：SKILLFEED_SESSION_SECRET（自己生成，不要用示例里的空值）
+#        SKILLFEED_PUBLIC_URL（国内主站 https 地址，决定授权回调和 Cookie Secure）
+# 主登录：SKILLFEED_WECHAT_APP_ID / SKILLFEED_WECHAT_APP_SECRET
+# 短信兜底：SKILLFEED_SMS_PROVIDER=aliyun 以及签名 / 模板 / AccessKey
+# 本机先跑通可以：SKILLFEED_DEV=1 + SKILLFEED_SMS_PROVIDER=console（验证码打服务端日志，不真发）
+python skillfeed.py publish-site --out ~/.skill-feed/site
 python skillfeed.py api --port 8787
 ```
 
 | 地址 | 作用 |
 |---|---|
-| http://127.0.0.1:8787/ | API 首页 |
+| http://127.0.0.1:8787/ | 主站 Feed（未登录 302 到 `/login`） |
+| /login | 登录墙：微信按钮 + 手机号验证码 |
+| /auth/wechat | 跳转微信网页授权 |
+| /auth/wechat/callback | 微信回跳，写会话 Cookie |
+| /auth/sms/send · /auth/sms/verify | 短信验证码 |
 | /publish | 发布页（登录后贴 SKILL.md） |
-| /api/feed | UGC + Pages 官方索引混排 |
-| /api/feed?source=ugc | 仅用户发布 |
+| /api/feed | UGC + 本地官方索引混排 |
 | /docs | OpenAPI |
 
-GitHub OAuth App 回调填：`{SKILLFEED_PUBLIC_URL}/auth/callback`  
-（例如 `http://127.0.0.1:8787/auth/callback`）
+微信服务号「网页授权域名」填 `SKILLFEED_PUBLIC_URL` 的域名（不带 `https://`、不带路径）。  
+微信回调实际地址：`{SKILLFEED_PUBLIC_URL}/auth/wechat/callback`。
 
-部署到 Railway / Fly / Render：设置同样的环境变量，进程  
+部署到已备案的国内服务器：同样的环境变量，进程  
 `uvicorn server.app:app --host 0.0.0.0 --port $PORT`。
 
 ## 一键打开信息流（本机）

@@ -53,6 +53,14 @@ class TestEventsAPI(unittest.TestCase):
         s.session_secret = "test-secret"
         s.public_url = "http://testserver"
         s.official_feed_url = ""
+        # official_feed_url 留空时服务端会退回读本地 publish-site 产物
+        # （默认 ~/.skill-feed/site/feed.json）。指到临时目录里的不存在路径，
+        # 否则这些测试会随「开发机上恰好有没有跑过 publish-site」时绿时红。
+        s.official_feed_file = s.db_path.parent / "no-such-feed.json"
+        s.site_dir = s.db_path.parent / "no-such-site"
+        # 这里测的是排序/埋点链路，不是登录门禁；门禁默认是开的（V1 强制登录），
+        # 所以要显式关掉。门禁本身的测试在 tests/test_server_api.py
+        s.require_login = False
         s.github_client_id = ""
         s.github_client_secret = ""
         self.settings = s
@@ -398,6 +406,14 @@ class TestAuthRoutesFailClosed(unittest.TestCase):
         s.session_secret = "test-secret"
         s.public_url = "http://testserver"
         s.official_feed_url = ""
+        # official_feed_url 留空时服务端会退回读本地 publish-site 产物
+        # （默认 ~/.skill-feed/site/feed.json）。指到临时目录里的不存在路径，
+        # 否则这些测试会随「开发机上恰好有没有跑过 publish-site」时绿时红。
+        s.official_feed_file = s.db_path.parent / "no-such-feed.json"
+        s.site_dir = s.db_path.parent / "no-such-site"
+        # 这里测的是排序/埋点链路，不是登录门禁；门禁默认是开的（V1 强制登录），
+        # 所以要显式关掉。门禁本身的测试在 tests/test_server_api.py
+        s.require_login = False
         s.github_client_id = ""
         s.github_client_secret = ""
         s.dev_mode = False       # 模拟生产：DEV 开关没开
@@ -432,6 +448,14 @@ class TestSecurityHeaders(unittest.TestCase):
         s.session_secret = "test-secret"
         s.public_url = "http://testserver"
         s.official_feed_url = ""
+        # official_feed_url 留空时服务端会退回读本地 publish-site 产物
+        # （默认 ~/.skill-feed/site/feed.json）。指到临时目录里的不存在路径，
+        # 否则这些测试会随「开发机上恰好有没有跑过 publish-site」时绿时红。
+        s.official_feed_file = s.db_path.parent / "no-such-feed.json"
+        s.site_dir = s.db_path.parent / "no-such-site"
+        # 这里测的是排序/埋点链路，不是登录门禁；门禁默认是开的（V1 强制登录），
+        # 所以要显式关掉。门禁本身的测试在 tests/test_server_api.py
+        s.require_login = False
         self.client = TestClient(server_app.create_app(s))
 
     def tearDown(self):

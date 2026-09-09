@@ -71,6 +71,58 @@ class SlidingWindow:
             self._hits.clear()
 
 
+class SmsLimiter:
+    """短信发送 / 验证的防刷，复用上面那个滑动窗口。
+
+    短信和埋点不是同一类风险，所以单独一个类而不是往 EventLimiter 上挂参数：
+
+    - 埋点超限**静默丢弃**（不告诉刷的人阈值在哪）；短信超限必须**明确报错**，
+      否则用户点了「获取验证码」什么都没发生，会一直点。
+    - 埋点是「排序被污染」，短信是「真金白银 + 别人手机被轰炸」，
+      阈值要严一个量级。
+
+    三道桶，任一超限即拒：
+
+    1. `phone:` 同一个手机号的发送次数 —— 挡短信轰炸（拿别人号码当靶子）。
+    2. `ip:` 同一来源的发送次数 —— 挡「换手机号绕过第 1 道」的批量烧钱。
+    3. `verify:` 同一来源的校验次数 —— 挡跨手机号的验证码爆破。单个验证码的
+       尝试次数上限在 DB 里（见 db.bump_sms_attempt），那道挡的是「同一个码猜 6 位」，
+       这道挡的是「换手机号换码不停试」，两道都需要。
+    """
+
+    def __init__(
+        self,
+        *,
+        window_s: float = 3600.0,
+        max_per_phone: int = 5,
+        max_per_ip: int = 20,
+        max_verify_per_ip: int = 30,
+    ) -> None:
+        self.window_s = float(window_s)
+        self.max_per_phone = int(max_per_phone)
+        self.max_per_ip = int(max_per_ip)
+        self.max_verify_per_ip = int(max_verify_per_ip)
+        self._window = SlidingWindow(self.window_s)
+
+    def allow_send(self, *, phone: str, ip: str) -> str:
+        """返回空串表示放行，否则返回被拒的原因（用于给前端的提示文案）。
+
+        先判手机号后判 IP：手机号那道被拒时不应该消耗 IP 配额，
+        否则一个被反复轰炸的号码会把同一出口 NAT 后面所有正常用户一起限死。
+        """
+        if self._window.check(f"sms:phone:{phone}", self.max_per_phone) <= 0:
+            return "phone"
+        if self._window.check(f"sms:ip:{ip}", self.max_per_ip) <= 0:
+            return "ip"
+        return ""
+
+    def allow_verify(self, *, ip: str) -> bool:
+        return self._window.check(f"sms:verify:{ip}", self.max_verify_per_ip) > 0
+
+    def reset(self) -> None:
+        self._window.reset()
+
+
 class EventLimiter:
     """按 IP 和设备各限一道。两者都过才算通过，取更严的那个。"""
 

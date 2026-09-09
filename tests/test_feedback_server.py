@@ -172,6 +172,11 @@ class TestIngestObservability(unittest.TestCase):
         s.session_secret = "test-secret"
         s.public_url = "http://testserver"
         s.official_feed_url = ""
+        # 同 test_ranking_server：留空会退回本地产物，指到不存在的路径保持隔离
+        s.official_feed_file = s.db_path.parent / "no-such-feed.json"
+        s.site_dir = s.db_path.parent / "no-such-site"
+        # 登录门禁默认开启（V1 强制登录），这里测的是 feedback 链路
+        s.require_login = False
         s.github_client_id = ""
         s.github_client_secret = ""
         s.metrics_token = "ops-token"
@@ -302,6 +307,11 @@ class TestReactionsPanel(unittest.TestCase):
         s.session_secret = "test-secret"
         s.public_url = "http://testserver"
         s.official_feed_url = ""
+        # 同 test_ranking_server：留空会退回本地产物，指到不存在的路径保持隔离
+        s.official_feed_file = s.db_path.parent / "no-such-feed.json"
+        s.site_dir = s.db_path.parent / "no-such-site"
+        # 登录门禁默认开启（V1 强制登录），这里测的是 feedback 链路
+        s.require_login = False
         s.github_client_id = ""
         s.github_client_secret = ""
         self.settings = s
@@ -373,6 +383,11 @@ class TestNotInterestedReachesTheSessionCache(unittest.TestCase):
         s.session_secret = "test-secret"
         s.public_url = "http://testserver"
         s.official_feed_url = ""
+        # 同 test_ranking_server：留空会退回本地产物，指到不存在的路径保持隔离
+        s.official_feed_file = s.db_path.parent / "no-such-feed.json"
+        s.site_dir = s.db_path.parent / "no-such-site"
+        # 登录门禁默认开启（V1 强制登录），这里测的是 feedback 链路
+        s.require_login = False
         s.github_client_id = ""
         s.github_client_secret = ""
         self.app = server_app.create_app(s)

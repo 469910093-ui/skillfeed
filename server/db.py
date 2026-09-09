@@ -2,21 +2,64 @@
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
+# users 的 DDL 单独抽出来：迁移时要用同一份 DDL 建一张临时表再搬数据，
+# 抄两份必然漂移（一份加了列另一份没加，只有老库会炸，本地测不出来）。
+#
+# github_id 现在可空——主站 V1 是微信登录，GitHub 降为可选绑定。
+# 三个身份列（github_id / wechat_openid / phone）都可空，唯一性靠下面的
+# **部分唯一索引**保证：普通 UNIQUE 会把「一堆空串」判成重复，而 ALTER TABLE
+# ADD COLUMN 给老行填的是 NULL、新写入代码稍不注意就会填 ''，两种都得排除。
+USERS_DDL = """
+CREATE TABLE IF NOT EXISTS {name} (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  github_id INTEGER NOT NULL UNIQUE,
+  github_id INTEGER,
+  wechat_openid TEXT,
+  unionid TEXT,
+  phone TEXT,
   login TEXT NOT NULL,
+  nickname TEXT,
   avatar_url TEXT,
   name TEXT,
   created_at TEXT NOT NULL
 );
+"""
+
+# users 的列顺序即迁移时的搬运列表，新增身份列要同步加进来
+USERS_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("id", "INTEGER"),
+    ("github_id", "INTEGER"),
+    ("wechat_openid", "TEXT"),
+    ("unionid", "TEXT"),
+    ("phone", "TEXT"),
+    ("login", "TEXT"),
+    ("nickname", "TEXT"),
+    ("avatar_url", "TEXT"),
+    ("name", "TEXT"),
+    ("created_at", "TEXT"),
+)
+
+# 这几条索引不能进 SCHEMA：老库执行 SCHEMA 时 users 还没有 wechat_openid 列，
+# `CREATE INDEX ... ON users(wechat_openid)` 会直接报 no such column。
+# 必须等 _migrate_users 把列补齐之后再建，见 init_db 的调用顺序。
+USER_INDEXES = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_github ON users(github_id) "
+    "WHERE github_id IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_wechat ON users(wechat_openid) "
+    "WHERE wechat_openid IS NOT NULL AND wechat_openid <> ''",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unionid ON users(unionid) "
+    "WHERE unionid IS NOT NULL AND unionid <> ''",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) "
+    "WHERE phone IS NOT NULL AND phone <> ''",
+)
+
+SCHEMA = USERS_DDL.format(name="users") + """
 
 CREATE TABLE IF NOT EXISTS posts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,6 +160,19 @@ CREATE TABLE IF NOT EXISTS device_suppress (
   expires_at TEXT NOT NULL,
   PRIMARY KEY (device_id, scope, key)
 );
+
+-- 短信验证码。存的是 HMAC 摘要而不是明文：这张表被读出来（备份泄露、
+-- 误加日志、SQL 注入读表）时，明文码等于「任何人可以登录任何手机号」。
+-- 一个手机号同时只有一个在途验证码（PRIMARY KEY 覆盖），重发即覆盖旧码；
+-- attempts 是**服务端**的失败计数，验证成功即删行 —— 单次有效靠删行保证，
+-- 不靠客户端自觉。
+CREATE TABLE IF NOT EXISTS sms_codes (
+  phone       TEXT PRIMARY KEY,
+  code_hash   TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  expires_at  TEXT NOT NULL,
+  attempts    INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -132,10 +188,73 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> dict[str, sqlite3.Row]:
+    return {r["name"]: r for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _rebuild_users(conn: sqlite3.Connection) -> None:
+    """把 users 换成新 DDL（唯一目的：摘掉 github_id 的 NOT NULL）。
+
+    SQLite 没有 ALTER COLUMN，只能建新表 → 搬数据 → 换名字。两个 PRAGMA 是必须的：
+
+    - `foreign_keys=OFF`：posts.author_id / reactions.user_id 都指向 users。
+      开着外键去 DROP TABLE users，子表那些行会被当成违约处理。
+    - `legacy_alter_table=ON`：SQLite ≥3.25 的 RENAME 会顺手改写其它表里对旧名字的
+      引用。这里 users 已经被 drop 了，posts 的 FK 正指着一个不存在的表名，
+      新行为会在 rename 时报「no such table: main.users」。开 legacy 就是纯改名，
+      posts 里写的还是 `users`，rename 完那个名字又存在了，引用自动接回去。
+
+    id 是显式搬过去的（不是重新自增），所以既有 posts.author_id 仍然指得对。
+    """
+    old = _table_columns(conn, "users")
+    keep = [c for c, _ in USERS_COLUMNS if c in old]
+    cols = ",".join(keep)
+    conn.commit()  # PRAGMA 在事务里是空操作，先把隐式事务关掉
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("PRAGMA legacy_alter_table = ON")
+    try:
+        conn.execute("BEGIN")
+        conn.execute(USERS_DDL.format(name="users_rebuild"))
+        conn.execute(f"INSERT INTO users_rebuild ({cols}) SELECT {cols} FROM users")
+        conn.execute("DROP TABLE users")
+        conn.execute("ALTER TABLE users_rebuild RENAME TO users")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.execute("PRAGMA legacy_alter_table = OFF")
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _migrate_users(conn: sqlite3.Connection) -> None:
+    """把老库的 users 抬到新形状。对新库是纯 no-op。
+
+    只加列不删列：老库里可能有本 schema 不认识的列（另一支改的），
+    删掉等于把别人的数据丢了。
+    """
+    cols = _table_columns(conn, "users")
+    if not cols:
+        return
+    for name, decl in USERS_COLUMNS:
+        if name not in cols:
+            # ADD COLUMN 填的是 NULL 而不是 ''，正好落在部分唯一索引的排除区内
+            conn.execute(f"ALTER TABLE users ADD COLUMN {name} {decl}")
+    # 老库是 `github_id INTEGER NOT NULL UNIQUE`，微信用户没有 github_id，
+    # 不摘掉这条约束就一行都插不进去
+    if cols["github_id"]["notnull"]:
+        conn.commit()
+        _rebuild_users(conn)
+
+
 def init_db(db_path: Path) -> None:
     conn = connect(db_path)
     try:
         conn.executescript(SCHEMA)
+        conn.commit()
+        _migrate_users(conn)
+        for stmt in USER_INDEXES:
+            conn.execute(stmt)
         conn.commit()
     finally:
         conn.close()
@@ -154,6 +273,20 @@ def db_session(db_path: Path) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def _synthetic_login(prefix: str, secret_ish: str) -> str:
+    """给没有 GitHub 用户名的登录方式派生一个稳定、不可反推的展示 ID。
+
+    openid / 手机号都不能直接当 login：login 会随 UGC 帖以 `author_login` 出现在
+    公开 Feed 里。手机号泄露不用解释；openid 虽然是按应用隔离的假名，
+    但它是那个人在本站的登录凭据标识，没有任何理由公开。
+
+    取 blake2b 前 6 字节：稳定（同一 openid 永远同一个 login）、
+    不可反推、48 bit 空间对本站规模足够。
+    """
+    digest = hashlib.blake2b(secret_ish.encode("utf-8"), digest_size=6).hexdigest()
+    return f"{prefix}-{digest}"
+
+
 def upsert_user(
     conn: sqlite3.Connection,
     *,
@@ -162,6 +295,7 @@ def upsert_user(
     avatar_url: str = "",
     name: str = "",
 ) -> dict[str, Any]:
+    """GitHub 身份的 upsert。V1 里 GitHub 已降为可选绑定，但路径保留。"""
     row = conn.execute(
         "SELECT * FROM users WHERE github_id = ?", (github_id,),
     ).fetchone()
@@ -178,6 +312,77 @@ def upsert_user(
         )
         row = conn.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
     return dict(row)
+
+
+def upsert_wechat_user(
+    conn: sqlite3.Connection,
+    *,
+    openid: str,
+    unionid: str = "",
+    nickname: str = "",
+    avatar_url: str = "",
+) -> dict[str, Any]:
+    """微信网页授权身份的 upsert。
+
+    优先按 unionid 认人：同一主体下服务号 / 小程序 / 开放平台的 openid 各不相同，
+    只认 openid 的话以后接第二个入口就会给同一个人开第二个账号。
+    unionid 拿不到（未绑开放平台）时退回 openid。
+    """
+    openid = (openid or "").strip()
+    if not openid:
+        raise ValueError("openid is required")
+    unionid = (unionid or "").strip()
+    row = None
+    if unionid:
+        row = conn.execute(
+            "SELECT * FROM users WHERE unionid = ?", (unionid,),
+        ).fetchone()
+    if row is None:
+        row = conn.execute(
+            "SELECT * FROM users WHERE wechat_openid = ?", (openid,),
+        ).fetchone()
+    nickname = (nickname or "")[:64]
+    avatar_url = (avatar_url or "")[:512]
+    if row:
+        conn.execute(
+            """
+            UPDATE users SET wechat_openid=?, unionid=COALESCE(NULLIF(?, ''), unionid),
+                   nickname=?, avatar_url=? WHERE id=?
+            """,
+            (openid, unionid, nickname, avatar_url or (row["avatar_url"] or ""), row["id"]),
+        )
+        return dict(conn.execute("SELECT * FROM users WHERE id=?", (row["id"],)).fetchone())
+    cur = conn.execute(
+        """
+        INSERT INTO users (wechat_openid, unionid, login, nickname, avatar_url, name, created_at)
+        VALUES (?,?,?,?,?,?,?)
+        """,
+        (
+            openid,
+            unionid or None,
+            _synthetic_login("wx", unionid or openid),
+            nickname,
+            avatar_url,
+            nickname,
+            _now(),
+        ),
+    )
+    return dict(conn.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone())
+
+
+def upsert_phone_user(conn: sqlite3.Connection, *, phone: str) -> dict[str, Any]:
+    """手机号兜底身份的 upsert。手机号只入库，不进 login、不进任何公开字段。"""
+    phone = (phone or "").strip()
+    if not phone:
+        raise ValueError("phone is required")
+    row = conn.execute("SELECT * FROM users WHERE phone = ?", (phone,)).fetchone()
+    if row:
+        return dict(row)
+    cur = conn.execute(
+        "INSERT INTO users (phone, login, nickname, created_at) VALUES (?,?,?,?)",
+        (phone, _synthetic_login("u", phone), "", _now()),
+    )
+    return dict(conn.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone())
 
 
 def get_user(conn: sqlite3.Connection, user_id: int) -> Optional[dict[str, Any]]:
@@ -273,13 +478,92 @@ def set_reaction(
         )
 
 
+def mask_phone(phone: str) -> str:
+    """`13812345678` → `138****5678`。给「我的账户」显示用。
+
+    返回掩码而不是原号：这个字段会进 /auth/me 的响应，也就是会进浏览器、
+    可能进前端日志。用户需要认出「我是用哪个号登的」，不需要看到完整号码。
+    """
+    p = (phone or "").strip()
+    if len(p) < 7:
+        return "*" * len(p)
+    return f"{p[:3]}****{p[-4:]}"
+
+
 def user_public(u: dict[str, Any]) -> dict[str, Any]:
+    """能安全交给前端的用户字段。
+
+    白名单而不是黑名单：`SELECT *` 出来的行里有 phone、wechat_openid、unionid，
+    哪天有人往 users 加一列凭据，黑名单写法会默认把它发出去。
+    """
+    nickname = (u.get("nickname") or "").strip()
+    name = (u.get("name") or "").strip()
     return {
         "id": u["id"],
         "login": u["login"],
         "avatar_url": u.get("avatar_url") or "",
-        "name": u.get("name") or "",
+        "name": name,
+        "nickname": nickname,
+        # 前端拿这个直接渲染，不用自己排优先级
+        "display_name": nickname or name or u["login"],
+        "phone_masked": mask_phone(u.get("phone") or ""),
+        # 「用什么登进来的」：给「我的账户」tab 显示绑定状态用
+        "providers": [
+            k for k, v in (
+                ("wechat", u.get("wechat_openid")),
+                ("phone", u.get("phone")),
+                ("github", u.get("github_id")),
+            ) if v
+        ],
     }
+
+
+# —— 短信验证码 ——
+
+def put_sms_code(
+    conn: sqlite3.Connection, *, phone: str, code_hash: str, ttl_s: int,
+) -> None:
+    """写入/覆盖某手机号的在途验证码。重发即作废旧码。"""
+    now = datetime.now(timezone.utc)
+    conn.execute(
+        """
+        INSERT INTO sms_codes (phone, code_hash, created_at, expires_at, attempts)
+        VALUES (?,?,?,?,0)
+        ON CONFLICT(phone) DO UPDATE SET
+          code_hash = excluded.code_hash,
+          created_at = excluded.created_at,
+          expires_at = excluded.expires_at,
+          attempts = 0
+        """,
+        (
+            phone,
+            code_hash,
+            now.isoformat(),
+            (now + timedelta(seconds=max(1, int(ttl_s)))).isoformat(),
+        ),
+    )
+
+
+def get_sms_code(conn: sqlite3.Connection, phone: str) -> Optional[dict[str, Any]]:
+    row = conn.execute("SELECT * FROM sms_codes WHERE phone=?", (phone,)).fetchone()
+    return dict(row) if row else None
+
+
+def bump_sms_attempt(conn: sqlite3.Connection, phone: str) -> int:
+    """失败计数 +1，返回新值。计数在服务端，客户端改不了。"""
+    conn.execute("UPDATE sms_codes SET attempts = attempts + 1 WHERE phone=?", (phone,))
+    row = conn.execute("SELECT attempts FROM sms_codes WHERE phone=?", (phone,)).fetchone()
+    return int(row["attempts"]) if row else 0
+
+
+def drop_sms_code(conn: sqlite3.Connection, phone: str) -> None:
+    """删行即作废。验证成功、尝试超限、过期都走这里 —— 单次有效靠它保证。"""
+    conn.execute("DELETE FROM sms_codes WHERE phone=?", (phone,))
+
+
+def prune_sms_codes(conn: sqlite3.Connection) -> int:
+    cur = conn.execute("DELETE FROM sms_codes WHERE expires_at < ?", (_now(),))
+    return cur.rowcount or 0
 
 
 # —— 设备与埋点 ——

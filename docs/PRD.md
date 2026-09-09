@@ -172,12 +172,32 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | **动态圆环（关注动态）** | 见 5.4；圆环 = 关注的 Builder / 行业；点开看「最新」动态 或时间线 | P0 |
 | **Pills** | 仅作发现筛选：二级场景、栏目等；**空则隐藏**；不再放 Skills/AI/开源模式（与动态圆环脱钩） | P0 |
 | 信息流卡片 | 见 5.2 | P0 |
-| 底栏三入口 | **发现 / 发布 / 我的** | P0 |
-| 发布 | 跳转 `api_base/publish` | P0 |
-| 我的 | 赞/藏 + **关注管理**（Builder / 行业列表）+ API/登录入口 | P0 |
+| 底栏四入口 | **发现 / 主题分类 / 发布 / 我的**；`role=tablist` + `aria-selected`，左右键/Home/End 可走，激活态除颜色外另有指示条 + 字重 | P0 |
+| **主题分类** | 一级场景各自成块（条目数 + 二级场景 chips + 按栏目浏览）；点进去落到发现流的对应筛选 | P0 |
+| 发布 | **接 `server/` 的 `POST /api/posts`**：同源时页内表单直接提交；跨源只给整页跳 `api_base/publish`；无 `api_base` 时只出说明、不摆按钮 | P0 |
+| 我的 | 真实登录态（`/auth/me`）+ 我发布的（`/api/posts/me`）+ 赞藏（`/api/profile/reactions`，读不到则退回本机）+ **关注管理**（Builder / 行业列表） | P0 |
 | 发布者主页 | Feed 内作品 + GitHub 仓库 + **关注/取消关注 Builder** | P0 |
+| **回到顶部** | 滚过一屏出现的悬浮按钮；平滑回顶，`prefers-reduced-motion` 下直接跳；隐藏时退出 Tab 序 | P1 |
 | Demo 巡演 | 顶栏播放键或 `?demo=1` | P1 |
 | 反馈 | 赞/踩/打开 GitHub；静态站 localStorage | P1 |
+
+**URL 可寻址（P0）**：`?tab=discover|topics|publish|me`（默认 discover 不写参数）、
+`?scene=` / `?l2=` 深链到发现流的某个分类，与既有 `?q=` / `?intent=` / `?demo=1` 并存。
+切 tab 用 `replaceState` 同步，刷新与分享不丢当前入口；`tab=` 存稳定英文标识，不存展示文案。
+
+**三种运行形态（P0，不许出现「点了没反应」的入口）**：判据只由 `IS_LITE` + `API_BASE`
+（`FEED.ui.api_base`）+ 「`API_BASE` 与本页是否同源」推出，不新造探测机制。
+
+| 形态 | 判据 | 发现 | 主题分类 | 发布 | 我的 |
+|---|---|---|---|---|---|
+| **同源有后端** | `API_BASE` 且同源 | ✅ | ✅ | 页内表单 → `/api/posts` | 真实登录态 + 我发布的 |
+| **Pages 静态镜像** | `API_BASE` 跨源 | ✅ | ✅ | 只给「打开主站发布页」 | 只给「打开主站」（跨站 Cookie 是 `SameSite=Lax`，页内读不到登录态） |
+| **Pages 无后端** | 无 `API_BASE` | ✅ | ✅ | 只出说明，无按钮 | 本机态（赞/藏/关注） |
+| **lite embed** | `IS_LITE` | ✅ | ✅ | 不出现 | 不出现 |
+
+**首屏纪律（P0）**：场景 / 二级场景 / 栏目三排 chips 归「主题分类」tab，
+发现页**只在真的筛着时**才把它们长回顶部（此时每排带「全部…」可清）。
+不筛时首屏直接见第一张卡。
 
 ### 5.2 信息流卡片（货架单元）
 
@@ -455,7 +475,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 ### 明确缺口（相对完整 PRD）
 
-1. API **未**作为公网常驻服务部署；多数用户打开 Pages 时「发布」仍提示未配置 `api_base`  
+1. API **未**作为公网常驻服务部署；未配 `api_base` 时「发布」/「我的」只给说明与本机态（不再是一个点了只弹 toast 的按钮），但也确实还发不出稿  
 2. 生产 GitHub OAuth App 未作为默认交付（需你在 GitHub 创建并填 Secret）  
 3. 赞/藏/关注仍主要在 **浏览器 localStorage**，未与账号云同步（关注上云属 M4）  
 4. UGC 审核流、举报、创作者数据看板未做  
@@ -469,6 +489,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-09 | 底栏收敛为**四入口**（发现/主题分类/发布/我的）并做成真 `role=tablist`；场景 chips 从发现页首屏移到「主题分类」tab（只在筛选中回归）；发布接 `POST /api/posts`；我的接 `/auth/me` + `/api/posts/me` + `/api/profile/reactions`；新增一键回到顶部；`?tab=` / `?scene=` / `?l2=` 深链 | §5.1、`feed_dashboard.py`、`tests/test_feed_dashboard.py` |
 | 2026-09-08 | 策展源补 GitHub The Download 点名的 MCP/Skills/Agent 仓；`ingest_the_download.py` 灌 corpus+飞书；catalog 强制探测 | §4 信源、`catalog_sources`、`docs/the-download-mcp-skills.md`、bitable |
 | 2026-08-11 | 补齐产品设计供给侧：设计类种子强制探测、monorepo 展开 frontend-design/figma/shadcn、「产品设计」意图映射真实 skill 名 | `catalog_sources` / `skill_detect` / `scene` / `intentTokens` |
 | 2026-08-11 | Feeds 关键词改为真实词表命中（最多 2 个），禁止中文滑动切碎造「产品设/品设品」假词 | `compressIntent` / `intentTokens` |

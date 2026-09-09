@@ -10,6 +10,11 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import feed_dashboard
+import scene
+
+# 分类色按 scene.py 的权威清单逐一核对：新增一个一级场景而忘了配色，
+# 这里会直接红，而不是上线后静静落到 other 的灰蓝
+SCENE_IDS = [sid for sid, _label in scene.SCENES]
 
 
 NODE = shutil.which("node")
@@ -81,7 +86,11 @@ const document = {
   querySelectorAll() { return []; },
   addEventListener() {},
 };
-const window = { scrollTo() {}, addEventListener() {} };
+// scrollY / innerHeight 给「回到顶部」的阈值判定用。
+// 刻意不在这里声明 location：test_install_button 复用本 stub 并自己声明一份
+// （它要按地址栏切换 live/copy/off 三种形态），这里再声明一次会重复定义。
+const window = { scrollTo() {}, addEventListener() {}, scrollY: 0, innerHeight: 800 };
+const history = { replaceState() {} };
 function setTimeout() { return 0; }
 function clearTimeout() {}
 const localStorage = { getItem() { return null; }, setItem() {}, removeItem() {} };
@@ -129,7 +138,8 @@ class JsHarness:
             "const demo = { on: false, step: 0, timer: null, focus: -1 };",
             # API_BASE 在模板里由 FEED.ui.api_base 推出来，这里固定成「没配云端」那一支
             "const API_BASE = ''; const PAGE = 6; const STORY_MS = 3500;",
-            _grab(js, r"const PALETTES = \[.*?\n\];"),
+            _grab(js, r"const SCENE_PAL = \{.*?\n\};"),
+            _grab(js, r"const PAL_POOL = [^\n]*;"),
             _grab(js, r"const INK_HEX = '[^']*';"),
             _grab(js, r"const SECTION_EN = \{.*?\n\};"),
             _grab(js, r"const SECTION_AI = '[^']*';"),
@@ -145,6 +155,9 @@ class JsHarness:
             _grab(js, r"^const state = \{[^\n]*\};"),
             _grab(js, r"^const sv = \{[^\n]*\};"),
             _grab(js, r"^const publisherCache = \{[^\n]*\};"),
+            _grab(js, r"^const ACCT = \{[^\n]*\};"),
+            _grab(js, r"^const LOGIN_PATH = '[^']*';"),
+            _grab(js, r"^const TAB_QUERY = \{[^\n]*\};"),
             _top_level_functions(js),
         ])
 
@@ -497,6 +510,9 @@ class TestPanelI18n(unittest.TestCase):
     BLOCKS = (
         ("mePanelHtml", "mePanelHtml()"),
         ("mePanelHtml/followed", "mePanelHtml()"),
+        ("topicsPanelHtml", "topicsPanelHtml()"),
+        # API_BASE 在 harness 里固定成空串，所以这里走的是「无后端」那一支
+        ("publishPanelHtml/no-api", "publishPanelHtml()"),
         ("emptyHtml/no-intent", "emptyHtml([])"),
         ("emptyHtml/saved", "(state.mode = 'saved', emptyHtml([]))"),
         ("emptyHtml/intent", "(state.mode = 'all', state.intent = 'stop-slop', emptyHtml([]))"),
@@ -956,17 +972,30 @@ class TestContrastTokens(unittest.TestCase):
             "--accent-strong 没比 --accent 更暗")
 
     def test_fill_only_tokens_are_not_held_to_the_text_rule(self):
-        """反向确认：--like 就是不过 4.5 的，这是设计如此，不是遗漏。
+        """--like 只需过非文本的 3:1，--like-ink 才是当文字用的那个。
 
-        没有这条，下次有人看到 --like 只有 4.37 会「顺手修一下」，把它和
-        --like-ink 合成一个，然后「已赞」的文字态悄悄掉出 AA。
+        这条原来断言 --like **低于** 4.5，理由是当时的玫红 #e0364f 只有 4.37，
+        当文字必掉 AA。换成纯红 #b91c1c 后它顺带过了 4.5，那句反向断言就变成
+        「不许把填充色选深」，是纯粹的伪要求，所以改掉。
+
+        真正要守的是这两个令牌不许被合并：谁把 --like-ink 往亮处调到比 --like
+        还浅，「已赞」的文字态就会先掉出 AA——而 TEXT_TOKENS 那条只逐个量
+        对比度，量不出两者的先后关系。
         """
         like = _css_token(self.html, "like")
+        like_ink = _css_token(self.html, "like-ink")
         bg = _css_token(self.html, "bg")
-        self.assertLess(_wcag_ratio(like, bg), self.AA_TEXT)
         self.assertGreaterEqual(
             _wcag_ratio(like, bg), self.NON_TEXT_MIN,
             f"--like = {like} 连非文本的 {self.NON_TEXT_MIN}:1 都不过了")
+        self.assertNotEqual(
+            like, like_ink,
+            "--like 与 --like-ink 被合成同一个值了；填充与文字的门槛不同，"
+            "合并之后必然是其中一边将就另一边")
+        self.assertGreaterEqual(
+            _wcag_ratio(like_ink, bg), _wcag_ratio(like, bg),
+            f"--like-ink = {like_ink} 比填充色 {like} 还浅，"
+            f"两个令牌的深浅关系反了")
 
     def test_the_panel_background_is_still_only_used_where_we_think(self):
         """TEXT_TOKENS 里的背景清单是照着当时的用法列的，用法一变它就静默变松。
@@ -1004,21 +1033,22 @@ class TestContrastTokens(unittest.TestCase):
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑模板里的 readableOn")
     def test_avatar_letter_passes_aa_for_every_palette(self):
-        """头像字母原来恒为白色，落在 #ffd200 上只有 1.45:1。
+        """pal[1] 是头像与分类徽章的纯色底，字压在上面必须过 AA。
 
-        readableOn 按底色亮度挑前景，这里逐个调色板验，别让新增一组颜色悄悄掉队。
+        readableOn 按底色亮度挑前景，这里逐套板验，别让新增一类场景悄悄掉队。
         """
         got = JsHarness(self.html).eval(
-            "PALETTES.map(p => {"
-            "  const fg = readableOn(p[1]);"
-            "  return [p[1], fg, contrastRatio(relLum(fg), relLum(p[1]))];"
+            "Object.keys(SCENE_PAL).map(k => {"
+            "  const bg = SCENE_PAL[k][1];"
+            "  const fg = readableOn(bg);"
+            "  return [k, bg, fg, contrastRatio(relLum(fg), relLum(bg))];"
             "})")
-        self.assertEqual(8, len(got))
-        for bg, fg, ratio in got:
-            with self.subTest(bg=bg):
+        self.assertEqual(len(SCENE_IDS), len(got))
+        for scene, bg, fg, ratio in got:
+            with self.subTest(scene=scene):
                 self.assertGreaterEqual(
                     ratio, self.AA_TEXT,
-                    f"头像字母 {fg} on {bg} 只有 {ratio:.2f}:1")
+                    f"{scene} 的 {fg} on {bg} 只有 {ratio:.2f}:1")
 
 
 class TestBrandIdentityIsOurOwn(unittest.TestCase):
@@ -1051,11 +1081,11 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
 
     # 到禁用值的最小 RGB 距离。低于这个值就当成「照着清单微调一档绕过去」。
     MIN_DISTANCE = 40
-    # 唯一的豁免：--like / --like-ink 距禁用红只有 24 / 33，是先于这道门就存在的
-    # 取值，动它属于品牌决策不属于修 bug，记在 docs/brand-tokens.md 等决策。
-    # 豁免只给这两个已知值；新增的色一律要过 MIN_DISTANCE，免得每加一个近似色
-    # 就顺手再加一条豁免，把清单蚕食成一张白名单。
-    GRANDFATHERED = frozenset({"#e0364f", "#d6344c"})
+    # 豁免清单现在是空的，这是刻意留空而不是删掉：它曾经装着 --like / --like-ink
+    # （距禁用红 20 / 17），后来两者都挪到纯红一路、距离升到 54 / 79，豁免就没了
+    # 存在理由。留着这个空集合是为了让「又要加豁免」这件事必须显式写进来被看见——
+    # 每加一个近似色就顺手加一条豁免，清单会被蚕食成一张白名单。
+    GRANDFATHERED = frozenset()
 
     # 我们的外观描述里不得把自己说成某个第三方产品的同款。
     # 自称仿版是「意图」的书面证据，在侵权纠纷里比色值本身更难解释。
@@ -1090,6 +1120,15 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
         #   - 第三方**名字**按出不出现判，仍然扫 chrome（含注释）。自称某产品同款
         #     是意图的书面证据，注释里也不能有；归属说明该放 docs/brand-tokens.md。
         cls.painted = re.sub(r"/\*.*?\*/", "", cls.chrome, flags=re.S)
+        cls.script_code = _script_code(cls.html)
+        # 颜色要扫的完整表面 = CSS + JS 里的外观常量。
+        #
+        # 只扫 CSS 曾经漏掉一整类东西：卡片头像底、story 环面、全屏 story 背景的
+        # 颜色都由 <script>_里的调色板数组驱动，一个都不在 CSS 里。那批值在门外
+        # 待了很久，其中几组贴着禁用清单。范围之所以当初画错，是因为「script 里
+        # 是内容数据」对**数据**成立、对**外观常量**不成立——所以现在按这条界线
+        # 切：剔掉注入的 FEED / SCENES / SCENES_L2 三条数据声明，剩下的代码全扫。
+        cls.painted_all = cls.painted + "\n" + cls.script_code
 
     def test_third_party_product_name_in_content_is_present_so_the_fixture_is_meaningful(self):
         """先确认夹具真的把第三方产品名写进了页面，否则下面两条断言是空过。"""
@@ -1120,7 +1159,7 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
         只比对 hex 字符串的断言在这三处上一路是绿的。所以这里把外壳里所有
         rgb/rgba 折算回 hex 再比一遍。
         """
-        for hexval, where in _rgb_functions(self.painted):
+        for hexval, where in _rgb_functions(self.painted_all):
             with self.subTest(value=hexval, at=where):
                 self.assertNotIn(
                     hexval, self.BANNED,
@@ -1133,17 +1172,39 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
         清单本身挡不住这个——把 `#ed4956` 改成 `#ed4957` 就能过。文档里明写了这是
         预期的失效模式，所以这里改成量距离。
 
-        阈值 40 是按现状定的：外壳里离禁用值最近的自有色是 `--like` `#e0364f`，
-        距 `#ed4956` 只有 24，**够不上这个阈值**，所以它被显式豁免并单独记在
-        docs/brand-tokens.md 里等决策。豁免只给这一个已知值，新增的色一律要过 40，
-        免得往后每加一个近似色就顺手再加一条豁免。
+        阈值 40 是按现状定的：现在离禁用值最近的自有色是 scene 板里工程开发那套
+        的 `#075985`，距禁用的链接蓝 43，刚好在门内。`--like` 从 `#e0364f` 挪到
+        `#b91c1c` 之后距离从 20 升到 54，豁免清单因此清空。
         """
         near = _too_close_to_banned(
-            _all_colours(self.painted), self.BANNED,
+            _all_colours(self.painted_all), self.BANNED,
             self.MIN_DISTANCE, self.GRANDFATHERED)
         self.assertEqual(
             near, [],
             "外壳里有颜色贴着禁用值：\n  " + "\n  ".join(near))
+
+    def test_the_script_scan_sees_the_palettes(self):
+        """反向证明 painted_all 真的覆盖了 <script> 里的调色板。
+
+        这条不是形式主义。上面两条断言之前一路是绿的，恰恰因为扫描范围看不到
+        调色板——门在、断言在、拦不住任何东西。所以这里直接点名要求：调色板的
+        色值必须出现在被扫的文本里，而注入的内容数据必须不在。
+
+        同时兜住 `_script_code` 剔注释剔坏的情况：`/\\*.*?\\*/` 配 DOTALL 或那条
+        行注释规则一旦吃掉真实代码，这里会先红。
+        """
+        self.assertIn("scene_pal", self.script_code, "剔注释把调色板声明剪掉了")
+        for scene_id, pal in (("engineering", "#0369a1"),
+                              ("design", "#9333ea"),
+                              ("other", "#475569")):
+            with self.subTest(scene=scene_id):
+                self.assertIn(
+                    pal, self.painted_all,
+                    f"{scene_id} 的 {pal} 不在被扫范围里，这道门对调色板是瞎的")
+        # 注入的内容数据必须留在范围外，否则夹具里那条正当提到第三方产品的
+        # 条目会把名字检查打红——那是假红，比假绿更容易让人去关掉断言
+        self.assertNotIn("instagram-curator", self.script_code,
+                         "注入的 FEED 没被剔掉，内容数据被当成品牌外观扫了")
 
     def test_the_distance_gate_is_actually_sensitive(self):
         """检验上面那道门自己的灵敏度。
@@ -1205,6 +1266,25 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
             f"--ring 的色相跨度 {span:.0f}°（色站 {stops}，色相 "
             f"{[f'{h:.0f}°' for h in hues]}）。渐变要留在 accent 的单一色族内，"
             f"多色扫掠 + 圆形头像环是别人的识别要素")
+
+
+def _script_code(html):
+    """`<script>` 里属于「我们写的代码」的那部分，去掉注入的数据与注释。
+
+    切法：整块取出后剔掉 `const FEED / SCENES / SCENES_L2 = ...` 三条注入声明。
+    它们是内容数据，里面正当地含第三方产品名（`instagram-curator` 这类条目），
+    不该被当成我们的品牌表述。剩下的全是模板自己的代码，含调色板这类外观常量。
+
+    注释按 CSS 与 JS 两种写法剔。行注释的 `//` 用 `(?<![:/])` 排除 `https://`：
+    第一个斜杠前是冒号故跳过，第二个前是斜杠也跳过。剔坏了会静默削掉真实色值，
+    所以另有 test_the_script_scan_sees_the_palettes 反向证明它没削掉。
+    """
+    bodies = "\n".join(re.findall(r"<script>(.*?)</script>", html, flags=re.S))
+    code = re.sub(r"^const (?:FEED|SCENES|SCENES_L2) = .*$", "", bodies,
+                  flags=re.M)
+    code = re.sub(r"/\*.*?\*/", "", code, flags=re.S)
+    code = re.sub(r"(?<![:/])//[^\n]*", "", code)
+    return code.lower()
 
 
 def _rgb_functions(css):
@@ -1332,6 +1412,218 @@ class TestRingStillSignalsNewContent(unittest.TestCase):
         self.assertGreater(
             _hsl(guide)[2], _hsl(inactive)[2],
             f"引导环 {guide} 没比未激活环 {inactive} 更淡，两级压平了")
+
+
+# 分类色的三道门都抽成函数，让「真实调色板」和「合成夹具」走同一条代码路径。
+# 不抽的话，那几条检验灵敏度的测试就是另写一遍逻辑——阈值被放宽了它照样绿，
+# 这不是假想：色族门、撞色门、accent 保护带三道，最初都是这么放过变异的。
+
+
+def _hue_span_offenders(palettes, limit):
+    """挑出跨色相超限的板：跨色相的三段扇推正是要避开的那种外观。"""
+    out = []
+    for scene_id, stops in sorted(palettes.items()):
+        hues = [_hsl(s)[0] for s in stops]
+        span = max(hues) - min(hues)
+        if span > limit:
+            out.append(f"{scene_id} 的色相跨了 {span:.0f}°（{stops}）")
+    return out
+
+
+def _clashing_pairs(palettes, threshold):
+    """挑出 pal[1] 互相贴太近的两类：撞色了颜色就不再能区分分类。"""
+    out = []
+    keys = sorted(palettes)
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            d = _rgb_distance(palettes[a][1], palettes[b][1])
+            if d < threshold:
+                out.append(
+                    f"{a} {palettes[a][1]} 与 {b} {palettes[b][1]} 只差 {d:.0f}")
+    return out
+
+
+def _accent_squatters(palettes, band):
+    """挑出落在品牌 accent 色族里的分类色：那一段的含义是「被强调」。"""
+    lo, hi = band
+    out = []
+    for scene_id, stops in sorted(palettes.items()):
+        for s in stops:
+            hue = _hsl(s)[0]
+            if lo <= hue <= hi:
+                out.append(
+                    f"{scene_id} 的 {s} 落在 accent 色族 "
+                    f"{lo:.0f}-{hi:.0f}°（实测 {hue:.0f}°）")
+    return out
+
+
+def _scene_palettes(html):
+    """从模板里解出 SCENE_PAL，返回 {scene_id: [深, 中, 浅]}。"""
+    block = re.search(r"const SCENE_PAL = \{(.*?)\n\}\;", html, flags=re.S)
+    assert block, "模板里找不到 SCENE_PAL"
+    out = {}
+    for m in re.finditer(
+            r"'([a-z0-9\-]+)':\s*\[([^\]]+)\]", block.group(1)):
+        out[m.group(1)] = re.findall(r"#[0-9a-fA-F]{6}", m.group(2))
+    return out
+
+
+class TestSceneColoursCarryInformation(unittest.TestCase):
+    """分类色是十套「一场景一色族」的板，替掉了原来八套随机哈希渐变。
+
+    换的原因有两条，测试也分两半守：
+
+    1. 信息着色。原来的颜色按名字哈希，同一分类的卡每张一个色，颜色对读者恒等
+       于噪声——页面「丑」的真因不是取值不好看，是满屏灰字加 2% 的强调色。现在
+       颜色键入 scene，蓝=工程、紫=Agent 工具链，扫一眼就能筛。
+    2. 合规。原来那八套里有三套是暖色的紫→洋红→橙扇推，和被禁的那家商标外观
+       结构相似；而它们全写在 `<script>` 里，当时的品牌门刻意剔掉 script，一个
+       都没看见。现在单色族的深→浅斜推凑不出多色相扇推。
+
+    这里只管板自己的性质（覆盖、单色族、互相可分、不占 accent 色族）。到禁用值
+    的距离由 TestBrandIdentityIsOurOwn 那道门统一量，扫描范围已经含 script。
+    """
+
+    AA_TEXT = 4.5
+    # 色族宽度上限。超过就不再是「一个色族的深浅三档」，而是一段跨色相扇推——
+    # 正是要避开的那种外观。30° 是留给同色族深浅档位的正常漂移。
+    HUE_SPAN_MAX = 30.0
+    # 品牌 accent 的色相邻域。分类色进这一段，读者会把「某个分类」误读成
+    # 「被强调/被选中」——accent 在页面上就是这个含义。
+    ACCENT_BAND = (150.0, 180.0)
+    # pal[1] 是头像与徽章的纯色底，两类撞色就没法靠颜色区分。40 与品牌门的
+    # MIN_DISTANCE 同值，取的是同一个「人眼能不能当成两个颜色」的量级。
+    PAIR_MIN_DISTANCE = 40.0
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+        cls.pal = _scene_palettes(cls.html)
+
+    def test_every_scene_in_the_taxonomy_has_a_palette(self):
+        """漏一个的表现是那一类静默落进 other 的灰蓝，看起来像分类没分好。
+
+        清单从 scene.py 取，不在测试里抄一份——抄一份就会在加分类时一起忘。
+        """
+        self.assertEqual(
+            sorted(SCENE_IDS), sorted(self.pal),
+            "SCENE_PAL 和 scene.py 的一级场景对不上")
+        self.assertIn("other", self.pal, "缺 other，未知分类就没有兜底色了")
+
+    def test_each_palette_is_three_shades_of_one_hue(self):
+        """单色族是合规约束，不是审美偏好：跨色相的三段扇推才是要避开的外观。"""
+        for scene_id, stops in self.pal.items():
+            with self.subTest(scene=scene_id):
+                self.assertEqual(3, len(stops), f"{scene_id} 不是三档：{stops}")
+        offenders = _hue_span_offenders(self.pal, self.HUE_SPAN_MAX)
+        self.assertEqual(
+            offenders, [],
+            "这些板已经是跨色相的扇推，不是一个色族的深浅：\n  "
+            + "\n  ".join(offenders))
+
+    def test_every_threshold_gate_is_actually_sensitive(self):
+        """逐个检验上面那几道门自己的灵敏度。
+
+        这条补的是一整类失效，不是某一处笔误。变异测试证实过：把 HUE_SPAN_MAX
+        放宽到 360、把 PAIR_MIN_DISTANCE 放到 0、把 ACCENT_BAND 收成空区间，
+        三个改动都让对应的门什么都不拦，而整套测试照样绿。原因是上面那几条查的
+        都是「真实调色板里有没有违规」，查不出「门是不是被拆了」——真实取值本来
+        就合规，放宽阈值当然还是绿。
+
+        所以这里给每道门塞一个已知坏样本，走同一个判定函数，要求必须被拎出来。
+        夹具都用真实来源而不是随便编：扇推那组是旧调色板里真实存在过的
+        紫→洋红→橙，accent 那个取的是品牌 accent 邻域的正中间。
+        """
+        cases = [
+            (
+                "色族宽度",
+                lambda: _hue_span_offenders(
+                    {"synthetic": ["#7028e4", "#c32bad", "#ff6a3d"]},
+                    self.HUE_SPAN_MAX),
+            ),
+            (
+                "分类色互相可分",
+                lambda: _clashing_pairs(
+                    {"a": ["#075985", "#0369a1", "#0284c7"],
+                     "b": ["#075985", "#0369a1", "#0284c7"]},
+                    self.PAIR_MIN_DISTANCE),
+            ),
+            (
+                "accent 色族保护带",
+                lambda: _accent_squatters(
+                    {"synthetic": ["#0f766e", "#10a37f", "#34d399"]},
+                    self.ACCENT_BAND),
+            ),
+        ]
+        for gate, probe in cases:
+            with self.subTest(gate=gate):
+                hits = probe()
+                self.assertNotEqual(
+                    [], hits,
+                    f"「{gate}」这道门没拦住已知的坏样本，它当前是装饰品")
+
+    def test_each_palette_goes_from_dark_to_light(self):
+        """pal[0] 深、pal[1] 中、pal[2] 浅。顺序错了渐变会从浅走到深，
+
+        而 pal[1] 也就不再是那个「压白字刚好够对比度」的中间档。
+        """
+        for scene_id, stops in self.pal.items():
+            with self.subTest(scene=scene_id):
+                lights = [_hsl(s)[2] for s in stops]
+                self.assertEqual(
+                    lights, sorted(lights),
+                    f"{scene_id} 的明度不是递增：{list(zip(stops, lights))}")
+
+    def test_no_palette_squats_on_the_accent_hue(self):
+        """accent 色族在页面上的含义是「被强调」，分类色占进去就是语义串台。"""
+        squatters = _accent_squatters(self.pal, self.ACCENT_BAND)
+        self.assertEqual(
+            squatters, [],
+            "这些分类色占了强调色的色族：\n  " + "\n  ".join(squatters))
+
+    def test_the_avatar_shades_stay_apart_from_each_other(self):
+        """两类的 pal[1] 撞在一起，颜色就不再能区分分类，信息着色白做。"""
+        clashes = _clashing_pairs(self.pal, self.PAIR_MIN_DISTANCE)
+        self.assertEqual(
+            clashes, [], "分类色互相撞了：\n  " + "\n  ".join(clashes))
+
+    def test_the_badge_colour_is_derived_from_the_scene_not_the_name(self):
+        """徽章的颜色必须由 scene 推出来，不能退回按 repo 名哈希。
+
+        这条补的是变异测试里唯一活下来的那个改动：把
+        `paletteForScene(sceneId)` 换回 `paletteFor(fn || it.name || ...)`，
+        整套测试照样绿——因为别处只断言「徽章上了 scenePal[1]」，而变量名没变，
+        变的是它从哪来。颜色于是重新变成按名字散开的噪声，这次改动的全部意义
+        就没了，而门一声不响。
+
+        断言落在源码的数据流上，而不是渲染结果上：卡片是客户端渲的，要观察到
+        真实徽章颜色得起整个 JS 环境，而那只能证明 `paletteForScene` 这个纯函数
+        对不对，证明不了徽章接的是它。接线这件事只有源码看得见。
+        """
+        src = Path(feed_dashboard.__file__).read_text(encoding="utf-8")
+        m = re.search(r"^\s*const scenePal = ([^\n;]+);", src, flags=re.M)
+        self.assertIsNotNone(m, "找不到 scenePal 的赋值")
+        rhs = m.group(1).strip()
+        self.assertEqual(
+            "paletteForScene(sceneId)", rhs,
+            f"scenePal 现在取自 `{rhs}`；分类色只能由 scene 决定，"
+            f"按名字/序号哈希会让同一分类的卡每张一个色")
+
+    def test_colour_is_never_the_only_thing_saying_which_scene_it_is(self):
+        """WCAG 1.4.1：颜色不能是唯一的信息载体。
+
+        分类色是给视觉用户的加速器，不是载体本身——徽章里必须同时有分类名的
+        文本。哪天有人为了「更干净」把文字去掉只留色块，读屏用户和色觉障碍用户
+        就完全拿不到分类了，这条会先红。
+        """
+        src = Path(feed_dashboard.__file__).read_text(encoding="utf-8")
+        m = re.search(r'class="badge scene [^\n]*?</button>', src)
+        self.assertIsNotNone(m, "找不到分类徽章的模板")
+        badge = m.group(0)
+        self.assertIn("scenepal[1]", badge.lower().replace(" ", ""),
+                      "分类徽章没上分类色")
+        self.assertIn("itemSceneLabel(it)", badge,
+                      "分类徽章里没有分类名文本——颜色成了唯一载体")
 
 
 class TestAriaLabelsAreLocalized(unittest.TestCase):
@@ -1830,6 +2122,394 @@ class TestLocalBlockDoesNotBreakCsp(unittest.TestCase):
         script_src = [c for c in self._csp(html).split("; ") if c.startswith("script-src ")]
         self.assertEqual(1, len(script_src))
         self.assertNotIn("'unsafe-inline'", script_src[0])
+
+
+TOPIC_SCENES = [
+    {"id": "content", "label": "内容创作", "label_en": "Content"},
+    {"id": "design", "label": "设计与视觉", "label_en": "Design"},
+    {"id": "other", "label": "其他", "label_en": "Other"},
+]
+
+TOPIC_SCENES_L2 = {
+    "content": [
+        {"id": "writing", "label": "写作润色", "label_en": "Writing"},
+        {"id": "podcast", "label": "播客音频", "label_en": "Podcast"},
+    ],
+    "design": [{"id": "figma", "label": "Figma/UI", "label_en": "Figma/UI"}],
+}
+
+TOPIC_FEED = {
+    "ui": {},
+    "items": [
+        dict(REAL_SKILL, full_name="a/one", name="one", owner="a",
+             scene="content", scene_l2="writing"),
+        dict(REAL_SKILL, full_name="a/two", name="two", owner="a",
+             scene="content", scene_l2="podcast"),
+        dict(REAL_SKILL, full_name="b/three", name="three", owner="b",
+             scene="design", scene_l2="figma", hg_section="Skills"),
+    ],
+    "corpus": [],
+}
+
+# 新增文案必须中英双份齐全。列出来而不是比整张表：老表里本来就有几处只在一侧
+# 出现的历史键，全表比对会把这条测试变成一个待修的旧账，拦不住新的漏译。
+NEW_I18N_KEYS = (
+    "navTopics", "tabsAria", "backToTop",
+    "topicsTitle", "topicsSecSection", "topicsLead", "topicsCount",
+    "topicsCountNoL2", "topicsBrowse", "topicsNoL2", "topicsEmpty",
+    "publishTitle", "publishLead", "publishFieldTitle", "publishFieldUrl",
+    "publishFieldDesc", "publishFieldBody", "publishHint", "publishSubmit",
+    "publishSubmitting", "publishOkMsg", "publishNeedLogin", "publishLoginBtn",
+    "publishOpenPage", "publishNoBackendTitle", "publishNoBackend",
+    "publishRemoteTitle", "publishRemote", "publishFailed",
+    "acctTitle", "acctChecking", "acctSignedIn", "acctLogout", "acctLoggedOut",
+    "acctAnonTitle", "acctAnon", "acctLocalTitle", "acctLocalOnly",
+    "acctRemoteNote", "acctOpenSite", "acctMyPosts", "acctPostsLoading",
+    "acctNoPosts", "acctPostsNeedLogin", "acctServerCounts", "acctLocalCounts",
+    "acctReactionsPending",
+)
+
+
+class TestFourEntryPointsSkeleton(unittest.TestCase):
+    """发现 / 主题分类 / 发布 / 我的：静态骨架里的语义与显隐。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.full = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+        cls.lite = feed_dashboard.build_feed_html(
+            {"items": [], "corpus": []}, variant="lite")
+
+    def test_the_bottom_bar_is_a_real_tablist(self):
+        """div + class 也能画出一样的东西，但读屏不会播报「4 个中的第 2 个」。"""
+        bar = re.search(r'<nav class="bottom"[^>]*>', self.full).group(0)
+        self.assertIn('role="tablist"', bar)
+        self.assertIn('data-i18n-aria="tabsAria"', bar)
+        tabs = re.findall(r'<button class="nav[^>]*role="tab"[^>]*>', self.full)
+        self.assertEqual(4, len(tabs), "四个入口应该各是一个 role=tab")
+        for tag in tabs:
+            self.assertRegex(tag, r'aria-selected="(true|false)"')
+            self.assertIn('aria-controls="feed"', tag)
+            self.assertRegex(tag, r'id="tab-[a-z]+"')
+        panel = re.search(r'<main class="feed" id="feed"[^>]*>', self.full).group(0)
+        self.assertIn('role="tabpanel"', panel)
+        self.assertIn('aria-labelledby=', panel)
+
+    def test_only_one_tab_starts_selected_and_the_rest_leave_the_tab_order(self):
+        """roving tabindex：tablist 整体只占一个 Tab 位。"""
+        tabs = re.findall(r'<button class="nav[^>]*role="tab"[^>]*>', self.full)
+        selected = [t for t in tabs if 'aria-selected="true"' in t]
+        self.assertEqual(1, len(selected))
+        self.assertIn('data-mode="all"', selected[0])
+        for tag in tabs:
+            if 'aria-selected="true"' in tag:
+                self.assertNotIn('tabindex="-1"', tag)
+            else:
+                self.assertIn('tabindex="-1"', tag, "未激活的 tab 还占着 Tab 序：" + tag[:80])
+
+    def test_active_tab_is_not_signalled_by_colour_alone(self):
+        """WCAG 1.4.1：`.nav.on { color: var(--accent) }` 单独一条不够。"""
+        self.assertIn(".nav.on::before {", self.full)
+        self.assertRegex(self.full, r"\.nav\.on \.nav-label \{ font-weight")
+
+    def test_lite_keeps_topics_but_drops_publish_and_account(self):
+        """lite 是 skill-picker 的发现子页，按产品约定不含发布/个人后台。"""
+        self.assertIn('body.variant-lite .nav[data-mode="publish"]', self.lite)
+        self.assertIn('body.variant-lite .nav[data-mode="me"]', self.lite)
+        self.assertNotIn('body.variant-lite .nav[data-mode="topics"]', self.lite)
+        # 旧的 data-action 钩子换成了 data-mode，别让隐藏规则指着一个不存在的属性
+        self.assertNotIn('data-action="publish"', self.lite)
+
+    def test_back_to_top_button_ships_in_both_variants_with_a_name(self):
+        for variant, html in (("full", self.full), ("lite", self.lite)):
+            with self.subTest(variant=variant):
+                tag = re.search(r'<button class="to-top"[^>]*>', html).group(0)
+                self.assertIn("hidden", tag, "初始就该是隐藏的")
+                self.assertIn('aria-label="回到顶部"', tag)
+                self.assertIn('data-i18n-aria="backToTop"', tag)
+
+    def test_new_copy_exists_in_both_languages(self):
+        js = _script_source(self.full)
+        zh = _grab(js, r"  zh: \{.*?\n  \}\,")
+        en = _grab(js, r"  en: \{.*?\n  \}\,")
+        for key in NEW_I18N_KEYS:
+            with self.subTest(key=key):
+                self.assertIn(key + ":", zh, key + " 缺中文")
+                self.assertIn(key + ":", en, key + " 缺英文")
+
+
+@unittest.skipIf(NODE is None, "需要 node 才能跑模板里的 tab / 账户逻辑")
+class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
+    """tab ↔ URL、三种运行形态下入口的显隐。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+
+    def harness(self, lang="zh", api_base="", lite=False, extra=""):
+        h = JsHarness(self.html, lang=lang,
+                      scenes=TOPIC_SCENES, scenes_l2=TOPIC_SCENES_L2, feed=TOPIC_FEED)
+        if api_base:
+            h.prelude = h.prelude.replace(
+                "const API_BASE = '';", "const API_BASE = %s;" % json.dumps(api_base))
+        if lite:
+            h.prelude = h.prelude.replace(
+                "const IS_LITE = false;", "const IS_LITE = true;")
+        if extra:
+            h.prelude = h.prelude + "\n" + extra
+        return h
+
+    def test_every_tab_survives_a_url_roundtrip(self):
+        """刷新/分享不能丢当前 tab，所以 query ↔ mode 必须是一对一的。"""
+        got = self.harness().eval(
+            "['all','topics','publish','me'].map(m =>"
+            " (state.mode = m, tabFromQuery(tabSearch('', m)) || 'all'))")
+        self.assertEqual(["all", "topics", "publish", "me"], got)
+
+    def test_discover_is_the_default_and_needs_no_parameter(self):
+        got = self.harness().eval(
+            "[tabSearch('', 'all'), tabFromQuery(''), tabFromQuery('?tab=discover')]")
+        self.assertEqual(["", "", "all"], got)
+
+    def test_an_unknown_tab_value_is_ignored(self):
+        got = self.harness().eval(
+            "[tabFromQuery('?tab=nope'), tabFromQuery('?tab='), tabFromQuery('?tab=ME')]")
+        self.assertEqual(["", "", "me"], got, "大小写可以宽容，乱值不能猜")
+
+    def test_the_tab_parameter_rides_along_with_the_existing_ones(self):
+        """?q= 是既有约定，加 tab 不能把它挤掉。"""
+        got = self.harness().eval("(state.mode = 'me', tabSearch('?q=weekly', 'me'))")
+        self.assertIn("q=weekly", got)
+        self.assertIn("tab=me", got)
+
+    def test_a_filtered_discover_view_is_shareable(self):
+        got = self.harness().eval(
+            "(state.scene = 'content', state.scene_l2 = 'writing', tabSearch('', 'all'))")
+        self.assertIn("scene=content", got)
+        self.assertIn("l2=writing", got)
+
+    def test_scene_parameters_are_dropped_on_the_other_tabs(self):
+        """分享一个「我的」链接时带着 scene= 只会在切回发现时莫名筛上。"""
+        got = self.harness().eval(
+            "(state.scene = 'content', state.mode = 'me', tabSearch('?scene=design', 'me'))")
+        self.assertNotIn("scene=", got)
+
+    def test_lite_refuses_the_publish_and_account_tabs(self):
+        got = self.harness(lite=True).eval(
+            "[tabAllowed('all'), tabAllowed('topics'), tabAllowed('publish'),"
+            " tabAllowed('me'), tabFromQuery('?tab=me'), tabFromQuery('?tab=publish')]")
+        self.assertEqual([True, True, False, False, "", ""], got,
+                         "lite 下 ?tab=me 不能把个人后台逼出来")
+
+    def test_subviews_keep_their_parent_tab_highlighted(self):
+        """「查看收藏」和发布者主页不是独立 tab，但也不该让四个 tab 全灭。"""
+        got = self.harness().eval(
+            "['saved','publisher','topics','nope'].map(tabForMode)")
+        self.assertEqual(["me", "all", "topics", "all"], got)
+
+    def test_account_mode_follows_the_runtime_shape(self):
+        """三种形态的判据全部由 IS_LITE + API_BASE 推出来，没有第二套探测。"""
+        cases = {
+            "off": dict(lite=True, api_base="https://skillfeeder.cn"),
+            "local": dict(),
+            "live": dict(api_base="https://skillfeeder.cn"),
+            "linked": dict(api_base="https://api.elsewhere.example"),
+        }
+        for want, kw in cases.items():
+            with self.subTest(shape=want):
+                self.assertEqual(want, self.harness(**kw).eval("accountMode()"))
+
+    def test_a_shape_without_a_usable_api_never_paints_a_dead_control(self):
+        """形态 2/3 不能出现「点了没反应」的入口。"""
+        for kw in (dict(), dict(lite=True)):
+            with self.subTest(**kw):
+                html = self.harness(**kw).eval("publishPanelHtml()")
+                self.assertNotIn("<button", html)
+                self.assertNotIn("<form", html)
+                self.assertNotIn("href=", html)
+                acct = self.harness(**kw).eval("mePanelHtml()")
+                self.assertNotIn("/publish", acct)
+                self.assertNotIn("/login", acct)
+
+    def test_a_cross_origin_api_only_offers_a_full_page_hop(self):
+        """跨站请求带不上 SameSite=Lax 的会话 Cookie，所以不在页内做表单。"""
+        js = self.harness(api_base="https://api.elsewhere.example")
+        pub = js.eval("publishPanelHtml()")
+        self.assertNotIn("<form", pub)
+        self.assertIn("https://api.elsewhere.example/publish", pub)
+        acct = js.eval("mePanelHtml()")
+        self.assertIn("https://api.elsewhere.example/", acct)
+        self.assertNotIn("acctChecking", acct)
+
+    def test_a_same_origin_api_gets_the_in_page_form(self):
+        js = self.harness(api_base="https://skillfeeder.cn")
+        pub = js.eval("publishPanelHtml()")
+        self.assertIn('id="pubForm"', pub)
+        for field in ("title", "github_url", "description", "body_md"):
+            self.assertIn('name="%s"' % field, pub, field + " 是 /api/posts 的契约字段")
+        self.assertIn("https://skillfeeder.cn/login", pub)
+
+    def test_the_account_panel_shows_the_real_signed_in_user(self):
+        js = self.harness(
+            api_base="https://skillfeeder.cn",
+            extra="Object.assign(ACCT, { loaded: true,"
+                  " user: { login: 'kai', name: 'Kai L' },"
+                  " posts: [{ title: 'my-skill', description: 'd', status: 'published',"
+                  " scene_label: '内容创作', created_at: '2026-09-09T10:00:00' }] });")
+        html = js.eval("mePanelHtml()")
+        self.assertIn("@kai", html)
+        self.assertIn("Kai L", html)
+        self.assertIn("my-skill", html)
+        self.assertIn("js-acct-logout", html)
+        self.assertNotIn("acctAnonTitle", html)
+
+    def test_a_signed_out_visitor_is_pointed_at_the_real_login(self):
+        js = self.harness(api_base="https://skillfeeder.cn",
+                          extra="Object.assign(ACCT, { loaded: true, user: null });")
+        html = js.eval("mePanelHtml()")
+        self.assertIn("https://skillfeeder.cn/login", html)
+        self.assertIn("https://skillfeeder.cn/auth/github", html)
+        # 假登录框：静态页自己收账号密码，一个字段都不该有
+        self.assertNotIn('type="password"', html)
+
+    def test_server_side_counts_win_once_they_are_readable(self):
+        local = self.harness(api_base="https://skillfeeder.cn",
+                             extra="Object.assign(ACCT, { loaded: true });")
+        remote = self.harness(api_base="https://skillfeeder.cn",
+                              extra="Object.assign(ACCT, { loaded: true, remote: true,"
+                                    " liked: 7, saved: 3 });")
+        self.assertIn("本机记录", local.eval("mePanelHtml()"))
+        got = remote.eval("mePanelHtml()")
+        self.assertIn("云端记录", got)
+        self.assertIn("7", got)
+        self.assertNotIn("本机记录", got)
+
+    def test_the_english_panels_have_no_chinese_left(self):
+        for kw in (dict(), dict(api_base="https://skillfeeder.cn"),
+                   dict(api_base="https://api.elsewhere.example")):
+            with self.subTest(**kw):
+                js = self.harness(lang="en", extra="Object.assign(ACCT, { loaded: true });", **kw)
+                for expr in ("publishPanelHtml()", "mePanelHtml()", "topicsPanelHtml()"):
+                    got = js.eval(expr)
+                    self.assertTrue(got, expr + " 渲染成空，断言会假过")
+                    self.assertEqual([], CJK.findall(got), expr + "：" + got[:300])
+
+
+@unittest.skipIf(NODE is None, "需要 node 才能跑模板里的分类页与滚动逻辑")
+class TestTopicsPanelAndFirstScreen(unittest.TestCase):
+    """主题分类页，以及它换来的首屏空间。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+
+    def harness(self, lang="zh"):
+        return JsHarness(self.html, lang=lang, scenes=TOPIC_SCENES,
+                         scenes_l2=TOPIC_SCENES_L2, feed=TOPIC_FEED)
+
+    def test_every_populated_scene_becomes_a_block_with_a_count(self):
+        rows = self.harness().eval("topicRows()")
+        self.assertEqual(["content", "design"], [r["id"] for r in rows],
+                         "空场景不该占一整块，其他/other 在这份夹具里是 0 条")
+        self.assertEqual([2, 1], [r["n"] for r in rows], "按条目数排，多的在前")
+        self.assertEqual(["writing", "podcast"], [k["id"] for k in rows[0]["kids"]])
+
+    def test_the_block_says_how_many_in_words_not_just_in_colour(self):
+        """分类色是卡片徽章那套色的复述，条目数必须是文字。"""
+        html = self.harness().eval("topicsPanelHtml()")
+        self.assertIn("2 条 · 2 个二级场景", html)
+        self.assertIn('class="dot" aria-hidden="true"', html,
+                      "色块是纯装饰，不该被读屏念出来")
+
+    def test_a_subcategory_chip_lands_on_the_narrower_filter(self):
+        got = self.harness().eval(
+            "(goTopic('content', 'writing'), [state.mode, state.scene, state.scene_l2])")
+        self.assertEqual(["all", "content", "writing"], got)
+
+    def test_the_heading_lands_on_the_whole_scene(self):
+        got = self.harness().eval(
+            "(goTopic('content', 'all'), [state.mode, state.scene, state.scene_l2])")
+        self.assertEqual(["all", "content", "all"], got)
+
+    def test_an_empty_feed_says_so_instead_of_rendering_nothing(self):
+        js = JsHarness(self.html, scenes=TOPIC_SCENES,
+                       scenes_l2=TOPIC_SCENES_L2, feed={"ui": {}, "items": [], "corpus": []})
+        html = js.eval("topicsPanelHtml()")
+        self.assertIn("refresh", html)
+        self.assertNotIn("topic-card", html)
+
+    def test_discover_shows_no_filter_strips_until_something_is_filtered(self):
+        """这是「当前非常难用」那条：不筛的时候三排 chips 一排都不长。"""
+        js = self.harness()
+        clean = js.eval(
+            "(state.mode = 'all', state.scene = 'all', state.section = 'all', render(true),"
+            " ['sceneStrip','l2Strip','sectionStrip']"
+            "   .map(id => document.getElementById(id).classList.contains('show')))")
+        self.assertEqual([False, False, False], clean)
+        filtered_ = js.eval(
+            "(state.mode = 'all', state.scene = 'content', state.scene_l2 = 'all',"
+            " render(true), ['sceneStrip','l2Strip']"
+            "   .map(id => document.getElementById(id).classList.contains('show')))")
+        self.assertEqual([True, True], filtered_,
+                         "筛着的时候必须看得见在筛什么、并且能清掉")
+
+    def test_the_panel_tabs_hide_the_search_box_and_the_strips(self):
+        for mode in ("topics", "publish", "me"):
+            with self.subTest(mode=mode):
+                got = self.harness().eval(
+                    "(state.mode = '%s', state.scene = 'content', render(true),"
+                    " [document.getElementById('searchWrap').style.display,"
+                    "  document.getElementById('sceneStrip').classList.contains('show')])" % mode)
+                self.assertEqual(["none", False], got)
+
+
+@unittest.skipIf(NODE is None, "需要 node 才能跑模板里的滚动逻辑")
+class TestBackToTop(unittest.TestCase):
+    """一键回到顶部。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+
+    def harness(self, extra=""):
+        h = JsHarness(self.html)
+        if extra:
+            h.prelude = h.prelude + "\n" + extra
+        return h
+
+    def test_it_appears_only_after_a_full_screen_of_scrolling(self):
+        got = self.harness().eval(
+            "[shouldShowToTop(0, 800), shouldShowToTop(799, 800),"
+            " shouldShowToTop(801, 800), shouldShowToTop(2000, 800)]")
+        self.assertEqual([False, False, True, True], got)
+
+    def test_a_very_short_viewport_still_needs_real_scrolling(self):
+        """内嵌在小 iframe 里时 innerHeight 可能只有一两百 px。"""
+        got = self.harness().eval("[shouldShowToTop(100, 120), shouldShowToTop(300, 120)]")
+        self.assertEqual([False, True], got)
+
+    def test_the_button_leaves_the_tab_order_while_hidden(self):
+        got = self.harness().eval(
+            "[(window.scrollY = 0, syncToTop(), document.getElementById('toTop').hidden),"
+            " (window.scrollY = 3000, syncToTop(), document.getElementById('toTop').hidden)]")
+        self.assertEqual([True, False], got)
+
+    def test_smooth_by_default(self):
+        self.assertEqual("smooth", self.harness().eval("scrollTopBehavior()"))
+
+    def test_reduced_motion_gets_an_instant_jump(self):
+        js = self.harness(
+            extra="window.matchMedia = (q) => ({ matches: q.indexOf('reduced-motion') >= 0 });")
+        self.assertEqual("auto", js.eval("scrollTopBehavior()"))
+
+    def test_a_browser_without_matchmedia_does_not_break_the_button(self):
+        self.assertEqual("smooth", self.harness().eval(
+            "(window.matchMedia = undefined, scrollTopBehavior())"))
+
+    def test_the_scroll_listener_also_drives_the_button(self):
+        """按钮的显隐必须挂在既有的 scroll 监听上，不能自己再加一个。"""
+        js = _script_source(self.html)
+        self.assertRegex(
+            js, r"window\.addEventListener\('scroll',[^\n]*syncToTop\(\)")
 
 
 if __name__ == "__main__":
