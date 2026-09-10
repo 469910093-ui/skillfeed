@@ -27,6 +27,7 @@ on:
       - "config_defaults.json"
       - ".github/workflows/pages.yml"
       - ".github/workflows/ci.yml"
+      - "site-root/**"
 # 这里刻意不挂 pull_request：PR 的 lint/单测由 ci.yml 全量覆盖，
 # 在本文件再挂一次只会在 checks 列表里多出一组完全重复的作业。
 

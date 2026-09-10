@@ -57,6 +57,10 @@ class TestPublishSite(unittest.TestCase):
             lite = (out / "embed.html").read_text(encoding="utf-8")
             self.assertIn("variant-lite", lite)
             self.assertIn("demo-skill", lite)
+            verify = out / "MP_verify_0f8Gbjnu3FsQQhRC.txt"
+            self.assertTrue(verify.exists(), verify)
+            self.assertEqual(verify.read_text(encoding="utf-8").strip(),
+                             "0f8Gbjnu3FsQQhRC")
 
 
 class TestCustomDomain(unittest.TestCase):

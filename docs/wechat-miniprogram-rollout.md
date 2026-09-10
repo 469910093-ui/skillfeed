@@ -64,7 +64,11 @@ echo "no nginx/caddy"
 
 - 实例卡片上的 **IP 地址**
 - **防火墙**：必须放行 **80（HTTP）** 和 **443（HTTPS）**。只开了 22 的话，手机和微信都会 -1004
-- 云解析 https://dns.console.aliyun.com/ → `skillfeeder.cn` 的 **A 记录 `@`** 必须等于上面那个 IP，不能是 GitHub Pages 的地址
+- 云解析 https://dns.console.aliyun.com/ → **试用信息流先指 GitHub Pages**（备案完成、后端起来前不要指大陆 IP，否则会被未备案拦截）：
+  - 删掉 `@` 指向阿里云的 A 记录
+  - 加 4 条 A：`185.199.108.153` / `109.153` / `110.153` / `111.153`
+  - 微信校验文件 `MP_verify_*.txt` 已随 `publish-site` 打进静态站根目录
+  - 备案完成后再把 `@` 改回轻量 IP，由 Nginx 反代 `/auth` 并继续托管校验文件
 
 ## 第 3 步（我来，等上面两段回来）
 

@@ -668,6 +668,18 @@ def cmd_build(argv: list[str]) -> int:
     return 0
 
 
+def _copy_wechat_verify_files(out: Path) -> None:
+    """把微信网页授权校验文件打进静态站根目录，域名指到 Pages 时校验才能过。"""
+    src = Path(__file__).resolve().parent / "site-root"
+    if not src.is_dir():
+        return
+    for p in sorted(src.iterdir()):
+        if p.is_file() and p.name.startswith("MP_verify_") and p.suffix == ".txt":
+            dest = out / p.name
+            dest.write_bytes(p.read_bytes())
+            print(f"[publish-site] wrote {dest.resolve()}")
+
+
 def cmd_publish_site(argv: list[str]) -> int:
     """导出独立网页产物：site/index.html（full）+ site/embed.html（lite）+ feed.json。"""
     refresh_paths()
@@ -712,6 +724,7 @@ def cmd_publish_site(argv: list[str]) -> int:
     if domain:
         (out / "CNAME").write_text(domain + "\n", encoding="utf-8")
         print(f"[publish-site] wrote {out.resolve()}/CNAME ({domain})")
+    _copy_wechat_verify_files(out)
     (out / "feed.json").write_text(
         json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
     )
