@@ -5,6 +5,8 @@
 ## 产品一句话
 
 > 从 GitHub Trending + HelloGitHub + GitHub Search + 策展目录 + 小红书热议 发现 skill → 门禁 → **无限下滑 Feed** → **打开 GitHub**。  
+>
+> **硬性规定（假刷新禁止）：** 任何 refresh / ingest / bitable push / Pages 若失败、0 条成功、或内容指纹未变（NO_NEW），**必须立刻用简体中文通知用户并写明卡点**；禁止说「已刷新成功」。WaytoAGI 批次见 `docs/waytoagi-kb-batch.md` + `scripts/ingest_waytoagi.py`。  
 > **不代装**。用户自行安装后用 skill-picker `scan`。
 
 ### 双变体（必知）

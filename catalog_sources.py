@@ -58,6 +58,21 @@ DEFAULT_SEED_REPOS = [
     "VoltAgent/awesome-openclaw-skills",
     "openai/openai-agents-python",
     "TanStack/ai",
+    # 通往AGI之路知识库批次（docs/waytoagi-kb-batch.md）
+    "Pluviobyte/rnskill",
+    "yunshu0909/yunshu_skillshub",
+    "freestylefly/canghe-skills",
+    "freestylefly/codex-themes",
+    "Agentchengfeng/chengfeng-landingpage",
+    "buluslan/amazon-listing-doctor",
+    "simonlin000/x-scan",
+    "antvis/Infographic",
+    "yc-software/qm",
+    "anomalyco/opencode",
+    "D4Vinci/Scrapling",
+    "awplanets/awplanet",
+    "ibelick/ui-skills",
+    "MoonshotAI/kimi-cli",
 ]
 
 # refresh 时不按星数截断、必须探测的仓（避免设计仓因 stars=None 掉出 top N）
@@ -82,6 +97,12 @@ FORCE_PROBE_REPOS = [
     "openclaw/openclaw",
     "VoltAgent/awesome-openclaw-skills",
     "openai/openai-agents-python",
+    # WaytoAGI 批次 skill hubs
+    "Pluviobyte/rnskill",
+    "yunshu0909/yunshu_skillshub",
+    "freestylefly/canghe-skills",
+    "buluslan/amazon-listing-doctor",
+    "ibelick/ui-skills",
 ]
 
 # 从 README 抽链接时优先抓这些宿主仓的 README
