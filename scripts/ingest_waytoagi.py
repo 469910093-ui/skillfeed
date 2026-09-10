@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""从「通往AGI之路」知识库更新批次提炼可落 GitHub 的 Skills / 工具仓入库。
+"""从「通往AGI之路」知识库更新批次：能落到 GitHub 的一律进飞书底表。
+
+分层（PRD §6.0）：
+- 飞书底表：全、准确；不论是不是 skill
+- skill-feed：再按 gates 筛进信息流（本脚本 --merge-feed 只是灌 corpus，不替代 refresh 门禁）
 
 - 写入 ~/.skill-feed/corpus/waytoagi/
 - 可选 --merge-feed / --push-bitable
@@ -446,7 +450,7 @@ def main() -> int:
     if args.push_bitable:
         try:
             push_bitable(items)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 飞书推表失败必须落到通知，不能漏网
             write_status("PUSH_FAILED", str(e), len(items), failed)
             print(f"[FAIL] bitable push: {e} — must notify user")
             return 1
