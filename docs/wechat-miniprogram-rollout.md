@@ -3,54 +3,79 @@
 公开试用页先走 GitHub Pages 信息流（无登录、无发布）。
 后端和小程序按下面顺序，**不要跳步**。AppSecret 只放服务器环境变量，不要发到聊天里。
 
-## 先分清三套身份
+## 已锁定（2026-09-10）
 
-| 东西 | 是什么 | 现在用来干什么 |
-|------|--------|----------------|
-| 公众号（服务号 / 订阅号） | 你说已经 ready 的那个 | 服务号才能做 **网页授权登录 H5**。订阅号不行。 |
-| 小程序 | **另一套 AppID**，要单独注册 | 微信里的壳。最快路径是壳里用 `<web-view>` 打开已备案 H5。 |
-| 备案域名 + 国内 HTTPS | 主体、ICP、证书 | 网页授权域名、小程序业务域名、用户从微信里打开，都要它。 |
+| 项 | 现状 |
+|----|------|
+| 公众号 | **服务号，已认证** |
+| 域名 | `skillfeeder.cn`，解析已加 |
+| 服务器 | 阿里云轻量 · 华东 2（上海）· Ubuntu · 当时实例名 `Ubuntu-aetx` |
+| 小程序 | 下一步：用已认证服务号**复用资质**注册，不要走个人主体 |
+| 试用期登录 | `SKILLFEED_REQUIRE_LOGIN=0`，信息流先开门 |
 
-公众号 ready ≠ 小程序 ready。没有小程序 AppID 时，先把 **H5 主站** 跑通，再包进 web-view。
+## 第 2 步（今天你做）：服务号网页授权域名
 
-## 第 1 步（你来，现在就做）
+打开 https://mp.weixin.qq.com/ → 已认证的那个服务号。
 
-回我这五条，缺一条就配不下去：
+1. **设置与开发 → 公众号设置 → 功能设置 → 网页授权域名**
+2. 填：`skillfeeder.cn`  
+   不要带 `https://`，不要带 `/`，不要填 `www.skillfeeder.cn`（要 www 就再加一条，先把裸域配上）
+3. 按页面提示下载校验文件。等服务器 Nginx/Caddy 起来后，把这个文件放到网站根目录，微信才能点「确认」。
+4. **开发 → 基本配置**：记下 AppID；开发者密码（AppSecret）只复制到服务器 `.env`，不要发到对话、不要进 git。
 
-1. 公众号是 **服务号** 还是 **订阅号**？有没有完成微信认证？
-2. 已备案的主站域名是什么？（只要主机名，例如 `skillfeeder.cn`，不要带 `https://`）
-3. 域名现在指到哪？国内轻量服务器 / 还没解析 / 仍指 GitHub Pages？
-4. 有没有已经注册的 **小程序**？有的话只回「有，AppID 已申请」——**不要把 AppSecret 发过来**。
-5. 服务器系统：Linux？能不能 SSH？要不要我按「一台 Ubuntu + Caddy + systemd」写命令？
+回调地址（不用填进微信后台，是我们服务端拼的）：
 
-同时请你在本机（不要提交 git）建好 `.env`，至少：
+`https://skillfeeder.cn/auth/wechat/callback`
 
+## 第 2 步（同时）：确认主站现在是什么
+
+在**手机流量**或家里网络打开（公司网可能被拦）：
+
+- https://skillfeeder.cn/
+- https://skillfeeder.cn/health
+
+把结果回我一句即可，例如：「首页是信息流 / 空白 / 证书报错 / 打不开 / health 返回 ok」。
+
+本机办公网探测过：握手超时或连接被重置；外部探测拿到过 500。所以域名大概率已经指到机器，但 **HTTPS 或应用还没稳定**，微信授权现在配了也回调不回来。
+
+### 怎么连上服务器（不会 SSH 就走这一段）
+
+SSH 不是装软件，是阿里云网页里弹出一个黑窗口。按这个点：
+
+1. 打开 https://swas.console.aliyun.com/
+2. 左上角地域选 **华东2（上海）**
+3. 点进那台 Ubuntu 服务器（以前叫 `Ubuntu-aetx`）
+4. 点卡片上的 **「远程连接」**
+5. 选 **Workbench / 一键登录**（浏览器里直接开，不用下客户端）
+6. 若要密码：回轻量该实例的 **「设置密码」**，设好 `root` 密码再连
+
+黑窗口出现、末尾有 `$` 或 `#` 就成功了。把下面 **整段复制、粘贴、回车**，把屏幕上的字截图或复制发我（公网 IP 中间几位打码即可）：
+
+```bash
+hostname
+ip -4 addr show | sed -n '1,20p'
+ss -lntp | head -20
+command -v nginx && sudo nginx -t
+command -v caddy && caddy version
+echo "no nginx/caddy" 
 ```
-SKILLFEED_SESSION_SECRET=   # python -c "import secrets;print(secrets.token_urlsafe(32))"
-SKILLFEED_PUBLIC_URL=https://你的备案域名
-SKILLFEED_WECHAT_APP_ID=    # 服务号 AppID
-SKILLFEED_WECHAT_APP_SECRET=# 只放服务器，不要贴到对话
-SKILLFEED_REQUIRE_LOGIN=0   # 试用期信息流先开门；登录接上后再改回 1
-```
 
-## 第 2 步（我来，等你回第 1 步）
+连上之前也可以先在控制台帮我确认两样（截图即可）：
 
-- 服务号后台填网页授权域名 = 第 1 步的主机名
-- 服务器装 Python、Caddy（HTTPS）、systemd 跑 `uvicorn server.app:app`
-- 回调地址：`https://你的域名/auth/wechat/callback`
-- 用微信内打开 `/login` 走通一次授权
+- 实例卡片上的 **IP 地址**
+- **防火墙**：必须放行 **80（HTTP）** 和 **443（HTTPS）**。只开了 22 的话，手机和微信都会 -1004
+- 云解析 https://dns.console.aliyun.com/ → `skillfeeder.cn` 的 **A 记录 `@`** 必须等于上面那个 IP，不能是 GitHub Pages 的地址
 
-## 第 3 步（小程序壳）
+## 第 3 步（我来，等上面两段回来）
 
-1. 微信公众平台注册小程序（企业主体，和备案主体一致最快）
-2. 小程序后台 → 开发 → 开发管理 → 开发设置 → **业务域名** 填同一备案域名
-3. 一个页面：`<web-view src="https://你的域名/"></web-view>`
-4. 用微信开发者工具预览，再提交审核
-
-web-view 要求：已认证小程序 + 业务域名已备案 HTTPS。个人主体小程序往往开不了 web-view。
+- 服务器：Caddy 或 Nginx 终结 HTTPS，反代到 `uvicorn` `:8787`
+- `.env`：`SKILLFEED_PUBLIC_URL=https://skillfeeder.cn` + 服务号 AppID/Secret
+- 先 `REQUIRE_LOGIN=0`，微信内打开 `/login` 走通一次授权再考虑关门
+- 小程序通过后再：业务域名填 `skillfeeder.cn`，一个页面 `<web-view src="https://skillfeeder.cn/">`
 
 ## 现在先不做什么
 
-- 不把整站重写成 WXML（那是另一条产品线）
-- 不在公开 Pages 上开发布、不开强制登录
+- 不等小程序审核完再配服务号（两套 AppID，互不阻塞）
+- 不把整站重写成 WXML
+- 不在公开 Pages 上开强制登录或发布
 - 不把 AppSecret 写进仓库或前端

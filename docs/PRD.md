@@ -8,7 +8,7 @@
 | 仓库 | https://github.com/469910093-ui/skillfeed |
 | 公开发现站 | https://469910093-ui.github.io/skillfeed/ |
 | 关联产品 | [skill-picker](https://github.com/469910093-ui/Skill-picker)（本机已装 skill 的扫描/匹配） |
-| 更新日期 | 2026-08-10 |
+| 更新日期 | 2026-09-10 |
 
 ---
 
@@ -136,9 +136,14 @@ skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）─�
                 │ 官方索引
 ┌───────────────▼──────────────────────────────┐
 │ 发现引擎 + 定时任务（CLI / GitHub Actions）     │
-│  trending · HelloGitHub · GitHub Search       │
-│  catalog（awesome/skills.sh）· 小红书（媒讯） │
-│  gates · scene · rank · corpus · publish-site │
+│  从底表/多源取数 → gates · scene · rank       │
+│  → feed.json · publish-site                   │
+└───────────────┬──────────────────────────────┘
+                │ 只读筛选，不替代底表
+┌───────────────▼──────────────────────────────┐
+│ 飞书资源清单（数据底表）                       │
+│  全量、求准：爬到的一律入库，不论是不是 skill  │
+│  https://trip.larkenterprise.com/base/XLkFbdhtqazDqvsaH7vczCmdnmf │
 └──────────────────────────────────────────────┘
 ```
 
@@ -284,6 +289,31 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 ---
 
 ## 6. 后端与数据管道需求（完整）
+
+### 6.0 数据分层（铁律）
+
+| 层 | 职责 | 收什么 | 不收什么 |
+|---|---|---|---|
+| **飞书资源清单（底表）** | 最底层数据仓库。使命是**全、准确** | 所有爬到 / 策展到的线索：skill、agent、CLI、框架、书单、白皮书旁路仓库……只要能落到可核验的 GitHub（或明确无仓的备忘字段） | 不得因「不是 skill」拒收；不得用 Feed 门禁当底表门槛 |
+| **skill-feed（信息流）** | 在底表之上做**筛选与录入** | 过 `gates` 的 skill 形条目（`SKILL.md`/`skills/`、描述可解析、来源白名单；`min_stars=20` 等） | 未过门禁的底表行只留在飞书，不进主 Feed |
+
+关系单向：
+
+```text
+爬取 / Wiki / 小红书 / The Download / 策展
+        │
+        ▼
+飞书底表（全量落盘，来源/链接/星数/描述求准）
+        │
+        ▼  skill-feed 按自己的门槛筛
+主 Feed items + corpus 补货 + 公开站
+```
+
+- 底表有、Feed 没有 = **正常**（门禁在工作），不是漏灌。  
+- Feed 有、底表没有 = **事故**（先补底表）。  
+- 刷新失败 / 0 条成功 / 指纹未变：必须通知用户，禁止假成功。
+
+默认门禁见 `config_defaults.json`：`gate_profile=standard` → `min_stars=20`、`min_rel=0.15`；`star_exempt_sources` 只豁免「星数未知」，**已知星数仍要比门槛**。
 
 ### 6.1 发现引擎（CLI，可本机 / CI）
 
@@ -489,6 +519,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-10 | 顶栏/页脚字标前新增 S 图形标（内联 SVG，紫→青→薄荷渐变 `#9860e7→#49aaeb→#64e2d4`，与 `.feeder` 同源）；`.logo` 改 flex 布局；同步生成纯白底 S 图形版（favicon/小头像）与横版 Banner | §5.1 顶栏、`feed_dashboard.py` |
+| 2026-09-10 | 定数据分层：飞书资源清单=全量底表（不论是否 skill）；skill-feed 只按门禁从底表筛入信息流。底表有 Feed 无=正常 | §4 IA、§6.0、`AGENTS.md`、`docs/waytoagi-kb-batch.md` |
 | 2026-09-09 | 底栏收敛为**四入口**（发现/主题分类/发布/我的）并做成真 `role=tablist`；场景 chips 从发现页首屏移到「主题分类」tab（只在筛选中回归）；发布接 `POST /api/posts`；我的接 `/auth/me` + `/api/posts/me` + `/api/profile/reactions`；新增一键回到顶部；`?tab=` / `?scene=` / `?l2=` 深链 | §5.1、`feed_dashboard.py`、`tests/test_feed_dashboard.py` |
 | 2026-09-08 | 策展源补 GitHub The Download 点名的 MCP/Skills/Agent 仓；`ingest_the_download.py` 灌 corpus+飞书；catalog 强制探测 | §4 信源、`catalog_sources`、`docs/the-download-mcp-skills.md`、bitable |
 | 2026-08-11 | 补齐产品设计供给侧：设计类种子强制探测、monorepo 展开 frontend-design/figma/shadcn、「产品设计」意图映射真实 skill 名 | `catalog_sources` / `skill_detect` / `scene` / `intentTokens` |

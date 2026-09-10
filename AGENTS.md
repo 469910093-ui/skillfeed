@@ -6,6 +6,8 @@
 
 > 从 GitHub Trending + HelloGitHub + GitHub Search + 策展目录 + 小红书热议 发现 skill → 门禁 → **无限下滑 Feed** → **打开 GitHub**。  
 >
+> **数据分层：** 飞书资源清单是**最底层底表**（全、准确：爬到的一律进表，不论是不是 skill）。skill-feed **只基于底表按自己的门槛筛**进信息流。底表有、Feed 没有 = 正常。详见 `docs/PRD.md` §6.0。  
+>
 > **硬性规定（假刷新禁止）：** 任何 refresh / ingest / bitable push / Pages 若失败、0 条成功、或内容指纹未变（NO_NEW），**必须立刻用简体中文通知用户并写明卡点**；禁止说「已刷新成功」。WaytoAGI 批次见 `docs/waytoagi-kb-batch.md` + `scripts/ingest_waytoagi.py`。  
 > **不代装**。用户自行安装后用 skill-picker `scan`。
 
@@ -82,10 +84,10 @@ python scripts/xhs_bitable_loop.py audit-stars
 流程：
 1. 读**原 CSV 原地更新**（不新建 CSV）：补 `正文`，追加 `提取GitHub仓` / `校验状态` / `评星` / `是否通过门禁` / `更新时间`
 2. connector 缓存 + web-collection `noteLink`（local，限量）补正文
-3. GitHub 实网校验：存在 + `min_stars`（默认 20）+ 有 `SKILL.md`
-4. 通过者写入飞书多维表格，**来源=小红书**
+3. GitHub 实网校验：存在则写入飞书底表（**不论是否过 skill 门禁**），来源=小红书；星数 / 有无 `SKILL.md` 记在字段里求准
+4. skill-feed 再按 `min_stars`（默认 20）+ `SKILL.md` 等门槛从底表筛进 Feed
 
-多维表格全量导出请用 `export_to_bitable.py --scope feed`（勿用 `--scope full`，否则会灌入 HelloGitHub 全刊 OSS，来源统计全是 HelloGitHub）。
+底表全量导出可用 `export_to_bitable.py --scope full`（这是底表使命）。公开 Feed 漏斗仍看 `--scope feed`，勿把两者当成同一份清单。
 
 ## 注意
 

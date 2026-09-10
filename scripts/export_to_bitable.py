@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""导出 skill-feed 全量资源为飞书多维表格记录 JSON。
+"""导出资源为飞书底表记录 JSON。
+
+飞书表 = 全量底仓（不论是否 skill）。skill-feed Feed 是从表/本地语料再筛的子集。
+--scope full：底表视角（全、准确）
+--scope feed：只看当前信息流漏斗（勿与底表混为一谈）
 
 用法:
   python scripts/export_to_bitable.py export [--out DIR] [--scope feed|full]
