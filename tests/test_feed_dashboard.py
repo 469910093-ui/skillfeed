@@ -2171,7 +2171,7 @@ NEW_I18N_KEYS = (
 
 
 class TestFourEntryPointsSkeleton(unittest.TestCase):
-    """发现 / 主题分类 / 发布 / 我的：静态骨架里的语义与显隐。"""
+    """发现 / 主题分类 / 我的：试用期公开页的语义与显隐。发布入口已拿掉。"""
 
     @classmethod
     def setUpClass(cls):
@@ -2185,7 +2185,11 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertIn('role="tablist"', bar)
         self.assertIn('data-i18n-aria="tabsAria"', bar)
         tabs = re.findall(r'<button class="nav[^>]*role="tab"[^>]*>', self.full)
-        self.assertEqual(4, len(tabs), "四个入口应该各是一个 role=tab")
+        self.assertEqual(3, len(tabs), "试用期三个入口：发现 / 主题分类 / 我的")
+        self.assertNotIn('id="tab-publish"', self.full)
+        self.assertFalse(
+            any('data-mode="publish"' in t for t in tabs),
+            "发布 tab 还挂在公开页的 tablist 上")
         for tag in tabs:
             self.assertRegex(tag, r'aria-selected="(true|false)"')
             self.assertIn('aria-controls="feed"', tag)
@@ -2261,9 +2265,15 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
     def test_every_tab_survives_a_url_roundtrip(self):
         """刷新/分享不能丢当前 tab，所以 query ↔ mode 必须是一对一的。"""
         got = self.harness().eval(
-            "['all','topics','publish','me'].map(m =>"
+            "['all','topics','me'].map(m =>"
             " (state.mode = m, tabFromQuery(tabSearch('', m)) || 'all'))")
-        self.assertEqual(["all", "topics", "publish", "me"], got)
+        self.assertEqual(["all", "topics", "me"], got)
+
+    def test_the_public_trial_refuses_the_publish_tab(self):
+        """试用期对外关发布：按钮不在、URL 也逼不出来。"""
+        got = self.harness().eval(
+            "[tabAllowed('publish'), tabFromQuery('?tab=publish'), tabForMode('publish')]")
+        self.assertEqual([False, "", "all"], got)
 
     def test_discover_is_the_default_and_needs_no_parameter(self):
         got = self.harness().eval(
@@ -2453,7 +2463,7 @@ class TestTopicsPanelAndFirstScreen(unittest.TestCase):
                          "筛着的时候必须看得见在筛什么、并且能清掉")
 
     def test_the_panel_tabs_hide_the_search_box_and_the_strips(self):
-        for mode in ("topics", "publish", "me"):
+        for mode in ("topics", "me"):
             with self.subTest(mode=mode):
                 got = self.harness().eval(
                     "(state.mode = '%s', state.scene = 'content', render(true),"

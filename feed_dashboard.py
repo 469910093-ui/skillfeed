@@ -1304,9 +1304,9 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
          切 tab 换的是同一块内容区，做四个常驻 panel 只会多出三块空 DOM。 -->
     <main class="feed" id="feed" role="tabpanel" aria-labelledby="tab-all"></main>
 
-    <!-- 底部 tab bar 而不是顶部分段控件：这个壳是 448px 的单列信息流，顶部已经
-         被 header + 圆环 + 搜索占满，再加一排只会把内容推得更远；而底部在拇指区，
-         也是「发现/发布/我的」这类同级切换的通用位置。 -->
+    <!-- 试用期只对外信息流：发现 + 主题分类 + 本机「我的」（赞藏/关注）。
+         发布入口整颗拿掉——后端 /publish 还在，但公开页不能点到一个交不出去的表单。
+         底部 tab 而不是顶部分段：顶部已经被 header + 圆环 + 搜索占满。 -->
     <nav class="bottom" id="tabBar" role="tablist" aria-label="主导航" data-i18n-aria="tabsAria">
       <button class="nav on" type="button" data-mode="all" role="tab" id="tab-all" aria-selected="true" aria-controls="feed">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
@@ -1315,10 +1315,6 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
       <button class="nav" type="button" data-mode="topics" role="tab" id="tab-topics" aria-selected="false" aria-controls="feed" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         <span class="nav-label" data-i18n="navTopics">主题分类</span>
-      </button>
-      <button class="nav" type="button" data-mode="publish" role="tab" id="tab-publish" aria-selected="false" aria-controls="feed" tabindex="-1">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-        <span class="nav-label" data-i18n="navPublish">发布</span>
       </button>
       <button class="nav" type="button" data-mode="me" role="tab" id="tab-me" aria-selected="false" aria-controls="feed" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>
@@ -3075,8 +3071,10 @@ function accountMode() {{
    已有的 ?q= / ?intent= / ?demo=1 照旧，这里只多认一个键。 */
 function tabAllowed(mode) {{
   if (!Object.prototype.hasOwnProperty.call(TAB_QUERY, mode)) return false;
-  // lite 只留发现 + 主题分类；发布/我的在那份产物里连按钮都不显示，
-  // 所以 ?tab=me 也不能把它逼出来
+  // 试用期对外只做信息流：发布整条链路先关。?tab=publish 也不能把它逼出来。
+  // 代码和 /publish 后端都留着，下一期接微信登录后再开入口。
+  if (mode === 'publish') return false;
+  // lite 是 skill-picker 发现子页，按产品约定不含关注/个人后台
   if (IS_LITE) return mode === 'all' || mode === 'topics';
   return true;
 }}
