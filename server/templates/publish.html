@@ -3,19 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>发布 Skill · skill-feed</title>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+<title>发布 Skill · SkillFeeder</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { --ink:#1a1a1a; --muted:#6b7280; --line:#e5e7eb; --accent:#db2777; --bg:#fafafa; }
+  :root {
+    --chassis:#0c1020; --ink:#0a1848; --muted:#717171; --line:#cfd6ea; --accent:#0d7377; --bg:#f4f7ff;
+    --brand-purple:#9860e7; --brand-cyan:#49aaeb; --brand-mint:#64e2d4;
+    --brand-grad: linear-gradient(90deg, var(--brand-purple) 0%, var(--brand-cyan) 52%, var(--brand-mint) 100%);
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: Outfit, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); }
+  body { margin: 0; font-family: Outfit, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--chassis); color: var(--ink); }
   .bar {
     display: flex; justify-content: space-between; align-items: center;
     padding: 12px 16px; background: #fff; border-bottom: 1px solid var(--line);
     position: sticky; top: 0;
   }
-  .logo { font-weight: 700; text-decoration: none; color: inherit; }
-  .logo span { color: var(--accent); }
+  .logo { font-weight: 800; text-decoration: none; color: inherit; letter-spacing: -.03em; }
+  .logo .feeder {
+    color: var(--brand-purple);
+    background-image: var(--brand-grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
   .user { font-size: .85rem; color: var(--muted); display: flex; gap: 10px; align-items: center; }
   .btn {
     appearance: none; border: 0; border-radius: 10px; padding: 8px 12px;
@@ -51,7 +60,7 @@
 </head>
 <body>
   <div class="bar">
-    <a class="logo" href="/">skill<span>feed</span></a>
+    <a class="logo" href="/">Skill<span class="feeder">Feeder</span></a>
     <div class="user" id="userBox">检查登录…</div>
   </div>
   <div class="wrap">

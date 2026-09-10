@@ -474,7 +474,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     payload = _json_for_script(feed)
     scenes = _json_for_script(feed.get("scenes") or scene.scene_chips())
     scenes_l2 = _json_for_script(feed.get("scenes_l2") or scene.scene_l2_tree())
-    page_title = "去 GitHub 发现" if variant == "lite" else "skill-feed"
+    page_title = "去 GitHub 发现" if variant == "lite" else "SkillFeeder"
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -488,37 +488,30 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   /* 色板与字体的取值依据、以及哪些值不许搬回来，写在本文件模块 docstring
      和 docs/brand-tokens.md，不写在这里：这段 CSS 会随页面发给每个访客。 */
   :root {{
-    --bg: #fafafa;
-    --ink: #262626;
-    /* 承载「适合谁 / 为什么推荐」这类决策文案，全站最需要读清的字。
-       #737373 是纯灰里在 #fff 和 #fafafa 上都过 AA 的最亮值（4.74 / 4.54），
-       再亮一档 #747474 就掉到 4.48。 */
-    --muted: #737373;
-    --line: #dbdbdb;
+    /* 外框海军蓝 + 栏内冰紫：logo 磁贴的底，也是「年轻黑客」的底盘。 */
+    --chassis: #0c1020;
+    --bg: #f4f7ff;
+    --ink: #0a1848;
+    /* #717171 是纯灰里在 #fff / #f4f7ff 上都过 AA 的最亮值（4.88 / 4.55）。
+       旧的 #737373 在冰紫底上只有 4.42，换底必须重搜。 */
+    --muted: #717171;
+    --line: #cfd6ea;
     --card: #ffffff;
 
-    /* 全站唯一的强调色。当文本用（字标、链接、导航激活态）实测 5.48 / 5.25。
-       这里的取舍是「提饱和，不提亮」：白底上饱和绿的 AA 天花板在明度 24-28%
-       那一段，想更亮就掉线（emerald-600 #059669 只有 3.77）。但同一段明度里
-       饱和度有大把空间 —— 上一版 #1e7362 饱和只有 59%，是个发灰的青绿；
-       换成 94% 饱和，对比度只从 5.70 掉到 5.48，仍远超 4.5。 */
-    --accent: #047857;
-    --accent-strong: #02503a;   /* hover / press，9.50 / 9.10，同色相 163° */
+    /* logo S 尾部的薄荷青绿压深一档，才能当链接/导航文本（5.62 / 5.25）。
+       亮薄荷 #64e2d4 只有 1.57，只许出现在字标渐变里，不能进正文。 */
+    --accent: #0d7377;
+    --accent-strong: #115e59;
 
-    /* 头像环与动态圆环。刻意留在 accent 的单一色族内（色相跨度 2°）：
-       「圆形头像环 + 鲜艳多色渐变」这个组合本身就是别人的识别要素，换个
-       色相也还是那个结构，所以这里只动饱和与明度，不做多色扫掠。
-       这条由 TestBrandIdentityIsOurOwn 盯着，别顺手改宽。
+    /* 字标 Feeder 专用：从 logo S 头到尾的紫→青→薄荷。只涂在 .feeder 上，
+       头像环不准复用——跨色相扫掠 + 圆环是别人的识别结构。 */
+    --brand-purple: #9860e7;
+    --brand-cyan: #49aaeb;
+    --brand-mint: #64e2d4;
+    --brand-grad: linear-gradient(90deg, var(--brand-purple) 0%, var(--brand-cyan) 52%, var(--brand-mint) 100%);
 
-       上一版是 59% / 43% 饱和的两段，颜色本身发灰 —— 这才是「素」的真因，
-       不是渐变不够花。现在三段都是 93-94% 饱和，同样的明度段里鲜得多。
-
-       明度只跨 24% → 27% → 30%，看着窄是有原因的：环的着色是「有新内容」
-       这个状态的唯一提示，要和未激活的灰环拉开 WCAG 1.4.11 的 3:1，而同族内
-       过线的最亮档就是 #059669（明度 30%，配 #e8e8e8 是 3.08）。再亮一档
-       #06a877 就掉到 2.49。上一版最弱段只有 2.12，本来就不合格。
-       想让环既亮又鲜，得先给这个状态加一个非颜色提示，见 docs 里的待办。 */
-    --ring: linear-gradient(135deg, var(--accent) 0%, #05865c 50%, #059669 100%);
+    /* 头像环仍留在 accent 单一色族。最亮档 #10948c 对灰环 #e8e8e8 是 3.04。 */
+    --ring: linear-gradient(135deg, var(--accent) 0%, #0e8a82 50%, #10948c 100%);
 
     /* --like 只做图标填充与背景：非文本元素 3:1 即可，实测 6.47 / 6.20。
        上一版是 #e0364f，玫红一路，离禁用值只有 20——过得了「不相等」，过不了
@@ -539,7 +532,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     --phone: 448px;
   }}
   * {{ box-sizing: border-box; }}
-  html, body {{ margin: 0; background: #efefef; color: var(--ink); font-family: var(--font); }}
+  html, body {{ margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }}
   body {{ min-height: 100vh; }}
 
   .shell {{
@@ -554,34 +547,59 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 
   .topbar {{
     position: sticky; top: 0; z-index: 40;
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; flex-direction: column;
     padding: 10px 14px 8px;
-    background: rgba(250,250,250,.92);
+    background: rgba(244,247,255,.92);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
   }}
+  .top-row {{
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }}
   .top-left {{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }}
-  /* 字标：Outfit 800 实心字，不用手写体、不做渐变填充。实心色顺带省掉一次
-     background-clip:text（它在部分安卓 WebView 上会把字渲染成透明）。 */
+  /* Skill 实心海军蓝；Feeder 才是 logo 那道紫→薄荷。clip 只挂在 .feeder 上，
+     .logo 本身仍是实心字，安卓 WebView 把 clip 弄丢时至少 Skill 还在。 */
   .logo {{
+    display: flex;
+    align-items: center;
+    gap: 7px;
     font-family: var(--logo);
-    font-size: 1.6rem;
+    font-size: 1.45rem;
     font-weight: 800;
     line-height: 1.1;
-    letter-spacing: -.02em;
+    letter-spacing: -.03em;
     color: var(--ink);
   }}
-  .logo span {{ color: var(--accent); }}
-  .status {{
-    font-size: .62rem; color: var(--muted); font-weight: 600;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .logo-mark {{
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+  }}
+  .foot-logo .logo-mark {{ width: 18px; height: 18px; }}
+  .logo .feeder {{
+    color: var(--brand-purple);
+    background-image: var(--brand-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
   }}
   .top-actions {{ display: flex; gap: 14px; align-items: center; flex-shrink: 0; }}
   .icon-btn {{
     appearance: none; border: 0; background: transparent; padding: 0;
+    cursor: pointer; color: var(--ink); display: none;
+  }}
+  body.show-demo-tools .icon-btn {{ display: inline-flex; }}
+  .icon-btn svg {{ width: 24px; height: 24px; }}
+  .refresh-btn {{
+    appearance: none; border: 0; background: transparent; padding: 2px;
     cursor: pointer; color: var(--ink); display: inline-flex;
   }}
-  .icon-btn svg {{ width: 24px; height: 24px; }}
+  .refresh-btn svg {{ width: 22px; height: 22px; }}
+  .refresh-btn.spin svg {{ animation: refreshSpin .45s ease; }}
+  @keyframes refreshSpin {{
+    from {{ transform: rotate(0deg); }}
+    to {{ transform: rotate(360deg); }}
+  }}
   /* Demo 相关的红（这里 + .demo-badge + .demo-bar .dot）是故意的：
      它表达「正在运行」这个瞬时状态，和录制指示灯同一类语义，不是强调色。
      别把它们一起改成 --accent。 */
@@ -600,12 +618,14 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .lang-toggle button.on {{ background: var(--ink); color: #fff; }}
   .demo-badge {{
+    display: none;
     font-size: .65rem; font-weight: 700; color: #fff;
     background: var(--like); border-radius: 999px; padding: 2px 7px;
     margin-left: -6px; margin-top: -12px;
   }}
+  body.show-demo-tools .demo-badge {{ display: inline; }}
 
-  .search-wrap {{ padding: 8px 12px 0; background: var(--bg); }}
+  .search-wrap {{ padding: 8px 0 0; background: transparent; }}
   .search {{
     width: 100%; border: 0; border-radius: 10px;
     background: #efefef; padding: 9px 12px;
@@ -719,6 +739,13 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     from {{ opacity: 0; transform: translateY(16px); }}
     to {{ opacity: 1; transform: none; }}
   }}
+  .post.leaving {{
+    animation: postOut .2s ease forwards;
+    pointer-events: none;
+  }}
+  @keyframes postOut {{
+    to {{ opacity: 0; transform: translateX(-36px); }}
+  }}
   .post.focus {{ box-shadow: inset 3px 0 0 var(--accent); }}
 
   .post-head {{
@@ -749,28 +776,29 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .who .sub {{ display: block; font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
   .more {{ border: 0; background: transparent; font-size: 1.2rem; cursor: pointer; color: var(--ink); }}
 
-  /* Real cover (GitHub OG) + SKILL.md document preview */
+  /* Real cover (GitHub OG) + SKILL.md document preview
+     2:1 把决策文案顶到折线下；16/7 仍是横幅，但首屏能看见「解决」 */
   .media {{
     position: relative;
     width: 100%;
-    aspect-ratio: 2 / 1;
+    aspect-ratio: 16 / 7;
     overflow: hidden;
     cursor: pointer;
     user-select: none;
-    background: #0d1117;
+    background: var(--bg);
   }}
   .media .cover {{
     position: absolute; inset: 0;
     width: 100%; height: 100%;
-    object-fit: contain; object-position: center;
+    object-fit: cover; object-position: center;
     display: block;
-    background: #0d1117;
+    background: var(--bg);
   }}
   .media.no-cover .cover {{ display: none; }}
   .media .cover-fallback {{
     display: none; position: absolute; inset: 0;
-    padding: 16px; color: #fff;
-    background: linear-gradient(145deg, #24292f, #0d1117);
+    padding: 16px; color: var(--ink);
+    background: linear-gradient(145deg, #e8eefc, var(--bg));
   }}
   .media.no-cover .cover-fallback {{ display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; }}
   /* 兜底层的字被去重清掉后，别留一个 2:1 的空黑盒，缩成只放徽标的窄条 */
@@ -966,12 +994,23 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .empty p {{ font-size: .85rem; line-height: 1.5; }}
 
   .bottom {{
-    position: sticky; bottom: 0; z-index: 40;
+    position: relative;
     display: flex; justify-content: space-around; align-items: center;
     padding: 10px 4px calc(10px + env(safe-area-inset-bottom));
+    background: transparent;
+    border-top: 0;
+  }}
+  .dock {{
+    position: sticky; bottom: 0; z-index: 40;
     background: rgba(255,255,255,.96);
+    backdrop-filter: blur(10px);
     border-top: 1px solid var(--line);
   }}
+  .site-foot {{
+    display: flex; justify-content: center;
+    padding: 8px 12px 0;
+  }}
+  .foot-logo {{ font-size: 1.05rem; }}
   .nav {{
     border: 0; background: transparent; color: var(--ink); cursor: pointer;
     display: grid; place-items: center; gap: 2px; font-size: .58rem; font-weight: 600;
@@ -1018,7 +1057,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
      滚 window。横向位置贴住手机壳右缘：窄屏退回 14px，宽屏跟着壳走。 */
   .to-top {{
     position: fixed; z-index: 55;
-    bottom: calc(78px + env(safe-area-inset-bottom));
+    bottom: calc(108px + env(safe-area-inset-bottom));
     right: max(14px, calc(50% - (var(--phone) / 2) + 14px));
     width: 42px; height: 42px; border-radius: 50%;
     display: grid; place-items: center;
@@ -1102,7 +1141,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 
   .toast {{
     position: fixed; left: 50%; top: 64px; transform: translateX(-50%);
-    background: rgba(38,38,38,.92); color: #fff;
+    background: rgba(10,24,72,.92); color: #fff;
     padding: 10px 14px; border-radius: 10px; font-size: .8rem;
     opacity: 0; transition: opacity .2s; z-index: 80; pointer-events: none;
     max-width: calc(var(--phone) - 32px); text-align: center;
@@ -1258,33 +1297,43 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 <body class="variant-{variant}">
   <div class="shell">
     <header class="topbar">
-      <div class="top-left">
-        <div class="logo">skill<span>feed</span></div>
-        <!-- 首次 render() 就会写成 fmtGeneratedAt()，静态占位留空免得漏中文 -->
-        <div class="status" id="genStatus"></div>
-      </div>
-      <div class="top-actions">
-        <div class="lang-toggle" id="langToggle" role="group" aria-label="语言 / Language" data-i18n-aria="langGroup">
-          <!-- 语言名一律用本语言书写（中文 / EN），这里的中文不跟随语言开关 -->
-          <button type="button" data-lang="zh" class="on">中文</button>
-          <button type="button" data-lang="en">EN</button>
+      <div class="top-row">
+        <div class="top-left">
+          <div class="logo">
+            <svg class="logo-mark" viewBox="0 0 24 24" aria-hidden="true">
+              <defs><linearGradient id="lgTop" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#9860e7"/><stop offset=".52" stop-color="#49aaeb"/><stop offset="1" stop-color="#64e2d4"/>
+              </linearGradient></defs>
+              <path d="M17 6.2c0-2-1.8-3.2-5-3.2S7.2 4.3 7.2 6.2c0 1.8 1.5 2.7 3.8 3.4l2 .6c2.3.7 3.8 1.7 3.8 3.6c0 2.2-2 3.8-4.8 3.8S7.2 16.8 7.2 15" fill="none" stroke="url(#lgTop)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Skill<span class="feeder">Feeder</span>
+          </div>
         </div>
-        <button class="icon-btn" id="btnDemo" type="button" title="自动 Demo" data-i18n-title="demoTitle" aria-label="播放自动 Demo" data-i18n-aria="demoAria">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="6,4 20,12 6,20"/></svg>
-        </button>
-        <span class="demo-badge" id="demoBadge" hidden>DEMO</span>
-        <button class="icon-btn" id="btnHeart" type="button" title="反馈说明" data-i18n-title="feedbackTitle" aria-label="反馈说明" data-i18n-aria="feedbackAria">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
-        </button>
+        <div class="top-actions">
+          <div class="lang-toggle" id="langToggle" role="group" aria-label="语言 / Language" data-i18n-aria="langGroup">
+            <!-- 语言名一律用本语言书写（中文 / EN），这里的中文不跟随语言开关 -->
+            <button type="button" data-lang="zh" class="on">中文</button>
+            <button type="button" data-lang="en">EN</button>
+          </div>
+          <button class="refresh-btn" id="btnRefresh" type="button" title="换一批" data-i18n-title="refreshTitle" aria-label="换一批" data-i18n-aria="refreshAria">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v5h-5"/></svg>
+          </button>
+          <button class="icon-btn" id="btnDemo" type="button" title="自动 Demo" data-i18n-title="demoTitle" aria-label="播放自动 Demo" data-i18n-aria="demoAria">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="6,4 20,12 6,20"/></svg>
+          </button>
+          <span class="demo-badge" id="demoBadge" hidden>DEMO</span>
+          <button class="icon-btn" id="btnHeart" type="button" title="反馈说明" data-i18n-title="feedbackTitle" aria-label="反馈说明" data-i18n-aria="feedbackAria">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="search-wrap" id="searchWrap">
+        <input class="search" id="intent" type="search" placeholder="短关键词更好，如：去AI味 / 周报 / 剪视频" maxlength="40" />
+        <div class="intent-keys" id="intentKeys" hidden></div>
       </div>
     </header>
     <div class="lite-banner" id="liteBanner" data-i18n-html="liteBanner">
       <b>本机没有合适 skill 时</b>，在这里按意图浏览远程线索，点「打开 GitHub」自行安装；装好后回 skill-picker 再扫一遍。
-    </div>
-
-    <div class="search-wrap" id="searchWrap">
-      <input class="search" id="intent" type="search" placeholder="短关键词更好，如：去AI味 / 周报 / 剪视频" maxlength="40" />
-      <div class="intent-keys" id="intentKeys" hidden></div>
     </div>
 
     <div class="stories-wrap" id="storiesWrap">
@@ -1307,6 +1356,18 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     <!-- 试用期只对外信息流：发现 + 主题分类 + 本机「我的」（赞藏/关注）。
          发布入口整颗拿掉——后端 /publish 还在，但公开页不能点到一个交不出去的表单。
          底部 tab 而不是顶部分段：顶部已经被 header + 圆环 + 搜索占满。 -->
+    <div class="dock">
+    <footer class="site-foot">
+      <div class="logo foot-logo">
+        <svg class="logo-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <defs><linearGradient id="lgFoot" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#9860e7"/><stop offset=".52" stop-color="#49aaeb"/><stop offset="1" stop-color="#64e2d4"/>
+          </linearGradient></defs>
+          <path d="M17 6.2c0-2-1.8-3.2-5-3.2S7.2 4.3 7.2 6.2c0 1.8 1.5 2.7 3.8 3.4l2 .6c2.3.7 3.8 1.7 3.8 3.6c0 2.2-2 3.8-4.8 3.8S7.2 16.8 7.2 15" fill="none" stroke="url(#lgFoot)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Skill<span class="feeder">Feeder</span>
+      </div>
+    </footer>
     <nav class="bottom" id="tabBar" role="tablist" aria-label="主导航" data-i18n-aria="tabsAria">
       <button class="nav on" type="button" data-mode="all" role="tab" id="tab-all" aria-selected="true" aria-controls="feed">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
@@ -1321,6 +1382,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
         <span class="nav-label" data-i18n="navMe">我的</span>
       </button>
     </nav>
+    </div>
   </div>
 
   <button class="to-top" id="toTop" type="button" hidden aria-label="回到顶部" data-i18n-aria="backToTop">
@@ -1531,8 +1593,8 @@ const I18N = {{
     liteBanner: '<b>本机没有合适 skill 时</b>，在这里按意图浏览远程线索，点「打开 GitHub」自行安装；装好后回 skill-picker 再扫一遍。',
     storiesHint: '<b>顶部圆环 = 你关注的最新动态</b>：关注 Builder 或行业后，新内容会出现在这里优先观看。',
     demoTitle: '自动 Demo', feedbackTitle: '反馈说明',
-    notUseful: '不感兴趣 · 少推这类',
-    notUsefulToast: '已记下，之后少推这类',
+    notUseful: '不感兴趣 · 不再推荐这条',
+    notUsefulToast: '已隐藏，以后不再推荐这条',
     allScenes: '全部行业', allSub: '全部二级', allSections: '全部栏目',
     srcCatalog: '策展目录', srcXhs: '小红书', srcCorpus: '知识库',
     hostSite: ' · 网站',
@@ -1554,6 +1616,8 @@ const I18N = {{
     likeAria: '点赞', likedAria: '取消点赞',
     badAria: '不感兴趣', saveAria: '收藏', savedAria: '取消收藏',
     demoAria: '播放自动 Demo', feedbackAria: '反馈说明',
+    refreshAria: '换一批', refreshTitle: '换一批',
+    reshuffleToast: '已换一批',
 
     /* 关注面板（发现 Builder / 发现行业 / 单个行业） */
     sheetBuilderTitle: '发现 Builder',
@@ -1723,8 +1787,8 @@ const I18N = {{
     liteBanner: '<b>When no local skill fits</b>, browse remote leads by intent here and install them yourself via “Open on GitHub”. Then run a skill-picker scan again.',
     storiesHint: '<b>Top rings = updates you follow</b>: follow a builder or industry and new items land here first.',
     demoTitle: 'Auto demo', feedbackTitle: 'About feedback',
-    notUseful: 'Not interested · show fewer like this',
-    notUsefulToast: 'Noted — fewer like this from now on',
+    notUseful: 'Not interested · never show this again',
+    notUsefulToast: 'Hidden — we will not recommend this again',
     allScenes: 'All industries', allSub: 'All subcategories', allSections: 'All sections',
     srcCatalog: 'Curated', srcXhs: 'Xiaohongshu', srcCorpus: 'Library',
     hostSite: ' · site',
@@ -1743,6 +1807,8 @@ const I18N = {{
     likeAria: 'Like', likedAria: 'Unlike',
     badAria: 'Not interested', saveAria: 'Save', savedAria: 'Remove from saved',
     demoAria: 'Play auto demo', feedbackAria: 'About feedback',
+    refreshAria: 'Show another batch', refreshTitle: 'Show another batch',
+    reshuffleToast: 'Here’s another batch',
 
     sheetBuilderTitle: 'Discover builders',
     sheetBuilderLead: 'Follow someone and their newest skills land in the <strong>top updates ring</strong>, so you see them first.',
@@ -1942,6 +2008,8 @@ function persistSet(key, set) {{
 
 const liked = loadSet('sf_liked');
 const saved = loadSet('sf_saved');
+const hidden = loadSet('sf_hidden');
+const batchSkip = new Set();
 const followBuilders = loadSet('sf_follow_builders');
 const followIndustries = loadSet('sf_follow_industries');
 
@@ -1999,7 +2067,7 @@ function safeUrl(u) {{
    现在的十套 scene 板 pal[1] 都过了白字 4.5，但这段仍留着：它防的是「以后又
    加进来一组亮色」，而不是当下的取值。按背景亮度选前景，不改任何一个品牌色。
    INK_HEX 必须与 CSS 的 --ink 保持一致。 */
-const INK_HEX = '#262626';
+const INK_HEX = '#0a1848';
 function relLum(hex) {{
   const h = String(hex || '').replace('#', '');
   if (h.length !== 6) return 1;
@@ -2101,22 +2169,6 @@ function initials(name) {{
   return (s.slice(0, 2) || '?').toUpperCase();
 }}
 
-function fmtGeneratedAt() {{
-  const g = FEED.generated_at;
-  const host = (FEED.ui && FEED.ui.hosting === 'pages') ? tr('hostSite') : '';
-  const lead = tr('updated') + ' ';
-  if (!g) return lead + '—' + host;
-  const locale = LANG === 'en' ? 'en-US' : 'zh-CN';
-  try {{
-    const d = new Date(g);
-    if (Number.isNaN(d.getTime())) return lead + String(g).slice(0, 16) + host;
-    const s = d.toLocaleString(locale, {{ month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }});
-    return lead + s + host;
-  }} catch (e) {{
-    return lead + String(g).slice(0, 16) + host;
-  }}
-}}
-
 function allPool() {{
   const live = FEED.items || [];
   const backup = FEED.corpus || [];
@@ -2124,7 +2176,7 @@ function allPool() {{
   const out = [];
   for (const it of live.concat(backup)) {{
     const k = it.full_name || it.id;
-    if (!k || seen.has(k)) continue;
+    if (!k || seen.has(k) || hidden.has(k)) continue;
     seen.add(k);
     out.push(it);
   }}
@@ -2554,8 +2606,209 @@ function liveIntentBoost(it, q) {{
   return n * 0.08;
 }}
 
-function scoreRow(it, q) {{
-  return (Number(it.personal_score) || Number(it.rel_score) || 0) + liveIntentBoost(it, q);
+function sessionSeed() {{
+  /* 同一标签页稳定、换标签页或关页再开就换序。静态 feed 没有 /api/feed，
+     会话种子只能躺在 sessionStorage。 */
+  try {{
+    let s = sessionStorage.getItem('sf_session_seed');
+    if (!s) {{
+      s = 's' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      sessionStorage.setItem('sf_session_seed', s);
+    }}
+    return s;
+  }} catch (e) {{
+    return 'offline';
+  }}
+}}
+
+function sessionJitter(key, seed, amp) {{
+  if (!seed || !(amp > 0)) return 0;
+  const s = String(seed) + ':' + String(key || '');
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {{
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }}
+  const frac = (h >>> 0) / 4294967296;
+  return amp * (frac - 0.5);
+}}
+
+function scoreRow(it, q, seed) {{
+  const query = q || '';
+  const searching = !!String(query).trim();
+  const base = (Number(it.personal_score) || Number(it.rel_score) || 0) + liveIntentBoost(it, query);
+  const fn = it.full_name || it.id || '';
+  let extra = 0;
+  if (liked.has(fn)) extra += 0.03;
+  /* 静态页没有后端 ε(session)。0.12 让同分簇会换序；质量分明显领跑的仍领跑。
+     搜索态关掉抖动，相关性优先。 */
+  const amp = searching ? 0 : 0.12;
+  return base + extra + sessionJitter(fn, seed || sessionSeed(), amp);
+}}
+
+function applyDiversity(items, searching) {{
+  const maxRun = searching ? 3 : 2;
+  const remaining = items.slice();
+  const out = [];
+  while (remaining.length) {{
+    let pick = 0;
+    let run = 0;
+    const lastScene = out.length ? (out[out.length - 1].scene || '') : '';
+    if (lastScene) {{
+      for (let i = out.length - 1; i >= 0; i--) {{
+        if ((out[i].scene || '') === lastScene) run += 1;
+        else break;
+      }}
+    }}
+    const ownerTail = {{}};
+    for (const prev of out.slice(-7)) {{
+      const o = prev.owner || '';
+      if (o) ownerTail[o] = (ownerTail[o] || 0) + 1;
+    }}
+    for (let relax = 0; relax < 3; relax++) {{
+      let found = -1;
+      for (let i = 0; i < remaining.length; i++) {{
+        const scene = remaining[i].scene || '';
+        const owner = remaining[i].owner || '';
+        if (relax < 1 && run >= maxRun && lastScene && scene === lastScene) continue;
+        if (relax < 2 && owner && (ownerTail[owner] || 0) >= 2) continue;
+        found = i;
+        break;
+      }}
+      if (found >= 0) {{ pick = found; break; }}
+    }}
+    out.push(remaining.splice(pick, 1)[0]);
+  }}
+  return out;
+}}
+
+function injectExplore(items, searching) {{
+  if (searching || items.length < 10) return items;
+  const slots = [4, 11, 16];
+  const out = items.slice();
+  const start = Math.floor(out.length * 0.45);
+  const used = new Set();
+  for (const slot of slots) {{
+    if (slot >= out.length) continue;
+    let pickAt = -1;
+    for (let i = Math.max(start, slot + 1); i < out.length; i++) {{
+      const k = out[i].full_name || out[i].id;
+      if (!k || used.has(k)) continue;
+      pickAt = i;
+      break;
+    }}
+    if (pickAt < 0) continue;
+    const [pick] = out.splice(pickAt, 1);
+    used.add(pick.full_name || pick.id);
+    out.splice(slot, 0, pick);
+  }}
+  return out;
+}}
+
+function rankRows(rows, q, seed, hist, now) {{
+  const query = q || '';
+  const searching = !!String(query).trim();
+  const scored = rows.slice().sort((a, b) => {{
+    const d = scoreRow(b, query, seed) - scoreRow(a, query, seed);
+    if (d) return d;
+    return String(a.full_name || '').localeCompare(String(b.full_name || ''));
+  }});
+  return applyPositionCap(
+    injectExplore(applyDiversity(scored, searching), searching),
+    hist, now);
+}}
+
+function itemKey(it) {{
+  return (it && (it.full_name || it.id)) || '';
+}}
+
+function loadPosHist() {{
+  try {{
+    const raw = JSON.parse(localStorage.getItem('sf_pos_hist') || '{{}}');
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {{}};
+  }} catch (e) {{
+    return {{}};
+  }}
+}}
+
+function prunePosHist(hist, now) {{
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const out = {{}};
+  now = now || Date.now();
+  for (const fn of Object.keys(hist || {{}})) {{
+    const slots = hist[fn];
+    if (!slots || typeof slots !== 'object') continue;
+    const keep = {{}};
+    for (const pos of Object.keys(slots)) {{
+      const live = (Array.isArray(slots[pos]) ? slots[pos] : [])
+        .filter(t => now - t < week);
+      if (live.length) keep[pos] = live;
+    }}
+    if (Object.keys(keep).length) out[fn] = keep;
+  }}
+  return out;
+}}
+
+function posHits(hist, fn, pos, now) {{
+  if (!fn || !hist) return 0;
+  const week = 7 * 24 * 60 * 60 * 1000;
+  now = now || Date.now();
+  const stamps = hist[fn] && hist[fn][String(pos)];
+  if (!Array.isArray(stamps)) return 0;
+  return stamps.filter(t => now - t < week).length;
+}}
+
+function applyPositionCap(items, hist, now) {{
+  /* 同一张卡、同一个位次，滚动 7 天内最多出现 2 次；第 3 次必须换人。 */
+  const out = (items || []).slice();
+  now = now || Date.now();
+  if (hist == null) hist = loadPosHist();
+  const cap = 2;
+  for (let i = 0; i < out.length; i++) {{
+    const fn = itemKey(out[i]);
+    if (!fn || posHits(hist, fn, i, now) < cap) continue;
+    let swap = -1;
+    for (let pass = 0; pass < 2 && swap < 0; pass++) {{
+      for (let j = i + 1; j < out.length; j++) {{
+        const other = itemKey(out[j]);
+        if (!other) continue;
+        if (posHits(hist, other, i, now) >= cap) continue;
+        if (pass === 0 && posHits(hist, fn, j, now) >= cap) continue;
+        swap = j;
+        break;
+      }}
+    }}
+    if (swap >= 0) {{
+      const tmp = out[i];
+      out[i] = out[swap];
+      out[swap] = tmp;
+    }}
+  }}
+  return out;
+}}
+
+function noteShownPositions(slice, reset, now) {{
+  if (reset || noteShownPositions._through == null) noteShownPositions._through = -1;
+  if (!slice || !slice.length) return loadPosHist();
+  now = now || Date.now();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const hist = prunePosHist(loadPosHist(), now);
+  let changed = false;
+  for (let i = noteShownPositions._through + 1; i < slice.length; i++) {{
+    const fn = itemKey(slice[i]);
+    if (!fn) continue;
+    if (!hist[fn]) hist[fn] = {{}};
+    const key = String(i);
+    const live = (hist[fn][key] || []).filter(t => now - t < week);
+    live.push(now);
+    hist[fn][key] = live;
+    changed = true;
+  }}
+  noteShownPositions._through = slice.length - 1;
+  if (changed) {{
+    try {{ localStorage.setItem('sf_pos_hist', JSON.stringify(hist)); }} catch (e) {{}}
+  }}
+  return hist;
 }}
 
 function filtered() {{
@@ -2567,10 +2820,10 @@ function filtered() {{
       const fn = it.full_name || '';
       if (!fn || !keep.has(fn)) return false;
       if (q && !intentMatch(it, q)) return false;
+      if (batchSkip.has(fn)) return false;
       return true;
     }});
-    rows.sort((a, b) => scoreRow(b, q) - scoreRow(a, q));
-    return rows;
+    return rankRows(rows, q);
   }}
 
   const rows = allPool().filter(it => {{
@@ -2584,10 +2837,10 @@ function filtered() {{
       if (!sec || (!sec.includes(state.section) && sec !== state.section)) return false;
     }}
     if (q && !intentMatch(it, q)) return false;
+    if (batchSkip.has(it.full_name || it.id || '')) return false;
     return true;
   }});
-  rows.sort((a, b) => scoreRow(b, q) - scoreRow(a, q));
-  return rows;
+  return rankRows(rows, q);
 }}
 
 function sceneItems(sceneId, limit) {{
@@ -2647,7 +2900,8 @@ function sectionOptions() {{
   return [{{ id: 'all', label: tr('allSections') }}].concat(ids.map(id => ({{ id, label: set.get(id) }})));
 }}
 
-async function sendFeedback(action, it) {{
+async function sendFeedback(action, it, opts) {{
+  const silent = !!(opts && opts.silent);
   const body = {{
     action,
     full_name: it.full_name || '',
@@ -2663,9 +2917,9 @@ async function sendFeedback(action, it) {{
       body: JSON.stringify(body),
     }});
     const data = await resp.json();
-    if (!demo.on) toast(data.ok ? trn('feedbackLogged', {{ action }}) : (data.error || tr('feedbackFailed')));
+    if (!silent && !demo.on) toast(data.ok ? trn('feedbackLogged', {{ action }}) : (data.error || tr('feedbackFailed')));
   }} catch (e) {{
-    if (!demo.on) toast(tr('feedbackServeOnly'));
+    if (!silent && !demo.on) toast(tr('feedbackServeOnly'));
   }}
 }}
 
@@ -2747,9 +3001,6 @@ function cardHtml(it, idx) {{
   const fn = it.full_name || '';
   const pal = paletteFor(fn || it.name || String(idx));
   const stars = (it.stars == null) ? '—' : Number(it.stars).toLocaleString();
-  const score = it.personal_score != null ? Number(it.personal_score).toFixed(2)
-    : (it.rel_score != null ? Number(it.rel_score).toFixed(2) : '—');
-  const why = friendlyWhy(it);
   const tips = extractHighlightsClient(it);
   const cover = it.cover_url || (fn ? ('https://opengraph.githubassets.com/1/' + fn) : '');
   const skillUrl = it.skill_url || (it.skill_path ? ('https://github.com/' + fn + '/blob/HEAD/' + it.skill_path) : url);
@@ -2759,7 +3010,6 @@ function cardHtml(it, idx) {{
   const owner = it.owner || (fn.split('/')[0] || 'skill');
   const softCls = it.soft ? ' soft' : '';
   const noCoverCls = cover ? '' : ' no-cover';
-  const followed = isFollowingBuilder(owner);
   const sceneId = it.scene || '';
   // 分类徽章用场景色实心底。它压在任意封面图上，所以不能靠半透明黑——
   // pal[1] 十套都过了白字 4.5:1，实心底才是可预测的那一种
@@ -2787,7 +3037,6 @@ function cardHtml(it, idx) {{
         <span class="name">${{escapeHtml(headName)}}</span>
         <span class="sub">@${{escapeHtml(owner)}} · ${{escapeHtml(sourceLabel(it.source))}} · ★ ${{stars}}</span>
       </button>
-      ${{IS_LITE ? '' : `<button type="button" class="follow-mini js-follow-builder ${{followed ? 'on' : ''}}" data-owner="${{escapeHtml(owner)}}" title="${{escapeHtml(tr('followTitle'))}}">${{followed ? tr('following') : tr('follow')}}</button>`}}
     </div>
     <div class="media js-media${{noCoverCls}}${{bareCoverCls}}" data-idx="${{idx}}">
       ${{cover ? `<img class="cover" src="${{escapeHtml(safeUrl(cover))}}" alt="${{escapeHtml(headName)}}" loading="lazy" referrerpolicy="no-referrer" />` : ''}}
@@ -2808,7 +3057,6 @@ function cardHtml(it, idx) {{
       <div class="problem"><em>${{escapeHtml(tr('solves'))}}</em>${{escapeHtml(pitchText)}}</div>
       ${{hl ? `<ul class="highlights">${{hl}}</ul>` : ''}}
       ${{tips.whoFor ? `<div class="who-for"><em>${{escapeHtml(tr('forWho'))}}</em>${{escapeHtml(tips.whoFor)}}</div>` : ''}}
-      ${{hasSkillDoc(it) ? `<a class="doc-link" href="${{escapeHtml(safeUrl(skillUrl))}}" target="_blank" rel="noopener">${{escapeHtml(tr('readSkillMd'))}}</a>` : ''}}
     </div>
     <div class="actions">
       <div class="actions-left">
@@ -2819,10 +3067,7 @@ function cardHtml(it, idx) {{
       </div>
       <button class="act js-save ${{isSaved ? 'saved' : ''}}" type="button" aria-label="${{escapeHtml(tr(isSaved ? 'savedAria' : 'saveAria'))}}">${{bookmarkSvg(isSaved)}}</button>
     </div>
-    <div class="likes">★ ${{stars}} · score ${{score}}</div>
-    ${{why ? `<div class="why-line">${{escapeHtml(why)}}</div>` : ''}}
-    <div class="time">${{escapeHtml(it.soft ? tr('softTime') : (it.from_corpus ? tr('corpusTime') : tr('suggestTime')))}}</div>
-    <div class="open-row{install_row_cls}"><a class="open-gh js-open" href="${{escapeHtml(safeUrl(url))}}" target="_blank" rel="noopener">${{escapeHtml(tr('openGithub'))}}</a>{install_slot}</div>
+    <div class="open-row{install_row_cls}"><a class="open-gh js-open" href="${{escapeHtml(safeUrl(hasSkillDoc(it) ? skillUrl : url))}}" target="_blank" rel="noopener">${{escapeHtml(tr('openGithub'))}}</a>{install_slot}</div>
   </article>`;
 }}
 
@@ -2934,11 +3179,13 @@ function renderStories() {{
     return;
   }}
   const hide = state.mode === 'me' || state.mode === 'saved' || state.mode === 'publisher';
-  wrap.classList.toggle('hidden', hide);
-  if (hide) {{ el.innerHTML = ''; return; }}
+  const nFollow = followBuilders.size + followIndustries.size;
+  // 没关注任何人时圆环只有两个「+」，七个角色都说这是空货架占门口。
+  // 加关注的入口留在「我的」，首屏不再教一套还没发生的社交。
+  wrap.classList.toggle('hidden', hide || nFollow === 0);
+  if (hide || nFollow === 0) {{ el.innerHTML = ''; return; }}
 
   const rings = [];
-  const nFollow = followBuilders.size + followIndustries.size;
   if (nFollow > 0) {{
     rings.push({{
       kind: 'following', value: 'all', label: tr('ringFollowing'), face: '★',
@@ -3612,7 +3859,6 @@ function render(reset) {{
   }}
 
   const feed = document.getElementById('feed');
-  document.getElementById('genStatus').textContent = fmtGeneratedAt();
   renderIntentKeys();
   renderStories();
 
@@ -3660,6 +3906,7 @@ function render(reset) {{
   else state.shown = Math.max(state.shown, Math.min(PAGE, items.length));
 
   const slice = items.slice(0, state.shown);
+  noteShownPositions(slice, reset);
   feed.innerHTML = slice.map((it, idx) => cardHtml(it, idx)).join('') +
     `<div class="sentinel" id="sentinel">${{
       state.shown < items.length
@@ -3724,6 +3971,54 @@ function toggleSave(fn, postEl) {{
     btn.innerHTML = bookmarkSvg(now);
   }}
   if (now) sendFeedback('useful', itemPayload(postEl));
+}}
+
+function rotateSessionSeed() {{
+  const s = 's' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  try {{ sessionStorage.setItem('sf_session_seed', s); }} catch (e) {{}}
+  return s;
+}}
+
+function reshuffleFeed() {{
+  if (['me', 'topics', 'publish', 'publisher', 'saved'].includes(state.mode)) {{
+    state.mode = 'all';
+    state.publisher = '';
+  }}
+  const shown = filtered().slice(0, Math.max(state.shown || 0, PAGE));
+  for (const it of shown) {{
+    const k = itemKey(it);
+    if (k) batchSkip.add(k);
+  }}
+  rotateSessionSeed();
+  if (filtered().length < Math.min(PAGE, 3)) {{
+    const keep = new Set(shown.map(it => itemKey(it)).filter(Boolean));
+    batchSkip.clear();
+    keep.forEach(k => batchSkip.add(k));
+  }}
+  state.shown = 0;
+  try {{ window.scrollTo({{ top: 0, behavior: 'smooth' }}); }} catch (e) {{}}
+  render(true);
+  toast(tr('reshuffleToast'));
+  const btn = document.getElementById('btnRefresh');
+  if (btn) {{
+    btn.classList.remove('spin');
+    void btn.offsetWidth;
+    btn.classList.add('spin');
+  }}
+  return true;
+}}
+
+function hideItem(fn, card) {{
+  if (!fn) return false;
+  hidden.add(fn);
+  persistSet('sf_hidden', hidden);
+  if (liked.delete(fn)) persistSet('sf_liked', liked);
+  if (saved.delete(fn)) persistSet('sf_saved', saved);
+  const payload = card ? itemPayload(card) : {{ full_name: fn }};
+  sendFeedback('bad', payload, {{ silent: true }});
+  toast(tr('notUsefulToast'));
+  if (card && card.classList) card.classList.add('leaving');
+  return true;
 }}
 
 /* —— 动态全屏（.story-viewer） —— */
@@ -4062,6 +4357,7 @@ document.getElementById('tabBar').addEventListener('keydown', (e) => {{
 }});
 
 document.getElementById('toTop').addEventListener('click', scrollToTop);
+document.getElementById('btnRefresh').addEventListener('click', () => reshuffleFeed());
 
 const intentEl = document.getElementById('intent');
 intentEl.addEventListener('input', (e) => {{
@@ -4204,8 +4500,8 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     return;
   }}
   if (t.closest('.js-bad')) {{
-    sendFeedback('bad', itemPayload(card));
-    toast(tr('notUsefulToast'));
+    hideItem(card.dataset.fn, card);
+    window.setTimeout(() => render(false), 220);
     return;
   }}
   if (t.closest('.js-open')) {{
@@ -4330,6 +4626,7 @@ syncToTop();
 if (state.mode === 'me' || state.mode === 'publish') loadAccount();
 
 if (!IS_LITE && new URLSearchParams(location.search).get('demo') === '1') {{
+  document.body.classList.add('show-demo-tools');
   setTimeout(startDemo, 400);
 }}
 </script>

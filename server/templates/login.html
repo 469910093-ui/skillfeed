@@ -3,23 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>登录 · skill-feed</title>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+<title>登录 · SkillFeeder</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { --ink:#1a1a1a; --muted:#6b7280; --line:#e5e7eb; --accent:#db2777; --wx:#07c160; }
+  :root {
+    --chassis:#0c1020; --ink:#0a1848; --muted:#717171; --line:#cfd6ea; --accent:#0d7377;
+    --brand-purple:#9860e7; --brand-cyan:#49aaeb; --brand-mint:#64e2d4;
+    --brand-grad: linear-gradient(90deg, var(--brand-purple) 0%, var(--brand-cyan) 52%, var(--brand-mint) 100%);
+    --wx:#07c160;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: Outfit, "PingFang SC", "Microsoft YaHei", sans-serif;
     color: var(--ink); min-height: 100vh;
-    background: linear-gradient(160deg, #fff7ed 0%, #fdf2f8 45%, #eff6ff 100%);
+    background: var(--chassis);
     display: flex; align-items: center; justify-content: center; padding: 24px 16px;
   }
   .card {
-    width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--line);
-    border-radius: 18px; padding: 32px 24px 28px; box-shadow: 0 18px 48px rgba(0,0,0,.07);
+    width: 100%; max-width: 420px; background: #f4f7ff; border: 1px solid rgba(152, 96, 231, .28);
+    border-radius: 18px; padding: 32px 24px 28px;
+    box-shadow: 0 0 0 1px rgba(73, 170, 235, .12), 0 24px 80px rgba(12, 16, 32, .55);
   }
   h1 { font-size: 1.5rem; margin: 0 0 6px; letter-spacing: -.02em; }
-  h1 span { color: var(--accent); }
+  .feeder {
+    color: var(--brand-purple);
+    background-image: var(--brand-grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
   .lead { color: var(--muted); font-size: .9rem; line-height: 1.5; margin: 0 0 22px; }
   .btn {
     appearance: none; border: 0; border-radius: 12px; padding: 13px 16px; width: 100%;
@@ -58,7 +69,7 @@
 </head>
 <body>
   <div class="card">
-    <h1>登录 skill<span>feed</span></h1>
+    <h1>登录 Skill<span class="feeder">Feeder</span></h1>
     <p class="lead">发现别人在用的 agent skills。登录后进入信息流。</p>
 
     <!-- 2.7 环境检测：文案由脚本按 UA 填，默认不显示 -->
@@ -97,6 +108,9 @@
       <a class="btn ghost" href="/auth/dev-login">无凭据登录（dev）</a>
       <p class="hint">仅当 <code>SKILLFEED_DEV=1</code> + <code>SKILLFEED_DEV_AUTH=1</code> 且非 https 时可用。</p>
     </div>
+    <p class="lead" style="margin:22px 0 0;text-align:center;font-weight:800;font-size:1.05rem;letter-spacing:-.03em;color:var(--ink)">
+      Skill<span class="feeder">Feeder</span>
+    </p>
   </div>
 
 <script nonce="{{csp_nonce}}">

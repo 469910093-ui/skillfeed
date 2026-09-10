@@ -104,7 +104,7 @@ class LiteHarness:
             "let LANG = " + json.dumps(lang) + ";",
             "const IS_LITE = true;",
             "const SCENES = []; const SCENES_L2 = {}; const FEED = {\"ui\":{}};",
-            "const liked = new Set(); const saved = new Set();",
+            "const liked = new Set(); const saved = new Set(); const hidden = new Set(); const batchSkip = new Set();",
             "const followBuilders = new Set(); const followIndustries = new Set();",
             "const API_BASE = ''; const PAGE = 6; const STORY_MS = 3500;",
             _grab(js, r"const SCENE_PAL = \{.*?\n\};"),

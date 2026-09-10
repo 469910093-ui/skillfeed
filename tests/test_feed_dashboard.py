@@ -93,7 +93,18 @@ const window = { scrollTo() {}, addEventListener() {}, scrollY: 0, innerHeight: 
 const history = { replaceState() {} };
 function setTimeout() { return 0; }
 function clearTimeout() {}
-const localStorage = { getItem() { return null; }, setItem() {}, removeItem() {} };
+const __store = {};
+const localStorage = {
+  getItem(k) { return Object.prototype.hasOwnProperty.call(__store, k) ? __store[k] : null; },
+  setItem(k, v) { __store[k] = String(v); },
+  removeItem(k) { delete __store[k]; },
+};
+const __sess = {};
+const sessionStorage = {
+  getItem(k) { return Object.prototype.hasOwnProperty.call(__sess, k) ? __sess[k] : null; },
+  setItem(k, v) { __sess[k] = String(v); },
+  removeItem(k) { delete __sess[k]; },
+};
 """
 
 
@@ -131,7 +142,7 @@ class JsHarness:
             ),
             "const FEED = %s;" % json.dumps(feed or {"ui": {}}),
             "const IS_LITE = false;",
-            "const liked = new Set(); const saved = new Set();",
+            "const liked = new Set(); const saved = new Set(); const hidden = new Set(); const batchSkip = new Set();",
             "const followBuilders = new Set(%s); const followIndustries = new Set(%s);" % (
                 json.dumps(list(follow_builders)), json.dumps(list(follow_industries)),
             ),
@@ -290,6 +301,7 @@ class TestFeedDashboard(unittest.TestCase):
         self.assertNotIn("aria-label=\"more\"", html)
         self.assertIn("sv-cover", html)
         self.assertIn("object-fit: contain", html)
+        self.assertRegex(html, r"\.media \.cover \{[^}]*object-fit: cover;")
         self.assertNotIn("background-size: cover; background-position: center;", html)
         self.assertIn("发现", html)
         self.assertIn("发布", html)
@@ -333,9 +345,10 @@ class TestFeedDashboard(unittest.TestCase):
         self.assertIn("function hasSkillDoc", html)
         self.assertIn("function isFillerHighlight", html)
         self.assertIn(".media.no-cover.bare", html)
-        # 亮点为空时整块不渲染，SKILL.md 链接只跟着真文档出
+        # 亮点为空时整块不渲染；真文档并进唯一的「打开 GitHub」，不再另挂一条文链
         self.assertIn("${hl ? `<ul class=\"highlights\">", html)
-        self.assertIn("${hasSkillDoc(it) ? `<a class=\"doc-link\"", html)
+        self.assertNotIn('class="doc-link"', html)
+        self.assertIn("hasSkillDoc(it) ? skillUrl : url", html)
 
 
 @unittest.skipIf(NODE is None, "需要 node 才能跑模板里的卡片 JS")
@@ -399,13 +412,18 @@ class TestCardDedupeJs(unittest.TestCase):
         # 只剩一份时留全量文案，不留「和人…」这种断句
         self.assertIn("人机验证", card)
 
-    def test_real_skill_card_keeps_skill_md_link(self):
+    def test_real_skill_card_opens_skill_md_via_single_cta(self):
         for lang, doc_link in (("zh", DOC_LINK_ZH), ("en", DOC_LINK_EN)):
             with self.subTest(lang=lang):
                 card = self.harness(lang).eval(
                     "cardHtml(" + json.dumps(REAL_SKILL) + ", 0)")
-                self.assertIn(doc_link, card)
+                self.assertNotIn(doc_link, card)
+                self.assertNotIn("doc-link", card)
+                self.assertNotIn("follow-mini", card)
+                self.assertNotIn("why-line", card)
+                self.assertNotIn("score ", card)
                 self.assertIn("blob/HEAD/SKILL.md", card)
+                self.assertIn("open-gh", card)
                 self.assertIn("<ul class=\"highlights\">", card)
                 self.assertIn("who-for", card)
 
@@ -433,6 +451,41 @@ class TestCardDedupeJs(unittest.TestCase):
         item["who_for_zh"] = item["one_liner_zh"]
         tips = self.harness().eval("extractHighlightsClient(" + json.dumps(item) + ")")
         self.assertEqual(tips["whoFor"], "")
+
+
+class TestFirstScreenChrome(unittest.TestCase):
+    """七个角色对「门口是空壳」的共识：没关注就不放圆环，Demo/反馈默认藏。"""
+
+    def test_template_hides_empty_rings_and_demo_chrome(self):
+        html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+        self.assertIn("aspect-ratio: 16 / 7", html)
+        self.assertIn("nFollow === 0", html)
+        self.assertIn("body.show-demo-tools .icon-btn", html)
+        self.assertRegex(html, r"\.icon-btn \{[^}]*display: none;")
+        self.assertNotIn('id="genStatus"', html)
+        self.assertIn('id="btnRefresh"', html)
+        header = re.search(r'<header class="topbar">.*?</header>', html, flags=re.S).group(0)
+        self.assertIn('id="searchWrap"', header, "搜索必须吸在顶栏里，不能再掉到顶栏下面")
+        self.assertIn('id="btnRefresh"', header)
+
+    @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
+    def test_empty_follows_hide_story_rings(self):
+        html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+        hidden = JsHarness(html).eval(
+            "(renderStories(), document.getElementById('storiesWrap').classList.contains('hidden'))")
+        self.assertTrue(hidden)
+
+    @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
+    def test_followed_builder_shows_story_rings(self):
+        html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+        h = JsHarness(html, follow_builders=("acme",))
+        got = h.eval(
+            "(renderStories(), {"
+            "hidden: document.getElementById('storiesWrap').classList.contains('hidden'),"
+            "html: document.getElementById('stories').innerHTML"
+            "})")
+        self.assertFalse(got["hidden"])
+        self.assertIn('class="story', got["html"])
 
 
 CJK = re.compile(r"[\u4e00-\u9fff]")
@@ -928,7 +981,7 @@ class TestContrastTokens(unittest.TestCase):
     TEXT_TOKENS = {
         "ink": ("正文", ("card", "bg", PANEL)),
         "muted": ("「适合谁 / 为什么推荐」这类决策文案", ("card", "bg")),
-        "accent": (".logo span / 链接 / .act-label / .nav.on / highlights 的 ✦",
+        "accent": ("链接 / .act-label / .nav.on / highlights 的 ✦",
                    ("card", "bg", PANEL)),
         "accent-strong": ("链接的 hover / press", ("card", "bg")),
         "like-ink": ("「已赞」的文字态", ("card", "bg")),
@@ -1061,7 +1114,7 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
     会在有真实内容时误报——空 feed 下还是绿的、一上线就炸，属于最难查的那种假绿，
     所以夹具里专门放了一条这样的条目来证明不会误报。
 
-    中性灰（`#fafafa` / `#262626` / `#dbdbdb`）不在禁用名单里：浅灰是几千个站点
+    中性灰不在禁用名单里：浅灰是几千个站点
     共用的通用值，不构成任何人的品牌识别，理由见 docs/brand-tokens.md。
     """
 
@@ -1235,14 +1288,19 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
             with self.subTest(app=app):
                 self.assertNotIn(app, self.chrome)
 
-    def test_wordmark_is_solid_accent_not_a_gradient_fill(self):
-        """辨识度来自「手写体字标 + 渐变填充」这个组合，不是单一元素，所以两样都不用。"""
+    def test_wordmark_keeps_skill_solid_and_paints_feeder_with_logo_grad(self):
+        """Skill 实心海军蓝；Feeder 才走 logo 的紫→薄荷。clip 不许挂到整个 .logo。"""
         m = re.search(r"\.logo\s*\{(.*?)\}", self.html, flags=re.S)
         self.assertIsNotNone(m, "找不到 .logo 规则")
         self.assertNotIn("background-clip", m.group(1),
-                         ".logo 变成渐变填充的字了")
-        self.assertIn("var(--accent)", re.search(
-            r"\.logo\s+span\s*\{(.*?)\}", self.html, flags=re.S).group(1))
+                         "clip 挂到了整个 .logo，Skill 也会变成透明字")
+        feeder = re.search(
+            r"\.logo\s+\.feeder\s*\{(.*?)\}", self.html, flags=re.S)
+        self.assertIsNotNone(feeder, "找不到 .logo .feeder")
+        self.assertIn("background-clip", feeder.group(1))
+        self.assertIn("var(--brand-grad)", feeder.group(1))
+        self.assertIn('Skill<span class="feeder">Feeder</span>', self.html)
+        self.assertIn('class="site-foot"', self.html)
 
     def test_ring_gradient_stays_in_the_accent_family(self):
         """头像环是渐变最大的曝光面：每张卡片一个。"""
@@ -1490,7 +1548,9 @@ class TestSceneColoursCarryInformation(unittest.TestCase):
     HUE_SPAN_MAX = 30.0
     # 品牌 accent 的色相邻域。分类色进这一段，读者会把「某个分类」误读成
     # 「被强调/被选中」——accent 在页面上就是这个含义。
-    ACCENT_BAND = (150.0, 180.0)
+    # 品牌 accent 现是薄荷青 #0d7377（约 183°）。保护带覆盖旧青绿和新青，
+    # 上沿停在 198°，以免吃掉 engineering 的 201°。
+    ACCENT_BAND = (150.0, 198.0)
     # pal[1] 是头像与徽章的纯色底，两类撞色就没法靠颜色区分。40 与品牌门的
     # MIN_DISTANCE 同值，取的是同一个「人眼能不能当成两个颜色」的量级。
     PAIR_MIN_DISTANCE = 40.0
@@ -2167,6 +2227,7 @@ NEW_I18N_KEYS = (
     "acctRemoteNote", "acctOpenSite", "acctMyPosts", "acctPostsLoading",
     "acctNoPosts", "acctPostsNeedLogin", "acctServerCounts", "acctLocalCounts",
     "acctReactionsPending",
+    "refreshAria", "refreshTitle", "reshuffleToast",
 )
 
 
@@ -2520,6 +2581,198 @@ class TestBackToTop(unittest.TestCase):
         js = _script_source(self.html)
         self.assertRegex(
             js, r"window\.addEventListener\('scroll',[^\n]*syncToTop\(\)")
+
+
+RANK_FEED = {
+    "ui": {},
+    "items": [
+        {"full_name": "a/one", "name": "one", "owner": "a", "scene": "content",
+         "personal_score": 0.50, "kind": "skill"},
+        {"full_name": "a/two", "name": "two", "owner": "a", "scene": "content",
+         "personal_score": 0.50, "kind": "skill"},
+        {"full_name": "b/one", "name": "one", "owner": "b", "scene": "design",
+         "personal_score": 0.50, "kind": "skill"},
+        {"full_name": "b/two", "name": "two", "owner": "b", "scene": "design",
+         "personal_score": 0.50, "kind": "skill"},
+        {"full_name": "c/one", "name": "one", "owner": "c", "scene": "engineering",
+         "personal_score": 0.50, "kind": "skill"},
+        {"full_name": "c/two", "name": "two", "owner": "c", "scene": "engineering",
+         "personal_score": 0.50, "kind": "skill"},
+        {"full_name": "d/one", "name": "one", "owner": "d", "scene": "data-review",
+         "personal_score": 0.50, "kind": "skill"},
+        {"full_name": "d/two", "name": "two", "owner": "d", "scene": "data-review",
+         "personal_score": 0.50, "kind": "skill"},
+    ],
+    "corpus": [],
+}
+
+
+@unittest.skipIf(NODE is None, "需要 node 才能跑模板里的面板 JS")
+class TestHideAndSessionRank(unittest.TestCase):
+    """👎 立刻永滤 + 静态页补上会话级排序（后端 rank_feed 静态站用不上）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+
+    def harness(self, feed=None, **kw):
+        return JsHarness(self.html, feed=feed or FEED_FIX, **kw)
+
+    def test_hide_drops_the_card_from_the_pool_and_remembers_it(self):
+        got = self.harness().eval(
+            "(hideItem('acme/stop-slop'), {"
+            " pool: allPool().map(x => x.full_name),"
+            " stored: [...loadSet('sf_hidden')],"
+            " toast: document.getElementById('toast').textContent"
+            "})")
+        self.assertEqual([], got["pool"])
+        self.assertEqual(["acme/stop-slop"], got["stored"])
+        self.assertIn("不再推荐", got["toast"])
+
+    def test_hide_also_clears_like_and_save(self):
+        got = self.harness().eval(
+            "(liked.add('acme/stop-slop'), saved.add('acme/stop-slop'),"
+            " hideItem('acme/stop-slop'),"
+            " [liked.has('acme/stop-slop'), saved.has('acme/stop-slop'),"
+            "  JSON.parse(localStorage.getItem('sf_liked') || '[]'),"
+            "  JSON.parse(localStorage.getItem('sf_saved') || '[]')])")
+        self.assertEqual([False, False, [], []], got)
+
+    def test_hidden_items_stay_out_of_filtered(self):
+        js = self.harness()
+        before = js.eval("filtered().map(x => x.full_name)")
+        self.assertIn("acme/stop-slop", before)
+        after = js.eval("(hideItem('acme/stop-slop'), filtered().map(x => x.full_name))")
+        self.assertNotIn("acme/stop-slop", after)
+
+    def test_session_jitter_is_stable_for_one_seed(self):
+        got = self.harness().eval(
+            "[sessionJitter('acme/x', 'seed-a', 0.12),"
+            " sessionJitter('acme/x', 'seed-a', 0.12),"
+            " sessionJitter('acme/x', 'seed-b', 0.12)]")
+        self.assertEqual(got[0], got[1])
+        self.assertNotEqual(got[0], got[2])
+
+    def test_two_sessions_reshuffle_a_tied_cluster(self):
+        js = self.harness(feed=RANK_FEED)
+        a = js.eval("rankRows(FEED.items, '', 'seed-alpha').map(x => x.full_name)")
+        b = js.eval("rankRows(FEED.items, '', 'seed-beta').map(x => x.full_name)")
+        self.assertEqual(sorted(a), sorted(b))
+        self.assertNotEqual(a, b, "同分簇换会话必须换序，不能每天同一张领跑")
+
+    def test_search_turns_jitter_off(self):
+        js = self.harness(feed=RANK_FEED)
+        a = js.eval("rankRows(FEED.items, 'skill', 'seed-alpha').map(x => x.full_name)")
+        b = js.eval("rankRows(FEED.items, 'skill', 'seed-beta').map(x => x.full_name)")
+        self.assertEqual(a, b)
+
+    def test_diversity_breaks_a_same_scene_run(self):
+        feed = {
+            "ui": {},
+            "items": [
+                {"full_name": "a/%d" % i, "name": str(i), "owner": "o%d" % i,
+                 "scene": "content", "personal_score": 0.9 - i * 0.01, "kind": "skill"}
+                for i in range(5)
+            ] + [
+                {"full_name": "b/1", "name": "1", "owner": "bx",
+                 "scene": "design", "personal_score": 0.40, "kind": "skill"},
+                {"full_name": "b/2", "name": "2", "owner": "by",
+                 "scene": "design", "personal_score": 0.39, "kind": "skill"},
+            ],
+            "corpus": [],
+        }
+        names = self.harness(feed=feed).eval(
+            "rankRows(FEED.items, '', 'fixed').map(x => x.scene)")
+        run = 1
+        worst = 1
+        for i in range(1, len(names)):
+            if names[i] == names[i - 1]:
+                run += 1
+                worst = max(worst, run)
+            else:
+                run = 1
+        self.assertLessEqual(worst, 2, "闲逛态同 scene 不能连坐超过 2：" + str(names))
+
+    def test_explore_pulls_a_tail_item_into_slot_five(self):
+        items = [
+            {"full_name": chr(97 + i), "name": chr(97 + i), "owner": chr(97 + i),
+             "scene": "content" if i % 2 == 0 else "design",
+             "personal_score": 1.0 - i * 0.01, "kind": "skill"}
+            for i in range(12)
+        ]
+        got = self.harness().eval(
+            "injectExplore(" + json.dumps(items) + ", false)[4].full_name")
+        self.assertGreaterEqual(got, "f", "第 5 位应从后半段抽一条上来，不能永远是第 5 高分")
+
+    def _lead_feed(self):
+        return {
+            "ui": {},
+            "items": [
+                {"full_name": "lead/x", "name": "lead", "owner": "lead",
+                 "scene": "content", "personal_score": 0.99, "kind": "skill"},
+                {"full_name": "alt/x", "name": "alt", "owner": "alt",
+                 "scene": "design", "personal_score": 0.50, "kind": "skill"},
+                {"full_name": "alt/y", "name": "alt2", "owner": "alt2",
+                 "scene": "engineering", "personal_score": 0.40, "kind": "skill"},
+            ],
+            "corpus": [],
+        }
+
+    def test_two_hits_this_week_still_allow_the_same_slot(self):
+        now = 1_700_000_000_000
+        hist = {"lead/x": {"0": [now - 1000]}}
+        first = self.harness(feed=self._lead_feed()).eval(
+            "rankRows(FEED.items, '', 'fixed', %s, %d)[0].full_name"
+            % (json.dumps(hist), now))
+        self.assertEqual("lead/x", first)
+
+    def test_a_third_hit_this_week_must_leave_the_slot(self):
+        now = 1_700_000_000_000
+        hist = {"lead/x": {"0": [now - 2000, now - 1000]}}
+        first = self.harness(feed=self._lead_feed()).eval(
+            "rankRows(FEED.items, '', 'fixed', %s, %d)[0].full_name"
+            % (json.dumps(hist), now))
+        self.assertNotEqual("lead/x", first, "一周内同一位次第 3 次必须换卡")
+
+    def test_hits_older_than_a_week_do_not_count(self):
+        now = 1_700_000_000_000
+        week = 7 * 24 * 60 * 60 * 1000
+        hist = {"lead/x": {"0": [now - week - 1000, now - week - 2000]}}
+        first = self.harness(feed=self._lead_feed()).eval(
+            "rankRows(FEED.items, '', 'fixed', %s, %d)[0].full_name"
+            % (json.dumps(hist), now))
+        self.assertEqual("lead/x", first)
+
+    def test_shown_positions_are_remembered_once_per_view(self):
+        got = self.harness().eval(
+            "("
+            "noteShownPositions([{full_name:'lead/x'}], true, 1000),"
+            "noteShownPositions([{full_name:'lead/x'}], false, 1001),"
+            "noteShownPositions([{full_name:'lead/x'}], true, 1002),"
+            "JSON.parse(localStorage.getItem('sf_pos_hist'))['lead/x']['0']"
+            ")")
+        self.assertEqual([1000, 1002], got)
+
+    def test_reshuffle_swaps_in_a_fresh_batch(self):
+        items = [
+            {"full_name": "n/%d" % i, "name": str(i), "owner": "o%d" % i,
+             "scene": "content" if i % 2 == 0 else "design",
+             "personal_score": 0.90 - i * 0.01, "kind": "skill"}
+            for i in range(18)
+        ]
+        js = self.harness(feed={"ui": {}, "items": items, "corpus": []})
+        got = js.eval(
+            "(() => {"
+            "  state.shown = 6;"
+            "  const first = filtered().slice(0, 6).map(x => x.full_name);"
+            "  reshuffleFeed();"
+            "  const second = filtered().slice(0, 6).map(x => x.full_name);"
+            "  return {first, second, toast: document.getElementById('toast').textContent};"
+            "})()")
+        self.assertTrue(set(got["first"]).isdisjoint(got["second"]),
+                        "换一批必须换掉当前这屏，不能还是同一批："
+                        + str(got))
+        self.assertIn("换一批", got["toast"])
 
 
 if __name__ == "__main__":
