@@ -519,6 +519,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-10 | 左上角/页脚 S 图形标替换为肥嘚团子头像（base64 内联 PNG，28px/20px，圆形裁切）；配色变量已对齐品牌令牌 | §5.1 顶栏/页脚 logo、feed_dashboard.py |
 | 2026-09-10 | 顶栏/页脚字标前新增 S 图形标（内联 SVG，紫→青→薄荷渐变 `#9860e7→#49aaeb→#64e2d4`，与 `.feeder` 同源）；`.logo` 改 flex 布局；同步生成纯白底 S 图形版（favicon/小头像）与横版 Banner | §5.1 顶栏、`feed_dashboard.py` |
 | 2026-09-10 | 定数据分层：飞书资源清单=全量底表（不论是否 skill）；skill-feed 只按门禁从底表筛入信息流。底表有 Feed 无=正常 | §4 IA、§6.0、`AGENTS.md`、`docs/waytoagi-kb-batch.md` |
 | 2026-09-09 | 底栏收敛为**四入口**（发现/主题分类/发布/我的）并做成真 `role=tablist`；场景 chips 从发现页首屏移到「主题分类」tab（只在筛选中回归）；发布接 `POST /api/posts`；我的接 `/auth/me` + `/api/posts/me` + `/api/profile/reactions`；新增一键回到顶部；`?tab=` / `?scene=` / `?l2=` 深链 | §5.1、`feed_dashboard.py`、`tests/test_feed_dashboard.py` |
