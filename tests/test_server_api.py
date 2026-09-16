@@ -826,9 +826,20 @@ class TestServerAPI(unittest.TestCase):
         self.assertEqual(me.status_code, 200)
         self.assertEqual(me.json()["user"]["login"], "dev-user")
         self.assertEqual(me.json()["user"]["plan"], "free")
+        self.assertEqual(me.json()["user"]["trust_level"], "new")
+        self.assertEqual(me.json()["user"]["approved_count"], 0)
         self.assertFalse(me.json()["user"]["subscriber"])
         self.assertTrue(me.json()["quota"]["unlimited"])
         self.assertIsNone(me.json()["quota"]["limit"])
+
+        page = self.client.get("/publish")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('class="shell"', page.text)
+        self.assertIn('class="me-panel"', page.text)
+        self.assertIn('class="pub-form"', page.text)
+        self.assertIn("/login?next=/publish", page.text)
+        self.assertNotIn("发布需要 GitHub 登录", page.text)
+        self.assertNotIn('name="body_md"', page.text)
 
         created = self.client.post("/api/posts", json={
             "title": "手搓周报结构",

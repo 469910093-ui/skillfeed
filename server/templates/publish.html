@@ -4,118 +4,370 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>发布 Skill · SkillFeeder</title>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --chassis:#0c1020; --ink:#0a1848; --muted:#717171; --line:#cfd6ea; --accent:#0d7377; --bg:#f4f7ff;
-    --brand-purple:#9860e7; --brand-cyan:#49aaeb; --brand-mint:#64e2d4;
+    --chassis: #0c1020;
+    --bg: #f4f7ff;
+    --ink: #0a1848;
+    --muted: #717171;
+    --line: #cfd6ea;
+    --card: #ffffff;
+    --accent: #0d7377;
+    --accent-strong: #115e59;
+    --brand-purple: #9860e7;
+    --brand-cyan: #49aaeb;
+    --brand-mint: #64e2d4;
     --brand-grad: linear-gradient(90deg, var(--brand-purple) 0%, var(--brand-cyan) 52%, var(--brand-mint) 100%);
+    --like: #b91c1c;
+    --like-ink: #991b1b;
+    --link: var(--accent);
+    --font: "Outfit", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --logo: "Outfit", "PingFang SC", sans-serif;
+    --phone: 448px;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: Outfit, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--chassis); color: var(--ink); }
-  .bar {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 12px 16px; background: #fff; border-bottom: 1px solid var(--line);
-    position: sticky; top: 0;
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }
+  body { min-height: 100vh; }
+  .shell {
+    max-width: var(--phone);
+    margin: 0 auto;
+    min-height: 100vh;
+    background: var(--bg);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    position: relative;
+    display: flex;
+    flex-direction: column;
   }
-  .logo { font-weight: 800; text-decoration: none; color: inherit; letter-spacing: -.03em; }
+  .topbar {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; flex-direction: column;
+    padding: 10px 14px 8px;
+    background: rgba(244,247,255,.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .top-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .top-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .value-line {
+    margin: 3px 0 0;
+    font-family: var(--logo);
+    font-size: .8rem;
+    font-weight: 650;
+    line-height: 1.2;
+    letter-spacing: .08em;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 7px;
+    font-family: var(--logo); font-size: 1.45rem; font-weight: 800;
+    line-height: 1.1; letter-spacing: -.03em;
+    color: var(--ink); text-decoration: none;
+  }
   .logo .feeder {
     color: var(--brand-purple);
     background-image: var(--brand-grad);
     -webkit-background-clip: text; background-clip: text;
     -webkit-text-fill-color: transparent;
   }
-  .user { font-size: .85rem; color: var(--muted); display: flex; gap: 10px; align-items: center; }
-  .btn {
-    appearance: none; border: 0; border-radius: 10px; padding: 8px 12px;
-    background: var(--ink); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
-    text-decoration: none; display: inline-block;
-  }
-  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
-  h1 { font-size: 1.5rem; margin: 0 0 6px; }
-  .sub { color: var(--muted); margin: 0 0 20px; font-size: .9rem; line-height: 1.45; }
-  label { display: block; font-size: .8rem; font-weight: 600; margin: 14px 0 6px; }
-  input, textarea {
-    width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
-    font: inherit; background: #fff;
-  }
-  textarea { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; line-height: 1.45; }
-  .hint { font-size: .75rem; color: var(--muted); margin-top: 4px; }
-  .ok { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 10px 12px; border-radius: 10px; margin-bottom: 14px; font-size: .88rem; }
-  .list { margin-top: 28px; }
-  .post {
-    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  .top-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .me-panel { padding: 18px 16px 28px; flex: 1; }
+  .me-panel h2 { margin: 0 0 6px; font-size: 1.2rem; }
+  .me-panel .lead { color: var(--muted); font-size: .88rem; line-height: 1.45; margin: 0 0 16px; }
+  .me-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     padding: 12px 14px; margin-bottom: 10px;
   }
-  .post b { display: block; margin-bottom: 4px; }
-  .post small { color: var(--muted); }
-  .gate { display: none; }
-  .gate.show { display: block; }
-  .need-login {
-    background: #fff; border: 1px solid var(--line); border-radius: 14px;
-    padding: 28px 20px; text-align: center;
+  .me-card strong { display: block; margin-bottom: 4px; }
+  .me-card p { margin: 0; font-size: .82rem; color: var(--muted); line-height: 1.4; }
+  .me-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .me-actions a, .me-actions button {
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .78rem; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+  }
+  .me-actions a.primary, .me-actions button.primary {
+    background: var(--ink); color: #fff; border-color: var(--ink);
+  }
+  .me-actions button[disabled] { opacity: .45; cursor: not-allowed; }
+  .acct-id { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .acct-id .ava {
+    width: 44px; height: 44px; border-radius: 50%; flex: 0 0 auto;
+    display: grid; place-items: center; font-weight: 700; font-size: .85rem;
+    background: var(--ink); color: #fff;
+  }
+  .acct-id .meta { min-width: 0; }
+  .acct-id .meta b { display: block; font-size: 1rem; }
+  .acct-id .meta span { font-size: .75rem; color: var(--muted); }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+  .pill {
+    display: inline-block; border: 1px solid var(--line); border-radius: 999px;
+    padding: 2px 8px; font-size: .68rem; font-weight: 700; color: var(--muted);
+    background: #fff;
+  }
+  .pill.on { color: var(--ink); background: #eef3ff; }
+  .pill.warn { color: var(--ink); }
+  .pill.ok { color: var(--accent); border-color: var(--accent); }
+  .pill.bad { color: var(--like-ink); border-color: #e8b4b4; }
+  .pub-form label, .field-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: .74rem; font-weight: 700; color: var(--muted); margin: 10px 0 4px;
+  }
+  .pub-form .count { font-weight: 600; }
+  .pub-form input, .pub-form textarea {
+    width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
+    font: inherit; font-size: .85rem; background: #fff; color: var(--ink);
+  }
+  .pub-form textarea { min-height: 96px; font-size: .8rem; line-height: 1.5; resize: vertical; }
+  .pub-form input:focus, .pub-form textarea:focus {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  .hint { font-size: .72rem; color: var(--muted); margin: 4px 0 0; line-height: 1.45; }
+  .pub-msg { margin: 10px 0 0; font-size: .8rem; line-height: 1.45; }
+  .pub-msg.err { color: var(--like-ink); font-weight: 600; }
+  .pub-msg.ok { color: var(--accent); font-weight: 600; }
+  .pub-preview {
+    margin-top: 10px; padding: 10px 12px;
+    background: #eef2fb; border: 1px solid var(--line); border-radius: 10px;
+    font-size: .75rem; color: var(--muted); line-height: 1.5;
+  }
+  .pub-preview b { color: var(--ink); font-weight: 700; }
+  .pub-preview code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .9em; word-break: break-all;
+  }
+  .hide { display: none !important; }
+  .dock {
+    position: sticky; bottom: 0; z-index: 40;
+    background: rgba(255,255,255,.96);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+  }
+  .site-foot { display: flex; justify-content: center; padding: 8px 12px 0; }
+  .foot-logo { font-size: 1.05rem; }
+  .bottom {
+    display: flex; justify-content: space-around; align-items: center;
+    padding: 10px 4px calc(10px + env(safe-area-inset-bottom));
+  }
+  .nav {
+    border: 0; background: transparent; color: var(--ink);
+    display: grid; place-items: center; gap: 2px;
+    font-size: .58rem; font-weight: 600; min-width: 52px;
+    text-decoration: none; position: relative;
+    padding: 4px 0 0;
+  }
+  .nav svg { width: 24px; height: 24px; }
+  .nav::before {
+    content: ""; position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    width: 22px; height: 3px; border-radius: 0 0 3px 3px;
+    background: var(--accent); opacity: 0;
+  }
+  .nav.on { color: var(--accent); }
+  .nav.on::before { opacity: 1; }
+  .nav.on .nav-label { font-weight: 800; }
+  .list-title {
+    margin: 22px 0 8px; font-size: .72rem; font-weight: 700;
+    color: var(--muted); letter-spacing: .04em; text-transform: uppercase;
   }
 </style>
 </head>
 <body>
-  <div class="bar">
-    <a class="logo" href="/">Skill<span class="feeder">Feeder</span></a>
-    <div class="user" id="userBox">检查登录…</div>
-  </div>
-  <div class="wrap">
-    <h1>提交自己的 Skill</h1>
-    <p class="sub">只填三项：GitHub 链接、标题、文案。不传 zip，不贴 SKILL.md 正文。提交后进入审核，通过才进发现流。</p>
+  <div class="shell">
+    <header class="topbar">
+      <div class="top-row">
+        <div class="top-left">
+          <a class="logo" href="/">Skill<span class="feeder">Feeder</span></a>
+          <p class="value-line">每刷一下，就快人一步</p>
+        </div>
+        <div class="top-actions" id="userBox"></div>
+      </div>
+    </header>
 
-    <div id="okBanner" class="ok" style="display:none">已进入审核。通过后会出现在发现流；被拒时这里会看到原因。</div>
+    <main class="me-panel">
+      <h2>发布 Skill</h2>
+      <p class="lead">只填三项：公开 GitHub 链接、标题、文案。不传 zip，不贴 SKILL.md 正文。提交后进审核，通过才进发现流，<strong>不代装到任何人的机器</strong>。</p>
 
-    <div id="needLogin" class="need-login gate">
-      <p>发布需要 GitHub 登录</p>
-      <p style="margin:16px 0"><a class="btn" href="/auth/github">使用 GitHub 登录</a></p>
-      <p class="hint">未配置 OAuth 时，本地可设 <code>SKILLFEED_DEV_AUTH=1</code> 后访问 <a href="/auth/dev-login">/auth/dev-login</a></p>
+      <div id="okBanner" class="me-card hide">
+        <strong>已进入审核</strong>
+        <p class="pub-msg ok">通过后会出现在发现流；被拒时这里会看到原因。</p>
+      </div>
+
+      <div id="needLogin" class="me-card hide">
+        <strong>还没登录</strong>
+        <p>发布要先登录。登录主体是认证服务号，手机号短信兜底。</p>
+        <div class="me-actions">
+          <a class="primary" href="/login?next=/publish">去登录</a>
+        </div>
+      </div>
+
+      <div id="formCard" class="me-card hide">
+        <div class="acct-id">
+          <div class="ava" id="ava">?</div>
+          <div class="meta">
+            <b id="who">检查登录…</b>
+            <span id="whoSub">仓库 owner 必须等于当前账号的 GitHub 用户名</span>
+          </div>
+        </div>
+        <div class="pills" id="pills"></div>
+        <p id="formMsg" class="pub-msg hide"></p>
+        <form class="pub-form" id="form" method="post" action="/api/posts/form">
+          <label class="field-head" for="github_url">GitHub 链接</label>
+          <input id="github_url" name="github_url" required maxlength="240"
+                 inputmode="url" autocomplete="off"
+                 placeholder="https://github.com/owner/repo 或具体 skill 目录">
+          <p class="hint">只认 github.com。monorepo 请贴到含 SKILL.md 的目录。认领时登录名必须等于仓库 owner。</p>
+          <div class="pub-preview" id="preview">粘贴链接后解析坐标与 skill_path。</div>
+
+          <label class="field-head" for="title">标题 <span class="count" id="cTitle">0/60</span></label>
+          <input id="title" name="title" required maxlength="60" autocomplete="off" placeholder="手搓周报结构">
+
+          <label class="field-head" for="description">文案 <span class="count" id="cDesc">0/280</span></label>
+          <textarea id="description" name="description" required maxlength="280"
+                    placeholder="一句话说清这个 skill 帮人做什么。不要贴 SKILL.md 正文。"></textarea>
+
+          <div class="me-actions">
+            <button class="primary" type="submit" id="btnSubmit">提交审核</button>
+            <button type="reset" id="btnClear">清空</button>
+          </div>
+        </form>
+      </div>
+
+      <h3 class="list-title hide" id="mineTitle">我发布的</h3>
+      <div id="mine"></div>
+    </main>
+
+    <div class="dock">
+      <footer class="site-foot">
+        <div class="logo foot-logo">Skill<span class="feeder">Feeder</span></div>
+      </footer>
+      <nav class="bottom" aria-label="主导航">
+        <a class="nav" href="/?tab=all">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+          <span class="nav-label">发现</span>
+        </a>
+        <a class="nav" href="/?tab=topics">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span class="nav-label">主题分类</span>
+        </a>
+        <a class="nav on" href="/publish" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="nav-label">发布</span>
+        </a>
+        <a class="nav" href="/?tab=me">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>
+          <span class="nav-label">我的</span>
+        </a>
+      </nav>
     </div>
-
-    <form id="form" class="gate" method="post" action="/api/posts/form">
-      <label for="github_url">GitHub 链接</label>
-      <input id="github_url" name="github_url" required placeholder="https://github.com/owner/repo 或具体 skill 目录">
-      <div class="hint">只认 github.com。monorepo 请贴到含 SKILL.md 的目录。仓库 owner 必须是当前登录的 GitHub 账号。</div>
-
-      <label for="title">标题（60 字）</label>
-      <input id="title" name="title" required maxlength="60" placeholder="手搓周报结构">
-
-      <label for="description">文案（280 字）</label>
-      <input id="description" name="description" required maxlength="280" placeholder="一句话说清这个 skill 帮人做什么">
-
-      <p style="margin-top:18px"><button class="btn" type="submit">提交审核</button></p>
-    </form>
-
-    <div class="list" id="mine"></div>
   </div>
 <script nonce="{{csp_nonce}}">
-const LOGGED = "{{logged_in}}" === "1";
+const GH_RE = /^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:\/(?:tree|blob)\/[^/]+\/(.*))?\/?(?:[?#].*)?$/i;
+const STATUS = {
+  pending: ["审核中", "warn"],
+  approved: ["已上架", "ok"],
+  published: ["已上架", "ok"],
+  rejected: ["已拒绝", "bad"],
+  hidden: ["已隐藏", ""],
+};
+
+function $(id) { return document.getElementById(id); }
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+function parseGithub(url) {
+  const m = GH_RE.exec((url || "").trim());
+  if (!m) return null;
+  const owner = m[1].toLowerCase();
+  const repo = m[2].replace(/\.git$/i, "").toLowerCase();
+  const raw = (m[3] || "").replace(/^\/|\/$/g, "");
+  const parts = raw.split("/").filter(p => p && p !== ".");
+  if (parts.includes("..")) return null;
+  let skillPath = "SKILL.md";
+  if (parts.length && parts[parts.length - 1].toLowerCase() === "skill.md") skillPath = parts.join("/");
+  else if (parts.length) skillPath = parts.join("/") + "/SKILL.md";
+  return { owner, repo, skillPath, fullName: owner + "/" + repo };
+}
+function syncCounts() {
+  $("cTitle").textContent = ($("title").value || "").length + "/60";
+  $("cDesc").textContent = ($("description").value || "").length + "/280";
+}
+function syncPreview(login) {
+  const parsed = parseGithub($("github_url").value);
+  const el = $("preview");
+  if (!parsed) {
+    el.innerHTML = "粘贴链接后解析坐标与 skill_path。";
+    return;
+  }
+  const mine = login && login.toLowerCase() === parsed.owner;
+  const own = mine
+    ? '<span class="pill ok">所有权匹配 @' + escapeHtml(login) + "</span>"
+    : '<span class="pill bad">owner 是 ' + escapeHtml(parsed.owner) + "，当前账号对不上</span>";
+  el.innerHTML =
+    "<b>坐标</b> <code>" + escapeHtml(parsed.fullName + "::" + parsed.skillPath) + "</code><br>" +
+    "<b>public_id</b> <code>ugc:" + escapeHtml(parsed.fullName + "::" + parsed.skillPath) + "</code><br>" +
+    own;
+}
+function showMsg(kind, text) {
+  const el = $("formMsg");
+  el.className = "pub-msg " + kind;
+  el.textContent = text;
+  el.classList.remove("hide");
+}
+
 const params = new URLSearchParams(location.search);
-if (params.get("ok") === "1") document.getElementById("okBanner").style.display = "block";
+if (params.get("ok") === "1") $("okBanner").classList.remove("hide");
+
+$("form").addEventListener("input", () => {
+  syncCounts();
+  const login = $("form").dataset.login || "";
+  syncPreview(login);
+});
+$("form").addEventListener("reset", () => {
+  setTimeout(() => {
+    syncCounts();
+    syncPreview($("form").dataset.login || "");
+  }, 0);
+});
 
 async function refreshMe() {
   const r = await fetch("/auth/me", { credentials: "include" });
   const data = await r.json();
-  const box = document.getElementById("userBox");
-  const form = document.getElementById("form");
-  const need = document.getElementById("needLogin");
-  if (data.user) {
-    box.innerHTML = `<span>@${data.user.login}</span>
-      <button class="btn ghost" type="button" id="btnLogout">退出</button>`;
-    document.getElementById("btnLogout").onclick = async () => {
+  const box = $("userBox");
+  const user = data.user;
+  if (user) {
+    const login = user.login || "";
+    const display = user.display_name || login;
+    box.innerHTML = '<div class="me-actions"><button type="button" id="btnLogout">退出</button></div>';
+    $("btnLogout").onclick = async () => {
       await fetch("/auth/logout", { method: "POST", credentials: "include" });
       location.reload();
     };
-    form.classList.add("show");
-    need.classList.remove("show");
+    $("needLogin").classList.add("hide");
+    $("formCard").classList.remove("hide");
+    $("ava").textContent = (display || "?").slice(0, 1).toUpperCase();
+    $("who").textContent = "@" + login;
+    $("whoSub").textContent = (user.providers || []).includes("github")
+      ? "已绑定 GitHub，可认领同名仓库"
+      : "认领仓库需要 GitHub 用户名等于 owner";
+    const trust = user.trust_level || "new";
+    const approved = Number(user.approved_count || 0);
+    $("pills").innerHTML =
+      '<span class="pill on">信任：' + escapeHtml(trust) + " · 已过审 " + approved + "/3</span>" +
+      '<span class="pill">每日最多 3 条</span>';
+    $("form").dataset.login = login;
+    syncCounts();
+    syncPreview(login);
     loadMine();
   } else {
-    box.innerHTML = `<a class="btn" href="/auth/github">登录</a>`;
-    form.classList.remove("show");
-    need.classList.add("show");
+    box.innerHTML = '<div class="me-actions"><a class="primary" href="/login?next=/publish">登录</a></div>';
+    $("needLogin").classList.remove("hide");
+    $("formCard").classList.add("hide");
   }
 }
 
@@ -123,22 +375,27 @@ async function loadMine() {
   const r = await fetch("/api/posts/me", { credentials: "include" });
   if (!r.ok) return;
   const data = await r.json();
-  const el = document.getElementById("mine");
-  if (!data.posts.length) {
-    el.innerHTML = "<p class='hint'>还没有发布过。</p>";
+  const el = $("mine");
+  const title = $("mineTitle");
+  const posts = data.posts || [];
+  if (!posts.length) {
+    title.classList.remove("hide");
+    el.innerHTML = '<div class="me-card"><p>还没发布过。交第一个，过审后进发现流。</p></div>';
     return;
   }
-  el.innerHTML = "<h2 style='font-size:1.1rem'>我的帖子</h2>" + data.posts.map(p => `
-    <div class="post">
-      <b>${escapeHtml(p.title)}</b>
-      <small>${escapeHtml(p.scene_label || "")} · ${escapeHtml(p.status)} · ${escapeHtml(p.created_at || "").slice(0,19)}</small>
-      <div class="hint">${escapeHtml(p.description || "").slice(0,160)}</div>
-    </div>
-  `).join("");
-}
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  title.classList.remove("hide");
+  el.innerHTML = posts.map(p => {
+    const st = STATUS[p.status] || [p.status, ""];
+    const reason = p.reject_reason
+      ? '<p class="pub-msg err">拒绝：' + escapeHtml(p.reject_reason) + "</p>" : "";
+    return '<div class="me-card">' +
+      "<strong>" + escapeHtml(p.title) + "</strong>" +
+      '<span class="pill ' + st[1] + '">' + escapeHtml(st[0]) + "</span> " +
+      '<span class="pill">' + escapeHtml(p.scene_label || "") + "</span>" +
+      "<p>" + escapeHtml((p.description || "").slice(0, 160)) + "</p>" +
+      '<p class="hint">' + escapeHtml((p.created_at || "").slice(0, 19)) + "</p>" +
+      reason + "</div>";
+  }).join("");
 }
 
 refreshMe();

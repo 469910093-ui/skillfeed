@@ -9,6 +9,7 @@ venv/
 *.html.bak
 .cache/
 site/
+site-full/
 .skill-feed-data/
 .env
 *.db

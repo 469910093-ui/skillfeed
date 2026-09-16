@@ -582,9 +582,16 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .top-left {{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }}
   .value-line {{
-    margin: 0; font-size: .72rem; font-weight: 500; line-height: 1.3;
-    color: var(--muted); letter-spacing: -.01em; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis;
+    margin: 3px 0 0;
+    font-family: var(--logo);
+    font-size: .8rem;
+    font-weight: 650;
+    line-height: 1.2;
+    letter-spacing: .08em;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }}
   /* Skill 实心海军蓝；Feeder 才是 logo 那道紫→薄荷。clip 只挂在 .feeder 上，
      .logo 本身仍是实心字，安卓 WebView 把 clip 弄丢时至少 Skill 还在。 */
@@ -1023,7 +1030,11 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 
   .actions {{
     display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 10px 2px;
+    margin: 8px 10px 6px;
+    padding: 8px 12px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
   }}
   .actions-left {{ display: flex; gap: 14px; }}
   .act {{
@@ -1050,7 +1061,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     padding: 2px 14px 14px; font-size: .68rem; color: var(--muted);
     letter-spacing: .04em; text-transform: uppercase;
   }}
-  .open-row {{ padding: 0 14px 14px; }}
+  .open-row {{ padding: 0 10px 14px; }}
   .open-gh {{
     display: block; text-align: center; text-decoration: none;
     border-radius: 10px; padding: 10px 12px;
@@ -1192,14 +1203,22 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 
   /* —— 发布 / 我的（复用 .me-panel / .me-card / .me-actions 的壳） —— */
   .pub-form label {{
-    display: block; font-size: .74rem; font-weight: 700; color: var(--muted); margin: 10px 0 4px;
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: .74rem; font-weight: 700; color: var(--muted); margin: 10px 0 4px;
   }}
+  .pub-form .count {{ font-weight: 600; }}
   .pub-form input, .pub-form textarea {{
     width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
     font: inherit; font-size: .85rem; background: #fff; color: var(--ink);
   }}
-  .pub-form textarea {{ min-height: 140px; font-size: .8rem; line-height: 1.5; }}
+  .pub-form textarea {{ min-height: 96px; font-size: .8rem; line-height: 1.5; }}
   .pub-form .hint {{ font-size: .72rem; color: var(--muted); margin: 4px 0 0; line-height: 1.45; }}
+  .pub-preview {{
+    margin-top: 8px; padding: 10px 12px;
+    background: #eef2fb; border: 1px solid var(--line); border-radius: 10px;
+    font-size: .75rem; color: var(--muted); line-height: 1.45;
+  }}
+  .pub-preview b {{ color: var(--ink); }}
   .pub-msg {{ margin: 10px 0 0; font-size: .8rem; line-height: 1.45; }}
   .pub-msg.err {{ color: var(--like-ink); font-weight: 600; }}
   .pub-msg.ok {{ color: var(--accent); font-weight: 600; }}
@@ -1457,7 +1476,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
         </div>
       </div>
       <div class="search-wrap" id="searchWrap">
-        <input class="search" id="intent" type="search" placeholder="短关键词更好，如：去AI味 / 周报 / 剪视频" maxlength="40" />
+        <input class="search" id="intent" type="search" placeholder="短关键词更好，如：去AI味 / 剪视频" maxlength="40" />
         <div class="intent-keys" id="intentKeys" hidden></div>
       </div>
     </header>
@@ -1679,7 +1698,7 @@ const I18N = {{
     viewPublisher: '查看发布者',
     filterByScene: '按行业筛选',
     followScene: '关注行业 · 最新进顶部圆环',
-    searchPlaceholder: '短关键词更好，如：去AI味 / 周报 / 剪视频',
+    searchPlaceholder: '短关键词更好，如：去AI味 / 剪视频',
     navDiscover: '发现', navTopics: '主题分类', navPublish: '发布', navMe: '我的',
     valueLine: '每刷一下，就快人一步',
     coachSkip: 'Skip', coachNext: '下一步', coachDone: '开始刷',
@@ -1712,14 +1731,14 @@ const I18N = {{
 
     /* 发布 */
     publishTitle: '发布 Skill',
-    publishLead: '把自己的 skill 交给这条 Feed：粘 <strong>SKILL.md</strong> 正文，或者给一个公开 GitHub 仓库地址。发布后进混排 Feed，<strong>不代装到任何人的机器</strong>。',
-    publishFieldTitle: '标题（留空则从 SKILL.md 解析）',
-    publishFieldUrl: 'GitHub 仓库地址（推荐）',
-    publishFieldDesc: '一句话简介',
-    publishFieldBody: 'SKILL.md 正文',
-    publishHint: '正文和仓库地址至少给一个；简介要写清这个 skill 做什么（约 10 字以上）。',
-    publishSubmit: '发布到 Feed', publishSubmitting: '提交中…',
-    publishOkMsg: '已发布，去「我的」看它的状态。',
+    publishLead: '只填三项：公开 GitHub 链接、标题、文案。不传 zip，不贴 SKILL.md 正文。提交后进审核，通过才进发现流，<strong>不代装到任何人的机器</strong>。',
+    publishFieldTitle: '标题',
+    publishFieldUrl: 'GitHub 链接',
+    publishFieldDesc: '文案',
+    publishFieldBody: 'SKILL.md 正文（已停用，请勿粘贴）',
+    publishHint: '只认 github.com。monorepo 请贴到含 SKILL.md 的目录。认领时登录名必须等于仓库 owner。',
+    publishSubmit: '提交审核', publishSubmitting: '提交中…',
+    publishOkMsg: '已进入审核。通过后会出现在发现流。',
     publishNeedLogin: '发布要先登录。登录主体是认证服务号，手机号短信兜底。',
     publishLoginBtn: '去登录',
     publishOpenPage: '打开完整发布页',
@@ -1905,7 +1924,7 @@ const I18N = {{
     viewPublisher: 'View publisher',
     filterByScene: 'Filter by industry',
     followScene: 'Follow industry · newest goes to top ring',
-    searchPlaceholder: 'Short keywords work best, e.g. de-slop / weekly report',
+    searchPlaceholder: 'Short keywords work best, e.g. de-slop / short video',
     navDiscover: 'Discover', navTopics: 'Topics', navPublish: 'Post', navMe: 'Me',
     valueLine: 'Every swipe, one step ahead',
     coachSkip: 'Skip', coachNext: 'Next', coachDone: 'Start',
@@ -1936,14 +1955,14 @@ const I18N = {{
     topicsSectionEmpty: 'The feed has no section-tagged items yet — run a refresh first.',
 
     publishTitle: 'Post a skill',
-    publishLead: 'Hand your own skill to this feed: paste the <strong>SKILL.md</strong> body, or give a public GitHub repository URL. Posted skills join the merged feed and <strong>are never installed for anyone</strong>.',
-    publishFieldTitle: 'Title (parsed from SKILL.md when blank)',
-    publishFieldUrl: 'GitHub repository URL (recommended)',
-    publishFieldDesc: 'One-line summary',
-    publishFieldBody: 'SKILL.md body',
-    publishHint: 'Give the body or the repository URL, at least one of the two. The summary has to say what the skill does (about ten characters or more).',
-    publishSubmit: 'Post to the feed', publishSubmitting: 'Submitting…',
-    publishOkMsg: 'Posted. Check its status under “Me”.',
+    publishLead: 'Three fields only: a public GitHub URL, a title, and a short pitch. No zip, no SKILL.md body. Posts go to review first, then the feed, and <strong>are never installed for anyone</strong>.',
+    publishFieldTitle: 'Title',
+    publishFieldUrl: 'GitHub URL',
+    publishFieldDesc: 'Pitch',
+    publishFieldBody: 'SKILL.md body (retired — do not paste)',
+    publishHint: 'github.com only. For a monorepo, link the directory that holds SKILL.md. Your login must match the repository owner.',
+    publishSubmit: 'Submit for review', publishSubmitting: 'Submitting…',
+    publishOkMsg: 'In review. It will appear in the feed if approved.',
     publishNeedLogin: 'Posting needs a sign-in. The account is the verification service account, with SMS as the fallback.',
     publishLoginBtn: 'Sign in',
     publishOpenPage: 'Open the full posting page',
@@ -3258,7 +3277,7 @@ function cardHtml(it, idx) {{
       ${{tips.whoFor ? `<div class="who-for"><em>${{escapeHtml(tr('forWho'))}}</em>${{escapeHtml(tips.whoFor)}}</div>` : ''}}
     </div>
     <div class="zone-hit zone-engage">
-    <div class="actions">
+    <div class="actions coach-react">
       <div class="actions-left">
         <button class="act js-like ${{isLiked ? 'liked' : ''}}" type="button" data-fn="${{escapeHtml(fn)}}" aria-label="${{escapeHtml(tr(isLiked ? 'likedAria' : 'likeAria'))}}">${{heartSvg(isLiked)}}</button>
         <button class="act js-bad" type="button" aria-label="${{escapeHtml(tr('badAria'))}}" title="${{escapeHtml(tr('notUseful'))}}">
@@ -3267,7 +3286,7 @@ function cardHtml(it, idx) {{
       </div>
       <button class="act js-save ${{isSaved ? 'saved' : ''}}" type="button" aria-label="${{escapeHtml(tr(isSaved ? 'savedAria' : 'saveAria'))}}">${{bookmarkSvg(isSaved)}}</button>
     </div>
-    <div class="open-row{install_row_cls}"><a class="open-gh js-open" href="${{escapeHtml(safeUrl(hasSkillDoc(it) ? skillUrl : url))}}" target="_blank" rel="noopener">${{escapeHtml(tr('openGithub'))}}</a>{install_slot}</div>
+    <div class="open-row coach-github{install_row_cls}"><a class="open-gh js-open" href="${{escapeHtml(safeUrl(hasSkillDoc(it) ? skillUrl : url))}}" target="_blank" rel="noopener">${{escapeHtml(tr('openGithub'))}}</a>{install_slot}</div>
     </div>
   </article>`;
 }}
@@ -3814,10 +3833,11 @@ function publishFormHtml() {{
   return `<form class="pub-form" id="pubForm">
     <label for="pubUrl">${{escapeHtml(tr('publishFieldUrl'))}}</label>
     <input id="pubUrl" name="github_url" type="url" inputmode="url" placeholder="https://github.com/owner/repo" maxlength="240" autocomplete="off">
-    <label for="pubTitle">${{escapeHtml(tr('publishFieldTitle'))}}</label>
+    <div class="pub-preview" id="pubPreview"></div>
+    <label for="pubTitle">${{escapeHtml(tr('publishFieldTitle'))}}<span class="count" id="cTitle">0/60</span></label>
     <input id="pubTitle" name="title" type="text" maxlength="60" autocomplete="off">
-    <label for="pubDesc">${{escapeHtml(tr('publishFieldDesc'))}}</label>
-    <input id="pubDesc" name="description" type="text" maxlength="280" autocomplete="off">
+    <label for="pubDesc">${{escapeHtml(tr('publishFieldDesc'))}}<span class="count" id="cDesc">0/280</span></label>
+    <textarea id="pubDesc" name="description" maxlength="280" autocomplete="off"></textarea>
     <p class="hint">${{escapeHtml(tr('publishHint'))}}</p>
     ${{msg}}
     <div class="me-actions">
@@ -3951,6 +3971,38 @@ async function loadAccount() {{
   if (state.mode === 'me' || state.mode === 'publish') render(false);
 }}
 
+function parseGithubPreview(url) {{
+  const m = /^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:\/(?:tree|blob)\/[^/]+\/(.*))?\/?(?:[?#].*)?$/i.exec(String(url || '').trim());
+  if (!m) return '';
+  const owner = m[1].toLowerCase();
+  const repo = m[2].replace(/\.git$/i, '').toLowerCase();
+  const raw = (m[3] || '').replace(/^\/|\/$/g, '');
+  const parts = raw.split('/').filter(p => p && p !== '.');
+  if (parts.indexOf('..') >= 0) return '';
+  let skillPath = 'SKILL.md';
+  if (parts.length && parts[parts.length - 1].toLowerCase() === 'skill.md') skillPath = parts.join('/');
+  else if (parts.length) skillPath = parts.join('/') + '/SKILL.md';
+  return owner + '/' + repo + '::' + skillPath;
+}}
+
+function syncPubFields() {{
+  const title = document.getElementById('pubTitle');
+  const desc = document.getElementById('pubDesc');
+  const url = document.getElementById('pubUrl');
+  const cTitle = document.getElementById('cTitle');
+  const cDesc = document.getElementById('cDesc');
+  const preview = document.getElementById('pubPreview');
+  if (cTitle && title) cTitle.textContent = String(title.value || '').length + '/60';
+  if (cDesc && desc) cDesc.textContent = String(desc.value || '').length + '/280';
+  if (preview) {{
+    const coord = url ? parseGithubPreview(url.value) : '';
+    preview.innerHTML = coord
+      ? ('<b>public_id</b> ugc:' + escapeHtml(coord))
+      : '';
+    preview.hidden = !coord;
+  }}
+}}
+
 async function submitPost(form) {{
   const btn = document.getElementById('pubSubmit');
   const msg = document.getElementById('pubMsg');
@@ -3984,6 +4036,7 @@ async function submitPost(form) {{
       return;
     }}
     if (form && form.reset) form.reset();
+    syncPubFields();
     if (msg) {{ msg.className = 'pub-msg ok'; msg.textContent = tr('publishOkMsg'); }}
     toast(tr('publishOkMsg'));
     ACCT.posts = null;
@@ -4292,6 +4345,7 @@ function render(reset) {{
   }}
   if (state.mode === 'publish') {{
     feed.innerHTML = publishPanelHtml();
+    syncPubFields();
     return;
   }}
   if (state.mode === 'me') {{
@@ -4977,6 +5031,10 @@ document.getElementById('feed').addEventListener('submit', (e) => {{
   e.preventDefault();
   submitPost(form);
 }});
+document.getElementById('feed').addEventListener('input', (e) => {{
+  if (!e.target || !e.target.closest || !e.target.closest('#pubForm')) return;
+  syncPubFields();
+}});
 
 window.addEventListener('scroll', () => {{ maybeLoadMore(); syncToTop(); }}, {{ passive: true }});
 document.getElementById('btnDemo').addEventListener('click', startDemo);
@@ -5059,8 +5117,8 @@ const COACH_KEY = 'sf_onboard_v1';
 const COACH_STEPS = [
   {{ id: 'follow', target: '#storiesWrap', title: 'coach1Title', body: 'coach1Body' }},
   {{ id: 'swipe', target: '#feed .post, #feed', title: 'coach2Title', body: 'coach2Body' }},
-  {{ id: 'react', target: '#feed .actions', title: 'coach3Title', body: 'coach3Body' }},
-  {{ id: 'github', target: '#feed .open-gh', title: 'coach4Title', body: 'coach4Body' }},
+  {{ id: 'react', target: '#feed .coach-react', title: 'coach3Title', body: 'coach3Body' }},
+  {{ id: 'github', target: '#feed .coach-github', title: 'coach4Title', body: 'coach4Body' }},
   {{ id: 'publish', target: '#tab-publish', title: 'coach5Title', body: 'coach5Body' }},
 ];
 let coachIndex = 0;
@@ -5097,7 +5155,7 @@ function coachPlace() {{
   document.getElementById('coachBody').textContent = tr(step.body);
   if (next) next.textContent = coachIndex === COACH_STEPS.length - 1 ? tr('coachDone') : tr('coachNext');
   const el = coachPick(step.target);
-  const pad = 8;
+  const pad = 6;
   const shell = document.querySelector('.shell');
   const frame = shell ? shell.getBoundingClientRect() : {{
     top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight,
@@ -5106,29 +5164,46 @@ function coachPlace() {{
   const viewLeft = Math.max(8, frame.left + 8);
   const viewRight = Math.min(window.innerWidth - 8, frame.right - 8);
   const viewBottom = Math.min(window.innerHeight - 8, frame.bottom - 8);
+  const topbar = document.querySelector('.topbar');
+  const dockTop = topbar
+    ? Math.max(viewTop, topbar.getBoundingClientRect().bottom + 8)
+    : viewTop;
   let top = 80, left = viewLeft, width = 200, height = 80;
   if (el) {{
     const r = el.getBoundingClientRect();
-    top = Math.max(viewTop, r.top - pad);
-    left = Math.max(viewLeft, r.left - pad);
-    width = Math.min(viewRight - left, r.width + pad * 2);
-    height = Math.min(viewBottom - top, r.height + pad * 2);
+    // 高光只套目标本身，不把洞拉到视口顶/底，否则会吞掉封面或把赞和 GitHub 糊成一块。
+    top = r.top - pad;
+    left = r.left - pad;
+    width = r.width + pad * 2;
+    height = r.height + pad * 2;
   }}
   spot.style.top = top + 'px';
   spot.style.left = left + 'px';
   spot.style.width = Math.max(48, width) + 'px';
   spot.style.height = Math.max(36, height) + 'px';
   const cardH = card.offsetHeight || 160;
-  const below = top + height + 12;
-  const above = top - cardH - 12;
-  const preferAbove = top > (viewTop + viewBottom) / 2;
-  let cardTop = preferAbove ? above : below;
-  if (cardTop < viewTop || cardTop + cardH > viewBottom) {{
-    cardTop = preferAbove
-      ? Math.min(below, viewBottom - cardH)
-      : Math.max(above, viewTop);
+  const spotTop = top;
+  const spotBottom = top + height;
+  const gap = 12;
+  const overlaps = (cardTop) => {{
+    const cardBottom = cardTop + cardH;
+    return !(cardBottom < spotTop - 8 || cardTop > spotBottom + 8);
+  }};
+  const candidates = [
+    dockTop,
+    viewTop,
+    spotBottom + gap,
+    spotTop - cardH - gap,
+    viewBottom - cardH,
+  ];
+  let cardTop = dockTop;
+  for (const cand of candidates) {{
+    if (cand >= viewTop - 1 && cand + cardH <= viewBottom + 1 && !overlaps(cand)) {{
+      cardTop = cand;
+      break;
+    }}
   }}
-  card.style.top = Math.max(viewTop, Math.min(cardTop, viewBottom - cardH)) + 'px';
+  card.style.top = cardTop + 'px';
 }}
 
 function coachShow(i) {{
@@ -5139,6 +5214,10 @@ function coachShow(i) {{
   host.hidden = false;
   if (state.mode !== 'all') switchTab('all');
   renderStories();
+  const el = coachPick((COACH_STEPS[coachIndex] || {{}}).target);
+  if (el && typeof el.scrollIntoView === 'function') {{
+    el.scrollIntoView({{ block: 'center', inline: 'nearest' }});
+  }}
   coachPlace();
   requestAnimationFrame(coachPlace);
 }}

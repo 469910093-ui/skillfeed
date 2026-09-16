@@ -731,6 +731,8 @@ def user_public(u: dict[str, Any]) -> dict[str, Any]:
         "plan": (u.get("plan") or "free") or "free",
         "plan_until": u.get("plan_until") or "",
         "subscriber": _user_is_subscriber(u),
+        "trust_level": u.get("trust_level") or "new",
+        "approved_count": int(u.get("approved_count") or 0),
     }
 
 

@@ -472,8 +472,8 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertIn('id="coach"', html)
         self.assertIn('id="coachSkip"', html)
         self.assertIn("target: '#storiesWrap'", html)
-        self.assertIn("target: '#feed .actions'", html)
-        self.assertIn("target: '#feed .open-gh'", html)
+        self.assertIn("target: '#feed .coach-react'", html)
+        self.assertIn("target: '#feed .coach-github'", html)
         self.assertIn("target: '#tab-publish'", html)
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
@@ -2451,6 +2451,9 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
             self.assertIn('name="%s"' % field, pub, field + " 是 /api/posts 的契约字段")
         self.assertNotIn('name="body_md"', pub)
         self.assertIn("https://skillfeeder.cn/login", pub)
+        self.assertNotIn("粘 <strong>SKILL.md</strong>", pub)
+        self.assertIn("cTitle", pub)
+        self.assertIn("pubPreview", pub)
 
     def test_the_account_panel_shows_the_real_signed_in_user(self):
         js = self.harness(

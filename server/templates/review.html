@@ -4,33 +4,85 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>审核队列 · SkillFeeder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  body { margin: 0; font: 14px/1.45 "Segoe UI", "PingFang SC", sans-serif; background: #f3f3f1; color: #1a1a1a; }
-  header { display: flex; gap: 12px; align-items: center; padding: 12px 16px; background: #fff; border-bottom: 1px solid #c8c8c8; }
-  h1 { font-size: 16px; margin: 0; }
-  .views button { margin-right: 6px; }
+  :root {
+    --chassis: #0c1020;
+    --bg: #f4f7ff;
+    --ink: #0a1848;
+    --muted: #717171;
+    --line: #cfd6ea;
+    --card: #ffffff;
+    --accent: #0d7377;
+    --brand-purple: #9860e7;
+    --brand-cyan: #49aaeb;
+    --brand-mint: #64e2d4;
+    --brand-grad: linear-gradient(90deg, var(--brand-purple) 0%, var(--brand-cyan) 52%, var(--brand-mint) 100%);
+    --like-ink: #991b1b;
+    --font: "Outfit", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }
+  header {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    padding: 12px 16px;
+    background: rgba(244,247,255,.92);
+    border-bottom: 1px solid var(--line);
+  }
+  .logo {
+    font-weight: 800; font-size: 1.15rem; letter-spacing: -.03em;
+    text-decoration: none; color: var(--ink);
+  }
+  .logo .feeder {
+    color: var(--brand-purple);
+    background-image: var(--brand-grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  h1 { font-size: .95rem; margin: 0; font-weight: 700; }
+  .views { display: flex; flex-wrap: wrap; gap: 6px; }
+  .views button, header a, .panel button {
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .78rem; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+  }
+  .views button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  header a { color: var(--accent); }
   .wrap { display: grid; grid-template-columns: 1fr 300px; gap: 16px; padding: 16px; }
-  table { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; }
-  th, td { border-bottom: 1px solid #c8c8c8; padding: 7px 8px; text-align: left; vertical-align: top; }
+  @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; background: var(--card); font-size: 13px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #eef3ff; font-size: .72rem; color: var(--muted); letter-spacing: .03em; }
   tr { cursor: pointer; }
-  tr.on td { background: #dbe4f0; }
-  .panel { background: #fff; border: 1px solid #c8c8c8; padding: 12px; }
-  textarea { width: 100%; min-height: 72px; }
-  .err { color: #8a1f1f; }
-  .ok { color: #1f5c3a; }
-  a { color: inherit; }
+  tr.on td { background: #eef3ff; }
+  .panel {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+  }
+  .panel p { margin: 0 0 10px; font-size: .85rem; line-height: 1.45; }
+  textarea {
+    width: 100%; min-height: 72px; border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; font: inherit; background: #fff; color: var(--ink);
+  }
+  .err { color: var(--like-ink); font-weight: 600; }
+  .ok { color: var(--accent); font-weight: 600; }
+  a { color: var(--accent); }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  code { font-size: .85em; }
 </style>
 </head>
 <body>
   <header>
-    <h1>SkillFeeder 审核队列</h1>
+    <a class="logo" href="/">Skill<span class="feeder">Feeder</span></a>
+    <h1>审核队列</h1>
     <div class="views">
-      <button type="button" data-status="pending">待审核</button>
+      <button type="button" data-status="pending" class="on">待审核</button>
       <button type="button" data-status="rejected">已拒绝</button>
       <button type="button" data-status="approved">已上架</button>
       <button type="button" data-status="hidden">已隐藏</button>
     </div>
-    <a href="/api/op/queue.csv">导出 CSV（飞书）</a>
+    <a id="csv" href="/api/op/queue.csv">导出 CSV（飞书）</a>
     <a href="/publish">投稿页</a>
   </header>
   <div class="wrap">
@@ -66,6 +118,11 @@ async function load() {
       <td>${esc(p.author_login)} / ${esc(p.trust_level)} · ${esc(p.approved_count)}</td>
       <td>${esc((p.created_at || "").slice(0, 16))}</td>
     </tr>`).join("") || "<tr><td colspan='6'>没有记录</td></tr>";
+  document.querySelectorAll(".views button").forEach(b => {
+    b.classList.toggle("on", b.dataset.status === status);
+  });
+  const csv = document.getElementById("csv");
+  if (csv) csv.href = "/api/op/queue.csv?status=" + encodeURIComponent(status);
   renderPanel();
 }
 
@@ -80,13 +137,13 @@ function renderPanel() {
     ${p.reject_reason ? `<p class="err">上次拒绝：${esc(p.reject_reason)}</p>` : ""}
     <label>拒绝原因</label>
     <textarea id="note" placeholder="拒绝时必填"></textarea>
-    <p>
+    <div class="actions">
       <button type="button" data-act="approve">通过</button>
       <button type="button" data-act="reject">拒绝</button>
       <button type="button" data-act="feature">精选</button>
       <button type="button" data-act="hide">隐藏</button>
       <button type="button" data-act="ban">封禁作者</button>
-    </p>
+    </div>
     <p class="ok" id="log"></p>`;
 }
 
@@ -102,7 +159,6 @@ document.querySelector(".views").addEventListener("click", e => {
   const b = e.target.closest("button[data-status]");
   if (!b) return;
   status = b.dataset.status;
-  document.getElementById("csv") && (document.querySelector("header a").href = "/api/op/queue.csv?status=" + status);
   load();
 });
 

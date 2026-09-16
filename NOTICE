@@ -65,6 +65,13 @@ Apache-2.0 全文见 https://www.apache.org/licenses/LICENSE-2.0
 `Outfit` 采用 SIL Open Font License 1.1，允许商用与网页嵌入。
 经由 Google Fonts 加载，未再分发字体文件本身。
 
+## 商标与品牌
+
+源代码若按 MIT 分发，只覆盖代码。未经书面授权，不得将 **SkillFeeder** /
+**skillfeeder** / **skill-feed** / **Skill Picker** / **skill-picker** 的名称、
+Logo 或 Demo 素材用于销售产品。指名提及不受限。完整说明见兄弟仓库
+skill-picker 的 `TRADEMARK.md`。
+
 ## 内容与封面图
 
 feed 里的仓库信息、头像与封面图来自 GitHub（含 `opengraph.githubassets.com`

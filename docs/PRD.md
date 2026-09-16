@@ -376,7 +376,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | GitHub 登录 | `GET /auth/github` → callback | OAuth；本地可 `SKILLFEED_DEV_AUTH=1` |
 | 当前用户 | `GET /auth/me` | |
 | 登出 | `POST /auth/logout` | |
-| 发布 UGC | `POST /api/posts`、表单 `/api/posts/form`、页 `/publish` | 解析 SKILL.md、打场景、入库 |
+| 发布 UGC | `POST /api/posts`、表单 `/api/posts/form`、页 `/publish` | 只收 GitHub 链接 + 标题 + 文案；进审核后上架 |
 | 我的帖子 | `GET /api/posts/me` | |
 | 反应 | `POST /api/posts/{id}/react` | like/save/bad |
 | 混排 Feed | `GET /api/feed` | UGC + 官方 `feed.json` URL |
@@ -413,8 +413,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 ### 7.2 创作者（UGC）
 
 1. 配置并启动 API，前端配置 `api_base`  
-2. 底栏「发布」或「我的」→ GitHub 登录  
-3. 粘贴 SKILL.md / 仓库链接 → 发布  
+2. 底栏「发布」或「我的」→ 登录（微信 / 手机号；认领仓库需要 GitHub 用户名等于 owner）  
+3. 交 GitHub 链接 + 标题 + 文案 → 进审核；通过后进发现流  
 4. `/api/feed` 混排出现 UGC 卡  
 
 ### 7.3 运营/维护

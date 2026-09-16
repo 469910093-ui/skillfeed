@@ -192,7 +192,10 @@ jobs:
           # pipefail：不加的话 tee 的退出码会盖掉 python 的，refresh 崩了这步照样绿
           set -o pipefail
           python skillfeed.py refresh --force 2>&1 | tee refresh.log
+          # Pages 只发预览壳（0 条目录）。主站 Nginx 必须是全量，
+          # 否则会把 skillfeeder.cn 上的完整信息流覆盖成空壳。
           python skillfeed.py publish-site --out site
+          python skillfeed.py publish-site --out site-full --full
 
       # refresh 的 WARN（无 token / 无 key / 门禁异常）埋在几千行日志里没人看。
       # 这步把它们提成 annotation，显示在 run 页面顶部。
@@ -220,7 +223,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nginx-index
-          path: site/index.html
+          path: site-full/index.html
           if-no-files-found: error
 
   deploy:
@@ -260,6 +263,11 @@ jobs:
           printf '%s\n' "$ALIYUN_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 15 -H "$ALIYUN_HOST" >> ~/.ssh/known_hosts
+          bytes=$(wc -c < nginx-index/index.html)
+          if [ "$bytes" -lt 100000 ]; then
+            echo "::error title=全量站过小::Aliyun 产物只有 ${bytes} 字节，像是预览壳。拒绝覆盖 skillfeeder.cn。"
+            exit 1
+          fi
           scp -o ConnectTimeout=15 nginx-index/index.html \
             "$ALIYUN_USER@$ALIYUN_HOST:/var/www/html/index.html"
           ssh -o ConnectTimeout=15 "$ALIYUN_USER@$ALIYUN_HOST" \

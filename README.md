@@ -53,7 +53,7 @@ python skillfeed.py api --port 8787
 | /auth/wechat | 跳转微信网页授权 |
 | /auth/wechat/callback | 微信回跳，写会话 Cookie |
 | /auth/sms/send · /auth/sms/verify | 短信验证码 |
-| /publish | 发布页（登录后贴 SKILL.md） |
+| /publish | 发布页（登录后交 GitHub 链接 + 标题 + 文案） |
 | /api/feed | UGC + 本地官方索引混排 |
 | /docs | OpenAPI |
 
