@@ -491,7 +491,10 @@ class TestSecurityHeaders(unittest.TestCase):
         csp = self.client.get("/publish").headers["content-security-policy"]
         self.assertIn("style-src", csp)
         self.assertIn("'unsafe-inline'", csp.split("style-src")[1].split(";")[0])
-        self.assertIn('style="display:none"', self.client.get("/publish").text)
+        html = self.client.get("/publish").text
+        self.assertNotIn('style="display:none"', html)
+        self.assertIn('id="okBanner"', html)
+        self.assertIn("hide", html)
 
     def test_api_responses_get_locked_down_csp(self):
         r = self.client.get("/health")

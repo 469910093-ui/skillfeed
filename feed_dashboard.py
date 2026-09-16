@@ -1710,7 +1710,7 @@ const I18N = {{
     coach3Title: '这里可以互动',
     coach3Body: '赞、不感兴趣、收藏都在这一块。点了会记在这台设备，登录后可以带走。',
     coach4Title: '去 GitHub 看怎么用',
-    coach4Body: '看中了就点「打开 GitHub」。我们不代装，你自己决定要不要装到本机。',
+    coach4Body: '看中了就点「打开 GitHub」。我们不代装，装不装由你自己决定。',
     coach5Title: '推广你自己的 skill',
     coach5Body: '底部「发布」可以上传自己的 skill，让别人也刷到。需要先登录。',
     tabsAria: '主导航', backToTop: '回到顶部',
