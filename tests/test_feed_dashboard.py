@@ -1302,6 +1302,12 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
         self.assertIn('Skill<span class="feeder">Feeder</span>', self.html)
         self.assertIn('class="site-foot"', self.html)
 
+    def test_feide_logo_is_the_brand_asset_file(self):
+        """顶栏、页脚、空态都读 docs/brand/assets/logo-feide-transparent.png。"""
+        uri = feed_dashboard.brand_png_data_uri()
+        self.assertTrue(uri.startswith("data:image/png;base64,"))
+        self.assertGreaterEqual(self.html.count(uri), 4)
+
     def test_ring_gradient_stays_in_the_accent_family(self):
         """头像环是渐变最大的曝光面：每张卡片一个。"""
         m = re.search(r"--ring:\s*([^;]+);", self.html)
