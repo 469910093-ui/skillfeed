@@ -489,12 +489,11 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     if ui.get("preview"):
         shown = len(feed.get("items") or [])
         total = int((feed.get("meta") or {}).get("full_item_count") or shown)
-        daily = int(ui.get("free_daily") or 8)
         preview_banner = (
             f'<div class="lite-banner" id="previewBanner" style="display:block">'
-            f'<b>登录后每天可看 {daily} 条</b>，订阅会员不限'
-            f'（全库 {total} 条不随静态站发布）。'
-            f'完整精选请本机 <code>python skillfeed.py refresh</code> 或登录主站。'
+            f'<b>每刷一下，就快人一步</b>。'
+            f'公开页不带全库（共 {total} 条）；登录主站或本机 refresh 看完整精选。'
+            f'发现流全量免费，登录是为了发布自己的 skill。'
             f'</div>'
         )
     logo_src = brand_png_data_uri()
@@ -582,6 +581,11 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
   }}
   .top-left {{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }}
+  .value-line {{
+    margin: 0; font-size: .72rem; font-weight: 500; line-height: 1.3;
+    color: var(--muted); letter-spacing: -.01em; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }}
   /* Skill 实心海军蓝；Feeder 才是 logo 那道紫→薄荷。clip 只挂在 .feeder 上，
      .logo 本身仍是实心字，安卓 WebView 把 clip 弄丢时至少 Skill 还在。 */
   .logo {{
@@ -862,9 +866,26 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     100% {{ opacity: 0; transform: scale(1.4); }}
   }}
 
+  /* 卡片三区：图（可点）/ 自动总结（只读）/ 互动+GitHub（可点） */
+  .zone-media {{
+    background: var(--chassis);
+    cursor: pointer;
+  }}
+  .zone-hit {{
+    background: var(--card);
+  }}
+  .zone-engage {{
+    padding-top: 4px;
+    border-top: 0;
+  }}
+  .zone-engage .open-gh {{
+    background: var(--accent);
+    font-size: .95rem;
+    padding: 12px;
+  }}
+
   .pitch {{
     margin: 0; padding: 12px 14px 6px;
-    background: #fff;
   }}
   .pitch .problem {{
     font-size: .95rem; font-weight: 650; line-height: 1.35;
@@ -896,6 +917,27 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .pitch .doc-link {{
     display: inline-block; margin-top: 10px;
     font-size: .75rem; font-weight: 600; color: var(--link); text-decoration: none;
+  }}
+  /* 盖过 .pitch 默认字号/底色，总结区一眼就是「浅底、只读、不用点」 */
+  .zone-read.pitch {{
+    margin: 0;
+    padding: 12px 14px 10px;
+    background: #eef2fb;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    cursor: default;
+    user-select: text;
+  }}
+  .zone-read .problem {{
+    font-size: .82rem;
+    font-weight: 500;
+    color: #3d4a6b;
+  }}
+  .zone-read .highlights li {{
+    background: rgba(255,255,255,.65);
+    border-color: #d7deee;
+    font-size: .74rem;
+    color: #4a5570;
   }}
   .who.clickable {{ cursor: pointer; }}
   .who.clickable:hover .name {{ text-decoration: underline; }}
@@ -1111,6 +1153,24 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .04em;
     text-transform: uppercase; margin: 18px 0 8px;
   }}
+  /* 子 tab：字重 + 底指示条，不单靠颜色（和底部 nav 同一条 WCAG 1.4.1） */
+  .topics-subs {{
+    display: flex; margin: 0 0 12px; border: 1px solid var(--line);
+    border-radius: 12px; background: #fff; overflow: hidden;
+  }}
+  .topics-subs button {{
+    flex: 1; appearance: none; border: 0; background: transparent;
+    font: inherit; font-size: .82rem; font-weight: 600; color: var(--muted);
+    padding: 10px 8px; cursor: pointer; position: relative;
+  }}
+  .topics-subs button + button {{ border-left: 1px solid var(--line); }}
+  .topics-subs button[aria-selected="true"] {{
+    color: var(--ink); font-weight: 800; background: #eef3ff;
+  }}
+  .topics-subs button[aria-selected="true"]::after {{
+    content: ""; position: absolute; left: 18%; right: 18%; bottom: 0;
+    height: 3px; border-radius: 3px 3px 0 0; background: var(--accent);
+  }}
   .topic-card {{
     background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     padding: 0 0 10px; margin-bottom: 10px;
@@ -1308,6 +1368,44 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   /* lite：skill-picker 发现子页 — 无动态圆环/关注/发布/我的
      「主题分类」留着：它是浏览辅助而不是社交/后台能力，而本机没有合适 skill 时
      按分类逛远程线索恰恰是这张子页存在的理由。 */
+  .coach {{
+    position: fixed; inset: 0; z-index: 120;
+    pointer-events: none;
+  }}
+  .coach[hidden] {{ display: none !important; }}
+  .coach-mask {{
+    position: absolute; inset: 0;
+    background: transparent;
+    pointer-events: auto;
+  }}
+  .coach-spot {{
+    position: absolute; pointer-events: none;
+    border: 2px solid #fff; border-radius: 14px;
+    box-shadow: 0 0 0 9999px rgba(12, 16, 32, .62);
+    transition: top .2s ease, left .2s ease, width .2s ease, height .2s ease;
+  }}
+  .coach-card {{
+    position: absolute; left: 16px; right: 16px;
+    background: #fff; border-radius: 14px; padding: 14px 14px 12px;
+    pointer-events: auto; box-shadow: 0 12px 40px rgba(12, 16, 32, .28);
+    max-width: calc(var(--phone) - 32px); margin: 0 auto;
+  }}
+  .coach-card .step {{
+    font-size: .68rem; font-weight: 700; color: var(--accent); margin: 0 0 6px;
+  }}
+  .coach-card h3 {{ margin: 0 0 6px; font-size: 1.02rem; color: var(--ink); }}
+  .coach-card p {{ margin: 0 0 12px; font-size: .82rem; line-height: 1.45; color: var(--muted); }}
+  .coach-actions {{ display: flex; justify-content: space-between; gap: 8px; }}
+  .coach-actions button {{
+    appearance: none; border: 1px solid var(--line); background: #fff;
+    border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 700;
+    cursor: pointer; color: var(--ink);
+  }}
+  .coach-actions .primary {{
+    background: var(--ink); color: #fff; border-color: var(--ink);
+  }}
+  body.variant-lite .coach {{ display: none !important; }}
+
   body.variant-lite .stories-wrap,
   body.variant-lite #followSheet,
   body.variant-lite .nav[data-mode="publish"],
@@ -1338,6 +1436,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
             {logo_mark}
             Skill<span class="feeder">Feeder</span>
           </div>
+          <p class="value-line" id="productLine" data-i18n="valueLine">每刷一下，就快人一步</p>
         </div>
         <div class="top-actions">
           <div class="lang-toggle" id="langToggle" role="group" aria-label="语言 / Language" data-i18n-aria="langGroup">
@@ -1384,9 +1483,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
          切 tab 换的是同一块内容区，做四个常驻 panel 只会多出三块空 DOM。 -->
     <main class="feed" id="feed" role="tabpanel" aria-labelledby="tab-all"></main>
 
-    <!-- 试用期只对外信息流：发现 + 主题分类 + 本机「我的」（赞藏/关注）。
-         发布入口整颗拿掉——后端 /publish 还在，但公开页不能点到一个交不出去的表单。
-         底部 tab 而不是顶部分段：顶部已经被 header + 圆环 + 搜索占满。 -->
+    <!-- 底栏四入口：发现 / 主题分类 / 发布 / 我的。lite 用 CSS 藏发布和我的。 -->
     <div class="dock">
     <footer class="site-foot">
       <div class="logo foot-logo">
@@ -1403,6 +1500,10 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         <span class="nav-label" data-i18n="navTopics">主题分类</span>
       </button>
+      <button class="nav" type="button" data-mode="publish" role="tab" id="tab-publish" aria-selected="false" aria-controls="feed" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="nav-label" data-i18n="navPublish">发布</span>
+      </button>
       <button class="nav" type="button" data-mode="me" role="tab" id="tab-me" aria-selected="false" aria-controls="feed" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>
         <span class="nav-label" data-i18n="navMe">我的</span>
@@ -1414,6 +1515,20 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   <button class="to-top" id="toTop" type="button" hidden aria-label="回到顶部" data-i18n-aria="backToTop">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V6"/><path d="M6 12l6-6 6 6"/></svg>
   </button>
+
+  <div class="coach" id="coach" hidden role="dialog" aria-modal="true" aria-labelledby="coachTitle">
+    <div class="coach-mask" id="coachMask"></div>
+    <div class="coach-spot" id="coachSpot"></div>
+    <div class="coach-card" id="coachCard">
+      <p class="step" id="coachStep"></p>
+      <h3 id="coachTitle"></h3>
+      <p id="coachBody"></p>
+      <div class="coach-actions">
+        <button type="button" id="coachSkip" data-i18n="coachSkip">Skip</button>
+        <button type="button" class="primary" id="coachNext" data-i18n="coachNext">下一步</button>
+      </div>
+    </div>
+  </div>
 
   <div class="story-viewer" id="storyViewer" aria-hidden="true">
     <div class="sv-progress" id="svProgress"></div>
@@ -1457,7 +1572,7 @@ const IS_LITE = VARIANT === 'lite';
 const PAGE = 6;
 const STORY_MS = 3500;
 const API_BASE = IS_LITE ? '' : (((FEED.ui && FEED.ui.api_base) || '').replace(/\\/$/, ''));
-const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', shown: 0, intent: '', publisher: '' }};
+const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', topicsView: 'scene', shown: 0, intent: '', publisher: '' }};
 const demo = {{ on: false, step: 0, timer: null, focus: -1 }};
 const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
 const publisherCache = {{}};
@@ -1566,16 +1681,34 @@ const I18N = {{
     followScene: '关注行业 · 最新进顶部圆环',
     searchPlaceholder: '短关键词更好，如：去AI味 / 周报 / 剪视频',
     navDiscover: '发现', navTopics: '主题分类', navPublish: '发布', navMe: '我的',
+    valueLine: '每刷一下，就快人一步',
+    coachSkip: 'Skip', coachNext: '下一步', coachDone: '开始刷',
+    coachStepOf: '{{n}} / {{total}}',
+    coach1Title: '关注之后去哪找',
+    coach1Body: '点卡片上的作者或行业就能关注。关注过的最新动态会出现在顶部圆环，也可以到「我的」里管理。',
+    coach2Title: '下滑继续刷',
+    coach2Body: '往下滑动看下一张。每刷一下，就快人一步。',
+    coach3Title: '这里可以互动',
+    coach3Body: '赞、不感兴趣、收藏都在这一块。点了会记在这台设备，登录后可以带走。',
+    coach4Title: '去 GitHub 看怎么用',
+    coach4Body: '看中了就点「打开 GitHub」。我们不代装，你自己决定要不要装到本机。',
+    coach5Title: '推广你自己的 skill',
+    coach5Body: '底部「发布」可以上传自己的 skill，让别人也刷到。需要先登录。',
     tabsAria: '主导航', backToTop: '回到顶部',
 
     /* 主题分类 */
     topicsTitle: '主题分类', topicsSecSection: '按栏目浏览',
+    topicsSubScene: '按主题分类', topicsSubSection: '按栏目',
+    topicsViewAria: '分类方式',
     topicsLead: '一级场景各自成块。点标题只看这一类，点二级场景直接落到更窄的一层。',
+    topicsLeadSection: 'HelloGitHub 栏目各自成块。点标题只看这一栏，点主题落到「栏目 + 主题」。',
     topicsCount: '{{n}} 条 · {{k}} 个二级场景',
+    topicsCountScenes: '{{n}} 条 · {{k}} 个主题',
     topicsCountNoL2: '{{n}} 条',
     topicsBrowse: '只看这类 →',
     topicsNoL2: '这一类当前没有细分到二级场景。',
     topicsEmpty: 'Feed 里暂时没有任何分类条目，先 refresh 一次。',
+    topicsSectionEmpty: 'Feed 里暂时没有任何栏目条目，先 refresh 一次。',
 
     /* 发布 */
     publishTitle: '发布 Skill',
@@ -1774,15 +1907,33 @@ const I18N = {{
     followScene: 'Follow industry · newest goes to top ring',
     searchPlaceholder: 'Short keywords work best, e.g. de-slop / weekly report',
     navDiscover: 'Discover', navTopics: 'Topics', navPublish: 'Post', navMe: 'Me',
+    valueLine: 'Every swipe, one step ahead',
+    coachSkip: 'Skip', coachNext: 'Next', coachDone: 'Start',
+    coachStepOf: '{{n}} / {{total}}',
+    coach1Title: 'Where follows live',
+    coach1Body: 'Follow an author or topic from a card. New posts show up in the top rings, and you can manage them under Me.',
+    coach2Title: 'Swipe for more',
+    coach2Body: 'Scroll down to browse the next card. Every swipe, one step ahead.',
+    coach3Title: 'This row is for you',
+    coach3Body: 'Like, hide, or save here. It stays on this device until you sign in.',
+    coach4Title: 'Open GitHub when you need it',
+    coach4Body: 'Tap Open GitHub to see how to use it. We never install it for you.',
+    coach5Title: 'Share your own skill',
+    coach5Body: 'Use Post at the bottom to publish your skill so others can find it. Sign in first.',
     tabsAria: 'Main navigation', backToTop: 'Back to top',
 
     topicsTitle: 'Topics', topicsSecSection: 'Browse by section',
+    topicsSubScene: 'By topic', topicsSubSection: 'By section',
+    topicsViewAria: 'Browse by',
     topicsLead: 'One block per top-level topic. Tap the heading to see only that topic, or a subcategory to land one level narrower.',
+    topicsLeadSection: 'One block per HelloGitHub section. Tap the heading to see only that section, or a topic to land on section plus topic.',
     topicsCount: '{{n}} items · {{k}} subcategories',
+    topicsCountScenes: '{{n}} items · {{k}} topics',
     topicsCountNoL2: '{{n}} items',
     topicsBrowse: 'Show only this →',
     topicsNoL2: 'Nothing in this topic is split into subcategories yet.',
     topicsEmpty: 'The feed has no categorised items yet — run a refresh first.',
+    topicsSectionEmpty: 'The feed has no section-tagged items yet — run a refresh first.',
 
     publishTitle: 'Post a skill',
     publishLead: 'Hand your own skill to this feed: paste the <strong>SKILL.md</strong> body, or give a public GitHub repository URL. Posted skills join the merged feed and <strong>are never installed for anyone</strong>.',
@@ -2240,7 +2391,7 @@ function matchModeValue(it, mode) {{
   const sec = it.hg_section || '';
   if (mode === 'all' || mode === 'me' || mode === 'saved') return true;
   if (mode === 'skills') return kind === 'skill' || !!it.skill_path || sec === SECTION_SKILLS;
-  if (mode === 'ai') return kind === 'ai' || sec === SECTION_AI;
+  if (mode === 'ai') return kind === 'ai' || kind === 'mcp' || sec === SECTION_AI;
   if (mode === 'oss') return kind !== 'skill' && !it.skill_path && sec !== SECTION_SKILLS;
   return true;
 }}
@@ -3079,14 +3230,14 @@ function cardHtml(it, idx) {{
       data-scene="${{escapeHtml(sceneId)}}" data-l2="${{escapeHtml(it.scene_l2 || '')}}"
       data-owner="${{escapeHtml(owner)}}"
       data-fc="${{it.from_corpus ? '1' : '0'}}">
-    <div class="post-head">
+    <div class="zone-hit post-head">
       <button type="button" class="avatar clickable js-publisher" data-owner="${{escapeHtml(owner)}}" tabindex="-1" aria-hidden="true"><span><b style="background:${{pal[1]}};color:${{readableOn(pal[1])}}">${{escapeHtml(initials(owner))}}</b></span></button>
       <button type="button" class="who clickable js-publisher" data-owner="${{escapeHtml(owner)}}" title="${{escapeHtml(tr('viewPublisher'))}}">
         <span class="name">${{escapeHtml(headName)}}</span>
         <span class="sub">@${{escapeHtml(owner)}} · ${{escapeHtml(sourceLabel(it.source))}} · ★ ${{stars}}</span>
       </button>
     </div>
-    <div class="media js-media${{noCoverCls}}${{bareCoverCls}}" data-idx="${{idx}}">
+    <div class="zone-media media js-media${{noCoverCls}}${{bareCoverCls}}" data-idx="${{idx}}">
       ${{cover ? `<img class="cover" src="${{escapeHtml(safeUrl(cover))}}" alt="${{escapeHtml(headName)}}" loading="lazy" referrerpolicy="no-referrer" />` : ''}}
       ${{(coverTitle || coverDesc) ? `<div class="cover-fallback">
         ${{coverTitle ? `<div class="t">${{escapeHtml(coverTitle)}}</div>` : ''}}
@@ -3101,11 +3252,12 @@ function cardHtml(it, idx) {{
       </div>
       <div class="heart-burst" id="burst-${{idx}}">${{heartSvg(true)}}</div>
     </div>
-    <div class="pitch">
+    <div class="zone-read pitch">
       <div class="problem"><em>${{escapeHtml(tr('solves'))}}</em>${{escapeHtml(pitchText)}}</div>
       ${{hl ? `<ul class="highlights">${{hl}}</ul>` : ''}}
       ${{tips.whoFor ? `<div class="who-for"><em>${{escapeHtml(tr('forWho'))}}</em>${{escapeHtml(tips.whoFor)}}</div>` : ''}}
     </div>
+    <div class="zone-hit zone-engage">
     <div class="actions">
       <div class="actions-left">
         <button class="act js-like ${{isLiked ? 'liked' : ''}}" type="button" data-fn="${{escapeHtml(fn)}}" aria-label="${{escapeHtml(tr(isLiked ? 'likedAria' : 'likeAria'))}}">${{heartSvg(isLiked)}}</button>
@@ -3116,6 +3268,7 @@ function cardHtml(it, idx) {{
       <button class="act js-save ${{isSaved ? 'saved' : ''}}" type="button" aria-label="${{escapeHtml(tr(isSaved ? 'savedAria' : 'saveAria'))}}">${{bookmarkSvg(isSaved)}}</button>
     </div>
     <div class="open-row{install_row_cls}"><a class="open-gh js-open" href="${{escapeHtml(safeUrl(hasSkillDoc(it) ? skillUrl : url))}}" target="_blank" rel="noopener">${{escapeHtml(tr('openGithub'))}}</a>{install_slot}</div>
+    </div>
   </article>`;
 }}
 
@@ -3228,10 +3381,11 @@ function renderStories() {{
   }}
   const hide = state.mode === 'me' || state.mode === 'saved' || state.mode === 'publisher';
   const nFollow = followBuilders.size + followIndustries.size;
-  // 没关注任何人时圆环只有两个「+」，七个角色都说这是空货架占门口。
-  // 加关注的入口留在「我的」，首屏不再教一套还没发生的社交。
-  wrap.classList.toggle('hidden', hide || nFollow === 0);
-  if (hide || nFollow === 0) {{ el.innerHTML = ''; return; }}
+  const coaching = !!(document.body && document.body.classList
+    && document.body.classList.contains('coaching'));
+  // 没关注时默认藏圆环；首访引导蒙版期间例外，让用户看见「关注后落在这里」。
+  wrap.classList.toggle('hidden', hide || (nFollow === 0 && !coaching));
+  if (hide || (nFollow === 0 && !coaching)) {{ el.innerHTML = ''; return; }}
 
   const rings = [];
   if (nFollow > 0) {{
@@ -3368,10 +3522,7 @@ function accountMode() {{
    已有的 ?q= / ?intent= / ?demo=1 照旧，这里只多认一个键。 */
 function tabAllowed(mode) {{
   if (!Object.prototype.hasOwnProperty.call(TAB_QUERY, mode)) return false;
-  // 试用期对外只做信息流：发布整条链路先关。?tab=publish 也不能把它逼出来。
-  // 代码和 /publish 后端都留着，下一期接微信登录后再开入口。
-  if (mode === 'publish') return false;
-  // lite 是 skill-picker 发现子页，按产品约定不含关注/个人后台
+  // lite 是 skill-picker 发现子页，按产品约定不含关注/发布/个人后台
   if (IS_LITE) return mode === 'all' || mode === 'topics';
   return true;
 }}
@@ -3413,8 +3564,20 @@ function tabSearch(search, mode) {{
   else params.delete('scene');
   if (tab === 'all' && state.scene_l2 && state.scene_l2 !== 'all') params.set('l2', state.scene_l2);
   else params.delete('l2');
+  if (tab === 'topics' && state.topicsView === 'section') params.set('view', 'section');
+  else params.delete('view');
   const q = params.toString();
   return q ? ('?' + q) : '';
+}}
+
+function topicsViewFromQuery(search) {{
+  let want = '';
+  try {{
+    want = (new URLSearchParams(search || '').get('view') || '').trim().toLowerCase();
+  }} catch (e) {{
+    want = '';
+  }}
+  return want === 'section' ? 'section' : 'scene';
 }}
 
 function syncTabUrl() {{
@@ -3520,44 +3683,98 @@ function topicRows() {{
     .sort((a, b) => b.n - a.n);
 }}
 
+function countSectionScene(secId, sceneId) {{
+  return allPool().filter(it => {{
+    const sec = it.hg_section || '';
+    if (!sec || (sec !== secId && !sec.includes(secId))) return false;
+    return (it.scene || 'other') === sceneId;
+  }}).length;
+}}
+
+function sectionRows() {{
+  return sectionOptions()
+    .filter(s => s.id !== 'all')
+    .map(s => {{
+      const n = countSection(s.id);
+      const kids = SCENES
+        .map(sc => ({{
+          id: sc.id, label: chipLabel(sc), n: countSectionScene(s.id, sc.id),
+        }}))
+        .filter(k => k.n > 0);
+      return {{ id: s.id, label: s.label, n, kids }};
+    }})
+    .filter(r => r.n > 0)
+    .sort((a, b) => b.n - a.n);
+}}
+
+function topicCardHtml(r, kind) {{
+  const pal = kind === 'section' ? paletteFor(r.id) : paletteForScene(r.id);
+  const countKey = r.kids.length
+    ? (kind === 'section' ? 'topicsCountScenes' : 'topicsCount')
+    : 'topicsCountNoL2';
+  const count = trn(countKey, {{ n: r.n, k: r.kids.length }});
+  const kids = r.kids.length
+    ? `<div class="topic-l2">` + r.kids.map(k => kind === 'section'
+        ? `<button type="button" class="pill js-topic-section" data-id="${{escapeHtml(r.id)}}" data-scene="${{escapeHtml(k.id)}}">${{escapeHtml(k.label)}} · ${{k.n}}</button>`
+        : `<button type="button" class="pill js-topic" data-scene="${{escapeHtml(r.id)}}" data-l2="${{escapeHtml(k.id)}}">${{escapeHtml(k.label)}} · ${{k.n}}</button>`
+      ).join('') + `</div>`
+    : (kind === 'section' ? '' : `<p class="topic-none">${{escapeHtml(tr('topicsNoL2'))}}</p>`);
+  const head = kind === 'section'
+    ? `class="topic-head js-topic-section" data-id="${{escapeHtml(r.id)}}"`
+    : `class="topic-head js-topic" data-scene="${{escapeHtml(r.id)}}" data-l2="all"`;
+  return `<div class="topic-card">
+    <button type="button" ${{head}}>
+      <span class="dot" aria-hidden="true" style="background:linear-gradient(180deg,${{pal[0]}},${{pal[2]}})"></span>
+      <span class="meta"><b>${{escapeHtml(r.label)}}</b><span>${{escapeHtml(count)}}</span></span>
+      <span class="go">${{escapeHtml(tr('topicsBrowse'))}}</span>
+    </button>
+    ${{kids}}
+  </div>`;
+}}
+
+function topicsSubsHtml() {{
+  const view = state.topicsView === 'section' ? 'section' : 'scene';
+  const btn = (id, labelKey) => {{
+    const on = view === id;
+    return `<button type="button" class="js-topics-view" role="tab" id="topics-view-${{id}}"
+      data-view="${{id}}" aria-selected="${{on ? 'true' : 'false'}}"
+      tabindex="${{on ? '0' : '-1'}}">${{escapeHtml(tr(labelKey))}}</button>`;
+  }};
+  return `<div class="topics-subs" role="tablist" aria-label="${{escapeHtml(tr('topicsViewAria'))}}">
+    ${{btn('scene', 'topicsSubScene')}}
+    ${{btn('section', 'topicsSubSection')}}
+  </div>`;
+}}
+
 function topicsPanelHtml() {{
-  const rows = topicRows();
-  if (!rows.length) {{
-    return `<div class="topics-panel"><h2>${{escapeHtml(tr('topicsTitle'))}}</h2>
-      <p class="lead">${{escapeHtml(tr('topicsEmpty'))}}</p></div>`;
-  }}
-  const cards = rows.map(r => {{
-    const pal = paletteForScene(r.id);
-    const count = r.kids.length
-      ? trn('topicsCount', {{ n: r.n, k: r.kids.length }})
-      : trn('topicsCountNoL2', {{ n: r.n }});
-    const kids = r.kids.length
-      ? `<div class="topic-l2">` + r.kids.map(k =>
-          `<button type="button" class="pill js-topic" data-scene="${{escapeHtml(r.id)}}" data-l2="${{escapeHtml(k.id)}}">${{escapeHtml(k.label)}} · ${{k.n}}</button>`
-        ).join('') + `</div>`
-      : `<p class="topic-none">${{escapeHtml(tr('topicsNoL2'))}}</p>`;
-    return `<div class="topic-card">
-      <button type="button" class="topic-head js-topic" data-scene="${{escapeHtml(r.id)}}" data-l2="all">
-        <span class="dot" aria-hidden="true" style="background:linear-gradient(180deg,${{pal[0]}},${{pal[2]}})"></span>
-        <span class="meta"><b>${{escapeHtml(r.label)}}</b><span>${{escapeHtml(count)}}</span></span>
-        <span class="go">${{escapeHtml(tr('topicsBrowse'))}}</span>
-      </button>
-      ${{kids}}
-    </div>`;
-  }}).join('');
-  const secs = sectionOptions().filter(s => s.id !== 'all');
-  const sections = secs.length
-    ? `<div class="sec">${{escapeHtml(tr('topicsSecSection'))}}</div>
-       <div class="topic-l2">` + secs.map(s =>
-         `<button type="button" class="pill js-topic-section" data-id="${{escapeHtml(s.id)}}">${{escapeHtml(s.label)}} · ${{countSection(s.id)}}</button>`
-       ).join('') + `</div>`
-    : '';
+  const view = state.topicsView === 'section' ? 'section' : 'scene';
+  const rows = view === 'section' ? sectionRows() : topicRows();
+  const emptyKey = view === 'section' ? 'topicsSectionEmpty' : 'topicsEmpty';
+  const leadKey = view === 'section' ? 'topicsLeadSection' : 'topicsLead';
+  const cards = rows.length
+    ? rows.map(r => topicCardHtml(r, view)).join('')
+    : `<p class="lead">${{escapeHtml(tr(emptyKey))}}</p>`;
   return `<div class="topics-panel">
     <h2>${{escapeHtml(tr('topicsTitle'))}}</h2>
-    <p class="lead">${{escapeHtml(tr('topicsLead'))}}</p>
+    ${{topicsSubsHtml()}}
+    ${{rows.length ? `<p class="lead">${{escapeHtml(tr(leadKey))}}</p>` : ''}}
     ${{cards}}
-    ${{sections}}
   </div>`;
+}}
+
+function switchTopicsView(view) {{
+  state.topicsView = view === 'section' ? 'section' : 'scene';
+  render(true);
+  syncTabUrl();
+}}
+
+function topicsViewKeyTarget(key, current) {{
+  const views = ['scene', 'section'];
+  const at = current === 'section' ? 1 : 0;
+  if (key === 'ArrowRight' || key === 'ArrowLeft') return views[1 - at];
+  if (key === 'Home') return views[0];
+  if (key === 'End') return views[1];
+  return '';
 }}
 
 function goTopic(sceneId, l2Id) {{
@@ -3566,6 +3783,18 @@ function goTopic(sceneId, l2Id) {{
   state.scene = sceneId || 'all';
   state.scene_l2 = (l2Id && l2Id !== 'all') ? l2Id : 'all';
   state.section = 'all';
+  state.shown = 0;
+  render(true);
+  syncTabUrl();
+  scrollToTop();
+}}
+
+function goSection(sectionId, sceneId) {{
+  state.mode = 'all';
+  state.publisher = '';
+  state.section = sectionId || 'all';
+  state.scene = (sceneId && sceneId !== 'all') ? sceneId : 'all';
+  state.scene_l2 = 'all';
   state.shown = 0;
   render(true);
   syncTabUrl();
@@ -3583,14 +3812,12 @@ function publishFormHtml() {{
     : `<p class="pub-msg" id="pubMsg"></p>`;
   const login = loginUrl();
   return `<form class="pub-form" id="pubForm">
-    <label for="pubTitle">${{escapeHtml(tr('publishFieldTitle'))}}</label>
-    <input id="pubTitle" name="title" type="text" maxlength="120" autocomplete="off">
     <label for="pubUrl">${{escapeHtml(tr('publishFieldUrl'))}}</label>
-    <input id="pubUrl" name="github_url" type="url" inputmode="url" placeholder="https://github.com/owner/repo" autocomplete="off">
+    <input id="pubUrl" name="github_url" type="url" inputmode="url" placeholder="https://github.com/owner/repo" maxlength="240" autocomplete="off">
+    <label for="pubTitle">${{escapeHtml(tr('publishFieldTitle'))}}</label>
+    <input id="pubTitle" name="title" type="text" maxlength="60" autocomplete="off">
     <label for="pubDesc">${{escapeHtml(tr('publishFieldDesc'))}}</label>
-    <input id="pubDesc" name="description" type="text" maxlength="200" autocomplete="off">
-    <label for="pubBody">${{escapeHtml(tr('publishFieldBody'))}}</label>
-    <textarea id="pubBody" name="body_md" maxlength="20000"></textarea>
+    <input id="pubDesc" name="description" type="text" maxlength="280" autocomplete="off">
     <p class="hint">${{escapeHtml(tr('publishHint'))}}</p>
     ${{msg}}
     <div class="me-actions">
@@ -3735,7 +3962,6 @@ async function submitPost(form) {{
     title: val('pubTitle'),
     github_url: val('pubUrl'),
     description: val('pubDesc'),
-    body_md: val('pubBody'),
   }};
   if (btn) {{ btn.disabled = true; btn.textContent = tr('publishSubmitting'); }}
   if (msg) {{ msg.className = 'pub-msg'; msg.textContent = ''; }}
@@ -3847,24 +4073,9 @@ function acctPostsHtml() {{
 }}
 
 function acctPlanHtml() {{
-  const quota = ACCT.quota || (FEED.ui && FEED.ui.quota) || null;
-  const u = ACCT.user || {{}};
-  if (!u.id && !quota) return '';
-  const sub = !!(u.subscriber || (quota && quota.unlimited));
-  let body;
-  if (sub) {{
-    body = `<p>${{escapeHtml(tr('quotaSubscriber'))}}</p>`;
-  }} else {{
-    const left = quota ? quota.remaining : '?';
-    const lim = quota ? quota.limit : 8;
-    body = `<p>${{escapeHtml(trn('quotaFreeToday', {{ n: left, limit: lim }}))}}</p>
-      <p>${{escapeHtml(tr('quotaSubscribeHint'))}}</p>
-      <form id="meActivateForm" class="me-actions">
-        <input id="meActivateCode" maxlength="64" placeholder="${{escapeHtml(tr('quotaCodePh'))}}">
-        <button type="submit">${{escapeHtml(tr('quotaActivate'))}}</button>
-      </form>
-      <p id="meActivateMsg" class="pub-msg"></p>`;
-  }}
+  // 发现流全量免费：不再在「我的」挂每天 N 条。激活码留给内部测试开通。
+  if (!ACCT.devAuth) return '';
+  let body = `<p>${{escapeHtml(tr('valueLine'))}}</p>`;
   if (ACCT.devAuth) {{
     body += `<div class="me-actions" style="margin-top:8px">
       <button type="button" class="js-pay-dev">${{escapeHtml(tr('payDevBtn'))}}</button>
@@ -3941,7 +4152,8 @@ async function payDevCheckout() {{
 }}
 
 function paintQuotaBanner(quota) {{
-  if (!quota) return;
+  // 获客定案：发现流全量免费，不再刷额度条。
+  return;
   let host = document.getElementById('quotaBanner');
   if (!host) {{
     host = document.createElement('div');
@@ -4595,6 +4807,11 @@ document.getElementById('feed').addEventListener('click', (e) => {{
   const t = e.target;
   if (!(t instanceof Element)) return;
 
+  const viewBtn = t.closest('.js-topics-view');
+  if (viewBtn) {{
+    switchTopicsView(viewBtn.dataset.view || 'scene');
+    return;
+  }}
   const topic = t.closest('.js-topic');
   if (topic) {{
     goTopic(topic.dataset.scene || 'all', topic.dataset.l2 || 'all');
@@ -4602,14 +4819,7 @@ document.getElementById('feed').addEventListener('click', (e) => {{
   }}
   const topicSec = t.closest('.js-topic-section');
   if (topicSec) {{
-    state.mode = 'all';
-    state.scene = 'all';
-    state.scene_l2 = 'all';
-    state.section = topicSec.dataset.id || 'all';
-    state.shown = 0;
-    render(true);
-    syncTabUrl();
-    scrollToTop();
+    goSection(topicSec.dataset.id || 'all', topicSec.dataset.scene || 'all');
     return;
   }}
   if (t.closest('.js-acct-logout')) {{
@@ -4714,6 +4924,17 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     sendFeedback('opened_github', itemPayload(card));
     return;
   }}
+}});
+
+document.getElementById('feed').addEventListener('keydown', (e) => {{
+  const btn = e.target && e.target.closest && e.target.closest('.js-topics-view');
+  if (!btn) return;
+  const next = topicsViewKeyTarget(e.key, btn.dataset.view || state.topicsView);
+  if (!next) return;
+  e.preventDefault();
+  switchTopicsView(next);
+  const el = document.getElementById('topics-view-' + next);
+  if (el && el.focus) el.focus();
 }});
 
 let lastTap = 0;
@@ -4824,6 +5045,7 @@ try {{
   }}
   const tab = tabFromQuery(location.search);
   if (tab && !scene) state.mode = tab;
+  if (tab === 'topics') state.topicsView = topicsViewFromQuery(location.search);
 }})();
 
 renderIntentKeys();
@@ -4831,6 +5053,123 @@ applyLang(LANG);
 hydrateLiveFeed();
 syncToTop();
 if (state.mode === 'me' || state.mode === 'publish') loadAccount();
+
+/* ---------- 首访引导蒙版 ---------- */
+const COACH_KEY = 'sf_onboard_v1';
+const COACH_STEPS = [
+  {{ id: 'follow', target: '#storiesWrap', title: 'coach1Title', body: 'coach1Body' }},
+  {{ id: 'swipe', target: '#feed .post, #feed', title: 'coach2Title', body: 'coach2Body' }},
+  {{ id: 'react', target: '#feed .actions', title: 'coach3Title', body: 'coach3Body' }},
+  {{ id: 'github', target: '#feed .open-gh', title: 'coach4Title', body: 'coach4Body' }},
+  {{ id: 'publish', target: '#tab-publish', title: 'coach5Title', body: 'coach5Body' }},
+];
+let coachIndex = 0;
+
+function coachShouldStart() {{
+  if (IS_LITE) return false;
+  const params = new URLSearchParams(location.search);
+  if (params.get('onboard') === '1') return true;
+  if (params.get('demo') === '1') return false;
+  try {{ return localStorage.getItem(COACH_KEY) !== '1'; }} catch (e) {{ return true; }}
+}}
+
+function coachPick(sel) {{
+  const parts = String(sel || '').split(',').map(s => s.trim()).filter(Boolean);
+  for (const part of parts) {{
+    const el = document.querySelector(part);
+    if (el && el.offsetParent !== null) return el;
+    if (el && !el.classList.contains('hidden')) return el;
+  }}
+  return document.querySelector(parts[0] || '') || null;
+}}
+
+function coachPlace() {{
+  const step = COACH_STEPS[coachIndex];
+  const host = document.getElementById('coach');
+  const spot = document.getElementById('coachSpot');
+  const card = document.getElementById('coachCard');
+  const next = document.getElementById('coachNext');
+  if (!step || !host || !spot || !card) return;
+  document.getElementById('coachStep').textContent = trn('coachStepOf', {{
+    n: coachIndex + 1, total: COACH_STEPS.length,
+  }});
+  document.getElementById('coachTitle').textContent = tr(step.title);
+  document.getElementById('coachBody').textContent = tr(step.body);
+  if (next) next.textContent = coachIndex === COACH_STEPS.length - 1 ? tr('coachDone') : tr('coachNext');
+  const el = coachPick(step.target);
+  const pad = 8;
+  const shell = document.querySelector('.shell');
+  const frame = shell ? shell.getBoundingClientRect() : {{
+    top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight,
+  }};
+  const viewTop = Math.max(8, frame.top + 8);
+  const viewLeft = Math.max(8, frame.left + 8);
+  const viewRight = Math.min(window.innerWidth - 8, frame.right - 8);
+  const viewBottom = Math.min(window.innerHeight - 8, frame.bottom - 8);
+  let top = 80, left = viewLeft, width = 200, height = 80;
+  if (el) {{
+    const r = el.getBoundingClientRect();
+    top = Math.max(viewTop, r.top - pad);
+    left = Math.max(viewLeft, r.left - pad);
+    width = Math.min(viewRight - left, r.width + pad * 2);
+    height = Math.min(viewBottom - top, r.height + pad * 2);
+  }}
+  spot.style.top = top + 'px';
+  spot.style.left = left + 'px';
+  spot.style.width = Math.max(48, width) + 'px';
+  spot.style.height = Math.max(36, height) + 'px';
+  const cardH = card.offsetHeight || 160;
+  const below = top + height + 12;
+  const above = top - cardH - 12;
+  const preferAbove = top > (viewTop + viewBottom) / 2;
+  let cardTop = preferAbove ? above : below;
+  if (cardTop < viewTop || cardTop + cardH > viewBottom) {{
+    cardTop = preferAbove
+      ? Math.min(below, viewBottom - cardH)
+      : Math.max(above, viewTop);
+  }}
+  card.style.top = Math.max(viewTop, Math.min(cardTop, viewBottom - cardH)) + 'px';
+}}
+
+function coachShow(i) {{
+  coachIndex = i;
+  const host = document.getElementById('coach');
+  if (!host) return;
+  if (document.body && document.body.classList) document.body.classList.add('coaching');
+  host.hidden = false;
+  if (state.mode !== 'all') switchTab('all');
+  renderStories();
+  coachPlace();
+  requestAnimationFrame(coachPlace);
+}}
+
+function coachFinish() {{
+  const host = document.getElementById('coach');
+  if (host) host.hidden = true;
+  if (document.body && document.body.classList) document.body.classList.remove('coaching');
+  try {{ localStorage.setItem(COACH_KEY, '1'); }} catch (e) {{}}
+  renderStories();
+}}
+
+function coachNext() {{
+  if (coachIndex >= COACH_STEPS.length - 1) {{ coachFinish(); return; }}
+  coachShow(coachIndex + 1);
+}}
+
+function bindCoach() {{
+  const host = document.getElementById('coach');
+  if (!host || IS_LITE) return;
+  const skip = document.getElementById('coachSkip');
+  const next = document.getElementById('coachNext');
+  if (skip) skip.addEventListener('click', coachFinish);
+  if (next) next.addEventListener('click', coachNext);
+  window.addEventListener('resize', () => {{
+    if (!host.hidden) coachPlace();
+  }});
+}}
+
+bindCoach();
+if (coachShouldStart()) setTimeout(() => coachShow(0), 360);
 
 if (!IS_LITE && new URLSearchParams(location.search).get('demo') === '1') {{
   document.body.classList.add('show-demo-tools');

@@ -52,15 +52,90 @@ class TestPublishSite(unittest.TestCase):
             html = (out / "index.html").read_text(encoding="utf-8")
             self.assertIn('"hosting": "pages"', html)
             self.assertIn("variant-full", html)
-            self.assertIn("demo-skill", html)
-            self.assertIn("Body preview text", html)
+            self.assertEqual(published["items"], [])
+            self.assertNotIn("demo-skill", html)
             lite = (out / "embed.html").read_text(encoding="utf-8")
             self.assertIn("variant-lite", lite)
-            self.assertIn("demo-skill", lite)
+            self.assertNotIn("demo-skill", lite)
+            self.assertTrue(published.get("ui", {}).get("preview"))
+            self.assertEqual(published["meta"]["full_item_count"], 1)
+            self.assertEqual(published["corpus"], [])
+            self.assertNotIn("details", published.get("gates") or {})
+            self.assertIn("每刷一下，就快人一步", html)
             verify = out / "MP_verify_0f8Gbjnu3FsQQhRC.txt"
             self.assertTrue(verify.exists(), verify)
             self.assertEqual(verify.read_text(encoding="utf-8").strip(),
                              "0f8Gbjnu3FsQQhRC")
+
+
+class TestPublicPreviewCutsTheCatalog(unittest.TestCase):
+    """Pages 默认只发预览：条数封顶，打分和语料库留下。"""
+
+    def _publish(self, extra_args):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "data"
+            home.mkdir()
+            out = Path(tmp) / "site"
+            items = []
+            for i in range(25):
+                items.append({
+                    "full_name": f"acme/skill-{i}",
+                    "name": f"skill-{i}",
+                    "description": "demo description long enough",
+                    "url": f"https://github.com/acme/skill-{i}",
+                    "personal_score": 0.9,
+                    "rank_why": "secret ranking",
+                    "from_corpus": True,
+                })
+            feed = {
+                "generated_at": "2026-09-10T00:00:00+00:00",
+                "items": items,
+                "corpus": [{"id": "keep-me-off-pages"}],
+                "gates": {"input": 25, "passed": 25, "rejected": {},
+                          "details": [{"repo": "acme/skill-0", "score": 0.9}]},
+                "ui": {"cta": "open_github"},
+            }
+            (home / "feed.json").write_text(
+                json.dumps(feed, ensure_ascii=False), encoding="utf-8",
+            )
+            prev = os.environ.get("SKILLFEED_HOME")
+            try:
+                os.environ["SKILLFEED_HOME"] = str(home)
+                skillfeed.refresh_paths()
+                rc = skillfeed.cmd_publish_site(["--out", str(out), *extra_args])
+            finally:
+                if prev is None:
+                    os.environ.pop("SKILLFEED_HOME", None)
+                else:
+                    os.environ["SKILLFEED_HOME"] = prev
+                skillfeed.refresh_paths()
+            self.assertEqual(rc, 0)
+            published = json.loads((out / "feed.json").read_text(encoding="utf-8"))
+            html = (out / "index.html").read_text(encoding="utf-8")
+            return published, html
+
+    def test_default_publish_is_an_empty_public_shell(self):
+        published, html = self._publish([])
+        self.assertEqual(len(published["items"]), 0)
+        self.assertEqual(published["meta"]["full_item_count"], 25)
+        self.assertEqual(published["corpus"], [])
+        self.assertNotIn("details", published.get("gates") or {})
+        self.assertIn("每刷一下，就快人一步", html)
+        self.assertNotIn("rank_why", html)
+
+    def test_preview_flag_can_still_tease_a_few_cards(self):
+        published, html = self._publish(["--preview", "3"])
+        self.assertEqual(len(published["items"]), 3)
+        self.assertNotIn("personal_score", published["items"][0])
+        self.assertNotIn("rank_why", published["items"][0])
+        self.assertIn("每刷一下，就快人一步", html)
+
+    def test_full_flag_keeps_the_inventory(self):
+        published, html = self._publish(["--full"])
+        self.assertEqual(len(published["items"]), 25)
+        self.assertEqual(published["corpus"][0]["id"], "keep-me-off-pages")
+        self.assertIn("personal_score", published["items"][0])
+        self.assertNotIn('id="previewBanner"', html)
 
 
 class TestCustomDomain(unittest.TestCase):

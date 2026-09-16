@@ -294,7 +294,7 @@ class TestFeedDashboard(unittest.TestCase):
         self.assertIn("下滑加载更多", html)
         self.assertIn("内容创作", html)
         self.assertIn("opengraph.githubassets.com", html)
-        self.assertIn("class=\"pitch\"", html)
+        self.assertIn("class=\"zone-read pitch\"", html)
         self.assertIn("extractHighlightsClient", html)
         self.assertIn("js-publisher", html)
         self.assertIn("openPublisher", html)
@@ -408,7 +408,7 @@ class TestCardDedupeJs(unittest.TestCase):
         self.assertEqual(card.count("cloud-mail<"), 1, card)
         self.assertNotIn("cover-fallback", card)
         # bare 要在渲染时就打上：no-cover 是封面图 onerror 时才动态加的
-        self.assertIn('class="media js-media bare"', card)
+        self.assertIn('class="zone-media media js-media bare"', card)
         # 只剩一份时留全量文案，不留「和人…」这种断句
         self.assertIn("人机验证", card)
 
@@ -467,6 +467,14 @@ class TestFirstScreenChrome(unittest.TestCase):
         header = re.search(r'<header class="topbar">.*?</header>', html, flags=re.S).group(0)
         self.assertIn('id="searchWrap"', header, "搜索必须吸在顶栏里，不能再掉到顶栏下面")
         self.assertIn('id="btnRefresh"', header)
+        self.assertIn('id="productLine"', header)
+        self.assertIn("每刷一下，就快人一步", header)
+        self.assertIn('id="coach"', html)
+        self.assertIn('id="coachSkip"', html)
+        self.assertIn("target: '#storiesWrap'", html)
+        self.assertIn("target: '#feed .actions'", html)
+        self.assertIn("target: '#feed .open-gh'", html)
+        self.assertIn("target: '#tab-publish'", html)
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
     def test_empty_follows_hide_story_rings(self):
@@ -564,6 +572,7 @@ class TestPanelI18n(unittest.TestCase):
         ("mePanelHtml", "mePanelHtml()"),
         ("mePanelHtml/followed", "mePanelHtml()"),
         ("topicsPanelHtml", "topicsPanelHtml()"),
+        ("topicsPanelHtml/section", "(state.topicsView = 'section', topicsPanelHtml())"),
         # API_BASE 在 harness 里固定成空串，所以这里走的是「无后端」那一支
         ("publishPanelHtml/no-api", "publishPanelHtml()"),
         ("emptyHtml/no-intent", "emptyHtml([])"),
@@ -1056,9 +1065,11 @@ class TestContrastTokens(unittest.TestCase):
         PANEL 现在只铺在 highlights 上。哪天有人拿它去铺别的块，那块里的
         --muted（在它上面只有 4.45，掉出 AA）就会悄悄不合格。
         """
+        # 只扫 <style>：整页 HTML 里 JS 花括号太多，[^{}]* 会扫成超线性。
         # 先剥 CSS 注释：这个色板的注释里写满了实测色值
         # （`/* 在 #f6f8fa 上 5.15:1 */`），不剥会把提到它的规则一起算进来。
-        css = re.sub(r"/\*.*?\*/", "", self.html, flags=re.S)
+        style = "".join(re.findall(r"<style>(.*?)</style>", self.html, flags=re.S))
+        css = re.sub(r"/\*.*?\*/", "", style, flags=re.S)
         rules = [m.group(1).strip() for m in re.finditer(
             r"([^{}]+)\{[^{}]*" + re.escape(self.PANEL) + r"[^{}]*\}", css)]
         self.assertEqual(
@@ -1753,6 +1764,16 @@ class TestKeyboardReachableControls(unittest.TestCase):
                 self.assertNotRegex(card, r'<div class="who clickable')
                 self.assertNotRegex(card, r'<span class="badge [^"]*clickable')
 
+    def test_card_splits_media_summary_and_actions(self):
+        card = self.card()
+        self.assertIn("zone-media", card)
+        self.assertIn("zone-read", card)
+        self.assertIn("zone-engage", card)
+        self.assertLess(card.find("zone-media"), card.find("zone-read"))
+        self.assertLess(card.find("zone-read"), card.find("zone-engage"))
+        self.assertIn(".zone-read.pitch", self.html)
+        self.assertIn("background: #eef2fb", self.html)
+
     def test_avatar_stays_clickable_but_out_of_the_a11y_tree(self):
         """头像和作者行点的是同一个功能，头像重复占 Tab 序只会让键盘更难用。"""
         card = self.card()
@@ -2221,8 +2242,10 @@ TOPIC_FEED = {
 # 出现的历史键，全表比对会把这条测试变成一个待修的旧账，拦不住新的漏译。
 NEW_I18N_KEYS = (
     "navTopics", "tabsAria", "backToTop",
-    "topicsTitle", "topicsSecSection", "topicsLead", "topicsCount",
-    "topicsCountNoL2", "topicsBrowse", "topicsNoL2", "topicsEmpty",
+    "topicsTitle", "topicsSecSection", "topicsSubScene", "topicsSubSection",
+    "topicsViewAria", "topicsLead", "topicsLeadSection", "topicsCount",
+    "topicsCountScenes", "topicsCountNoL2", "topicsBrowse", "topicsNoL2",
+    "topicsEmpty", "topicsSectionEmpty",
     "publishTitle", "publishLead", "publishFieldTitle", "publishFieldUrl",
     "publishFieldDesc", "publishFieldBody", "publishHint", "publishSubmit",
     "publishSubmitting", "publishOkMsg", "publishNeedLogin", "publishLoginBtn",
@@ -2234,11 +2257,15 @@ NEW_I18N_KEYS = (
     "acctNoPosts", "acctPostsNeedLogin", "acctServerCounts", "acctLocalCounts",
     "acctReactionsPending",
     "refreshAria", "refreshTitle", "reshuffleToast",
+    "valueLine", "coachSkip", "coachNext", "coachDone", "coachStepOf",
+    "coach1Title", "coach1Body", "coach2Title", "coach2Body",
+    "coach3Title", "coach3Body", "coach4Title", "coach4Body",
+    "coach5Title", "coach5Body",
 )
 
 
 class TestFourEntryPointsSkeleton(unittest.TestCase):
-    """发现 / 主题分类 / 我的：试用期公开页的语义与显隐。发布入口已拿掉。"""
+    """发现 / 主题分类 / 发布 / 我的。"""
 
     @classmethod
     def setUpClass(cls):
@@ -2252,11 +2279,11 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertIn('role="tablist"', bar)
         self.assertIn('data-i18n-aria="tabsAria"', bar)
         tabs = re.findall(r'<button class="nav[^>]*role="tab"[^>]*>', self.full)
-        self.assertEqual(3, len(tabs), "试用期三个入口：发现 / 主题分类 / 我的")
-        self.assertNotIn('id="tab-publish"', self.full)
-        self.assertFalse(
+        self.assertEqual(4, len(tabs), "四个入口：发现 / 主题分类 / 发布 / 我的")
+        self.assertIn('id="tab-publish"', self.full)
+        self.assertTrue(
             any('data-mode="publish"' in t for t in tabs),
-            "发布 tab 还挂在公开页的 tablist 上")
+            "发布 tab 必须出现在公开页，首访引导要指到它")
         for tag in tabs:
             self.assertRegex(tag, r'aria-selected="(true|false)"')
             self.assertIn('aria-controls="feed"', tag)
@@ -2332,15 +2359,14 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
     def test_every_tab_survives_a_url_roundtrip(self):
         """刷新/分享不能丢当前 tab，所以 query ↔ mode 必须是一对一的。"""
         got = self.harness().eval(
-            "['all','topics','me'].map(m =>"
+            "['all','topics','publish','me'].map(m =>"
             " (state.mode = m, tabFromQuery(tabSearch('', m)) || 'all'))")
-        self.assertEqual(["all", "topics", "me"], got)
+        self.assertEqual(["all", "topics", "publish", "me"], got)
 
-    def test_the_public_trial_refuses_the_publish_tab(self):
-        """试用期对外关发布：按钮不在、URL 也逼不出来。"""
+    def test_publish_tab_is_addressable(self):
         got = self.harness().eval(
             "[tabAllowed('publish'), tabFromQuery('?tab=publish'), tabForMode('publish')]")
-        self.assertEqual([False, "", "all"], got)
+        self.assertEqual([True, "publish", "publish"], got)
 
     def test_discover_is_the_default_and_needs_no_parameter(self):
         got = self.harness().eval(
@@ -2421,8 +2447,9 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
         js = self.harness(api_base="https://skillfeeder.cn")
         pub = js.eval("publishPanelHtml()")
         self.assertIn('id="pubForm"', pub)
-        for field in ("title", "github_url", "description", "body_md"):
+        for field in ("title", "github_url", "description"):
             self.assertIn('name="%s"' % field, pub, field + " 是 /api/posts 的契约字段")
+        self.assertNotIn('name="body_md"', pub)
         self.assertIn("https://skillfeeder.cn/login", pub)
 
     def test_the_account_panel_shows_the_real_signed_in_user(self):
@@ -2496,6 +2523,32 @@ class TestTopicsPanelAndFirstScreen(unittest.TestCase):
         self.assertIn("2 条 · 2 个二级场景", html)
         self.assertIn('class="dot" aria-hidden="true"', html,
                       "色块是纯装饰，不该被读屏念出来")
+        self.assertIn('role="tablist"', html)
+        self.assertIn("按主题分类", html)
+        self.assertIn("按栏目", html)
+        self.assertNotIn("js-topic-section", html,
+                         "主题子 tab 不该再把栏目画成底下一排 pill")
+
+    def test_section_view_uses_the_same_card_chrome(self):
+        html = self.harness().eval(
+            "(state.topicsView = 'section', topicsPanelHtml())")
+        self.assertIn('class="topic-card"', html)
+        self.assertIn('class="topic-head js-topic-section"', html)
+        self.assertIn("Skills", html)
+        self.assertIn("1 条 · 1 个主题", html)
+        self.assertIn("设计与视觉", html)
+        self.assertNotIn('class="topic-head js-topic"', html)
+        self.assertIn('aria-selected="true"', html)
+
+    def test_switching_the_subtab_is_shareable(self):
+        got = self.harness().eval(
+            "(state.mode = 'topics', state.topicsView = 'section',"
+            " [topicsViewFromQuery('?tab=topics&view=section'),"
+            "  topicsViewFromQuery('?tab=topics'),"
+            "  tabSearch('', 'topics')])")
+        self.assertEqual(["section", "scene"], got[:2])
+        self.assertIn("tab=topics", got[2])
+        self.assertIn("view=section", got[2])
 
     def test_a_subcategory_chip_lands_on_the_narrower_filter(self):
         got = self.harness().eval(
@@ -2506,6 +2559,18 @@ class TestTopicsPanelAndFirstScreen(unittest.TestCase):
         got = self.harness().eval(
             "(goTopic('content', 'all'), [state.mode, state.scene, state.scene_l2])")
         self.assertEqual(["all", "content", "all"], got)
+
+    def test_a_section_card_lands_on_that_section(self):
+        got = self.harness().eval(
+            "(goSection('Skills', 'all'),"
+            " [state.mode, state.section, state.scene, state.scene_l2])")
+        self.assertEqual(["all", "Skills", "all", "all"], got)
+
+    def test_a_section_topic_chip_keeps_both_filters(self):
+        got = self.harness().eval(
+            "(goSection('Skills', 'design'),"
+            " [state.mode, state.section, state.scene])")
+        self.assertEqual(["all", "Skills", "design"], got)
 
     def test_an_empty_feed_says_so_instead_of_rendering_nothing(self):
         js = JsHarness(self.html, scenes=TOPIC_SCENES,

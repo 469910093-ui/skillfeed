@@ -5,107 +5,135 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
-import highlights as hl
 import scene
-import skill_detect
 from feed_pack import cover_url_for
 
 
 _GH_RE = re.compile(
-    r"^https?://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)(?:/|$)",
+    r"^https?://(?:www\.)?github\.com/"
+    r"(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)"
+    r"(?:/(?:tree|blob)/(?P<ref>[^/]+)/(?P<path>.*))?"
+    r"/?(?:[?#].*)?$",
     re.I,
 )
 
 
 def parse_github_url(url: str) -> str:
     """返回 full_name 或空串。"""
+    parsed = parse_github_ref(url)
+    return f"{parsed[0]}/{parsed[1]}" if parsed else ""
+
+
+def parse_github_ref(url: str) -> tuple[str, str, str] | None:
+    """owner, repo, skill_path。只认 github.com。"""
     m = _GH_RE.match((url or "").strip())
     if not m:
-        return ""
-    return f"{m.group(1)}/{m.group(2).removesuffix('.git')}"
+        return None
+    owner = m.group("owner").lower()
+    repo = m.group("repo").removesuffix(".git").lower()
+    raw = (m.group("path") or "").strip().strip("/")
+    parts = [p for p in raw.split("/") if p and p != "."]
+    if ".." in parts:
+        return None
+    if parts and parts[-1].lower() == "skill.md":
+        skill_path = "/".join(parts)
+    elif parts:
+        skill_path = "/".join(parts) + "/SKILL.md"
+    else:
+        skill_path = "SKILL.md"
+    return owner, repo, skill_path
+
+
+def listing_public_id(owner: str, repo: str, skill_path: str) -> str:
+    return f"ugc:{owner}/{repo}::{skill_path}"
 
 
 def prepare_post_payload(
     *,
     title: str,
-    body_md: str,
-    github_url: str = "",
-    description: str = "",
+    github_url: str,
+    description: str,
+    body_md: str = "",
+    author_login: str = "",
 ) -> dict[str, Any]:
+    """创作者只交链接 + 标题 + 文案。body_md 即使传来也丢弃，不落库、不渲染。"""
+    del body_md  # 旧客户端可能还传；明确不采用
     title = (title or "").strip()
-    body_md = (body_md or "").strip()
     github_url = (github_url or "").strip()
-    if not body_md and not github_url:
-        raise ValueError("需要 SKILL.md 正文或 GitHub 仓库链接")
-    if len(body_md) > 20000:
-        raise ValueError("SKILL.md 正文过长（最多 20000 字）")
-
-    meta = skill_detect.parse_skill_md(body_md) if body_md else {
-        "name": "", "description": "", "keywords": "", "body_preview": "", "frontmatter": {},
-    }
-    name = title or meta.get("name") or ""
-    desc = (description or meta.get("description") or "").strip()
-    if not name:
-        # 从 github path 兜底
-        fn = parse_github_url(github_url)
-        name = fn.split("/")[-1] if fn else "untitled-skill"
-    if not desc:
-        desc = (body_md.splitlines()[0] if body_md else name)[:200]
-    if len(desc) < 10:
-        raise ValueError("描述太短，请写清这个 skill 做什么（至少约 10 字）")
-
-    full_name = parse_github_url(github_url)
-    if github_url and not full_name:
+    desc = (description or "").strip()
+    if not github_url:
+        raise ValueError("请贴 GitHub 仓库或 SKILL.md 所在目录")
+    parsed = parse_github_ref(github_url)
+    if not parsed:
         raise ValueError("GitHub 链接格式应为 https://github.com/owner/repo")
-    if github_url and not github_url.startswith("http"):
-        github_url = f"https://github.com/{full_name}"
+    owner, repo, skill_path = parsed
+    if not title:
+        raise ValueError("标题必填（最多 60 字）")
+    if len(title) > 60:
+        raise ValueError("标题最多 60 字")
+    if len(desc) < 2:
+        raise ValueError("文案必填，请写清这个 skill 做什么")
+    if len(desc) > 280:
+        raise ValueError("文案最多 280 字")
 
-    body_preview = (meta.get("body_preview") or body_md or desc)[:700]
-    tips = hl.extract_highlights(body_preview, desc)
-    item = {
-        "name": name,
-        "title": name,
-        "description": desc[:400],
-        "body_md": body_md or f"# {name}\n\n{desc}\n",
-        "body_preview": body_preview,
-        "problem": tips.get("problem") or desc[:140],
-        "highlights": tips.get("highlights") or [],
-        "github_url": github_url or (f"https://github.com/{full_name}" if full_name else ""),
+    full_name = f"{owner}/{repo}"
+    github_url = f"https://github.com/{full_name}" + (
+        "" if skill_path == "SKILL.md" else f"/tree/HEAD/{skill_path.rsplit('/', 1)[0]}"
+    )
+    public_id = listing_public_id(owner, repo, skill_path)
+    owner_ok = bool(author_login) and author_login.lower() == owner
+    tagged = scene.apply_scene({
+        "name": title,
+        "description": desc,
+        "body_preview": desc,
         "full_name": full_name,
-        "url": github_url or (f"https://github.com/{full_name}" if full_name else ""),
+        "keywords": "",
+    })
+    return {
+        "name": title,
+        "title": title,
+        "description": desc,
+        "body_md": "",
+        "body_preview": desc,
+        "problem": desc[:140],
+        "highlights": [],
+        "github_url": github_url,
+        "full_name": full_name,
+        "skill_path": skill_path,
+        "public_id": public_id,
+        "url": github_url,
         "source": "ugc",
         "kind": "skill",
-        "cover_url": cover_url_for(full_name) if full_name else "",
+        "cover_url": cover_url_for(full_name),
+        "status": "pending",
+        "featured": 0,
+        "github_meta": {
+            "owner_ok": owner_ok,
+            "has_skill_md": None,
+        },
+        "scene": tagged.get("scene") or "other",
+        "scene_label": tagged.get("scene_label") or "其他",
+        "scene_l2": tagged.get("scene_l2") or "",
+        "scene_l2_label": tagged.get("scene_l2_label") or "",
     }
-    tagged = scene.apply_scene({
-        "name": item["name"],
-        "description": item["description"],
-        "body_preview": item["body_preview"],
-        "full_name": full_name,
-        "keywords": meta.get("keywords") or "",
-    })
-    item["scene"] = tagged.get("scene") or "other"
-    item["scene_label"] = tagged.get("scene_label") or "其他"
-    item["scene_l2"] = tagged.get("scene_l2") or ""
-    item["scene_l2_label"] = tagged.get("scene_l2_label") or ""
-    return item
 
 
 def post_to_feed_item(post: dict[str, Any]) -> dict[str, Any]:
     fn = post.get("full_name") or ""
     url = post.get("github_url") or (f"https://github.com/{fn}" if fn else "")
-    body_preview = (post.get("body_md") or "")[:700]
-    tips = hl.extract_highlights(body_preview, post.get("description") or "")
+    desc = post.get("description") or ""
+    skill_path = post.get("skill_path") or "SKILL.md"
     return {
-        "id": f"ugc:{post['id']}",
+        "id": post.get("public_id") or f"ugc:{fn}::{skill_path}",
         "ugc_id": post["id"],
         "full_name": fn or f"ugc/{post['id']}",
         "name": post.get("title") or "skill",
-        "description": post.get("description") or "",
-        "one_liner": (post.get("description") or "")[:140],
-        "body_preview": body_preview,
-        "problem": tips.get("problem") or (post.get("description") or "")[:140],
-        "highlights": tips.get("highlights") or [],
+        "description": desc,
+        "one_liner": desc[:140],
+        "body_preview": desc,
+        "problem": desc[:140],
+        "highlights": [],
+        "skill_path": skill_path,
         "url": url,
         "skill_url": url,
         "cover_url": post.get("cover_url") or cover_url_for(fn),

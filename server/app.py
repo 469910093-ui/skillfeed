@@ -7,7 +7,7 @@ import hmac
 import json
 import secrets
 from html import escape as html_escape
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote
@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import ranking
-from server import auth, db, metrics, ranking_service, sms, ugc
+from server import auth, db, entitlement, metrics, pay, ranking_service, sms, ugc
 from server.config import Settings, get_settings
 from server.ratelimit import EventLimiter, SmsLimiter
 
@@ -34,9 +34,15 @@ LOGIN_NEXT_COOKIE = "skillfeed_login_next"
 
 class PostCreate(BaseModel):
     title: str = ""
-    body_md: str = ""
     github_url: str = ""
     description: str = ""
+    body_md: str = ""  # 旧客户端字段；服务端丢弃，不落库
+
+
+class ModerateBody(BaseModel):
+    action: str = Field(pattern="^(approve|reject|hide|feature|ban)$")
+    note: str = ""
+    ban_author: bool = False
 
 
 class ReactBody(BaseModel):
@@ -65,6 +71,19 @@ class SmsVerifyBody(BaseModel):
     next: str = ""
 
 
+class ActivateBody(BaseModel):
+    code: str = ""
+
+
+class PayCreateBody(BaseModel):
+    sku: str = pay.SKU_YEAR
+
+
+class PayDevNotifyBody(BaseModel):
+    out_trade_no: str = ""
+    transaction_id: str = ""
+
+
 # —— 登录门禁的豁免表 ——
 #
 # 这是一份**白名单**，中间件的逻辑是「不在表里就要登录」。
@@ -77,6 +96,9 @@ GATE_PUBLIC_EXACT = frozenset({
     "/health",      # 外部 uptime 探针，不可能带登录态
     "/login",       # 登录页自己。它要是被拦，就是无限重定向
     "/favicon.ico",  # 浏览器自动请求，拦了也只是产生一条 302 噪音
+    # 微信支付回调没有会话 Cookie。开通只信验签后的 out_trade_no，
+    # 未配置 / 验签未接时这个端点只会 503，不会发权益。
+    "/api/pay/wechat/notify",
 })
 GATE_PUBLIC_PREFIXES = (
     # 所有登录相关端点：发起跳转、各家回调、短信收发、退出、/auth/me。
@@ -220,6 +242,26 @@ CSP_SITE = (
 )
 
 
+def _apply_feed_quota(
+    request: Request,
+    settings: Settings,
+    items: list[dict[str, Any]],
+    *,
+    claim: bool = True,
+) -> tuple[list[dict[str, Any]], Optional[dict[str, Any]]]:
+    """发现流全量免费：登录用户拿完整 items，quota.unlimited=True。"""
+    uid = auth.session_user_id(request, settings)
+    if uid is None:
+        return list(items), None
+    with db.db_session(settings.db_path) as conn:
+        user = db.get_user(conn, uid)
+        return entitlement.apply_daily_quota(
+            conn, user, items,
+            limit=settings.free_daily_feed_items,
+            claim=claim,
+        )
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or get_settings()
     settings.assert_bootable()
@@ -359,12 +401,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return html_response(html.replace("{{csp_nonce}}", nonce), nonce)
 
     @app.get("/feed.json")
-    def feed_json() -> JSONResponse:
-        """同源的 full feed 产物。
+    def feed_json(request: Request) -> JSONResponse:
+        """同源的官方 feed 产物。
 
         取代「前端直连 github.io 拉 feed.json」：主站在国内域名上，
-        跨境拉首屏数据时快时慢时不通。这个端点在门禁后面，
-        所以它同时也是「登录后才给 full Feed」的落点。
+        跨境拉首屏数据时快时慢时不通。这个端点在门禁后面。
+        发现流全量免费，不再按天切条；语料与门禁明细随产物返回。
         """
         path = settings.official_feed_file
         if not path.is_file():
@@ -373,7 +415,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "本地 feed 产物不存在。先跑 "
                 "`python skillfeed.py publish-site --out <SKILLFEED_SITE_DIR>`。",
             )
-        return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        items = [it for it in (data.get("items") or []) if isinstance(it, dict)]
+        visible, quota = _apply_feed_quota(request, settings, items)
+        data["items"] = visible
+        if quota:
+            data["quota"] = quota
+            meta = dict(data.get("meta") or {})
+            meta["quota"] = quota
+            data["meta"] = meta
+        return JSONResponse(data)
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request, next: str = "") -> Response:  # noqa: A002
@@ -404,6 +455,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         html = (TEMPLATES / "publish.html").read_text(encoding="utf-8")
         html = html.replace("{{logged_in}}", "1" if uid else "0")
         html = html.replace("{{public_url}}", settings.public_url)
+        return html_response(html.replace("{{csp_nonce}}", nonce), nonce)
+
+    @app.get("/op/review", response_class=HTMLResponse)
+    def review_page(request: Request) -> HTMLResponse:
+        uid = auth.require_user_id(request, settings)
+        with db.db_session(settings.db_path) as conn:
+            user = db.get_user(conn, uid)
+        auth.require_operator(request, settings, (user or {}).get("login") or "")
+        nonce = secrets.token_urlsafe(16)
+        html = (TEMPLATES / "review.html").read_text(encoding="utf-8")
         return html_response(html.replace("{{csp_nonce}}", nonce), nonce)
 
     # —— Auth ——
@@ -655,10 +716,140 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         }
         uid = auth.session_user_id(request, settings)
         if uid is None:
-            return {"user": None, **base}
+            return {"user": None, "quota": None, **base}
+        quota = None
         with db.db_session(settings.db_path) as conn:
             user = db.get_user(conn, uid)
-        return {"user": db.user_public(user) if user else None, **base}
+            if user:
+                quota = entitlement.quota_status(
+                    conn, user, limit=settings.free_daily_feed_items,
+                )
+        return {
+            "user": db.user_public(user) if user else None,
+            "quota": quota,
+            **base,
+        }
+
+    @app.post("/api/account/activate")
+    def activate_subscription(request: Request, body: ActivateBody) -> dict[str, Any]:
+        """用激活码兑换订阅。收款通道未接前，这是权益送达的第一版。"""
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        code = (body.code or "").strip()
+        if not code or code not in settings.activation_codes:
+            raise HTTPException(400, "激活码无效")
+        until = None
+        if settings.subscriber_days > 0:
+            until = (
+                datetime.now(timezone.utc) + timedelta(days=settings.subscriber_days)
+            ).isoformat()
+        with db.db_session(settings.db_path) as conn:
+            db.set_user_plan(conn, uid, "subscriber", until)
+            user = db.get_user(conn, uid)
+            quota = entitlement.quota_status(
+                conn, user, limit=settings.free_daily_feed_items,
+            ) if user else None
+        return {
+            "ok": True,
+            "user": db.user_public(user) if user else None,
+            "quota": quota,
+        }
+
+    def _pay_error(exc: pay.PayError) -> HTTPException:
+        return HTTPException(exc.status, exc.detail)
+
+    @app.get("/api/pay/catalog")
+    def pay_catalog(request: Request) -> dict[str, Any]:
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        return {
+            "items": [pay.sku_public(s) for s in pay.catalog(settings).values()],
+            "wechat_pay": settings.wechat_pay_configured,
+            "dev_notify": settings.dev_mode,
+        }
+
+    @app.post("/api/pay/create")
+    def pay_create(request: Request, body: PayCreateBody) -> dict[str, Any]:
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        try:
+            with db.db_session(settings.db_path) as conn:
+                order = pay.create_order(
+                    conn, user_id=uid, sku_id=body.sku, settings=settings,
+                )
+        except pay.PayError as e:
+            raise _pay_error(e) from e
+        return {"ok": True, "order": pay.order_public(order)}
+
+    @app.get("/api/pay/orders")
+    def pay_orders(request: Request) -> dict[str, Any]:
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_orders_for_user(conn, uid)
+        return {"orders": [pay.order_public(r) for r in rows]}
+
+    @app.post("/api/pay/dev-notify")
+    def pay_dev_notify(request: Request, body: PayDevNotifyBody) -> dict[str, Any]:
+        """假到账。只在 SKILLFEED_DEV=1 时存在，且只能操作自己的单。"""
+        if not settings.dev_mode:
+            raise HTTPException(404, "dev pay notify disabled")
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        trade_no = (body.out_trade_no or "").strip()
+        txn = (body.transaction_id or "").strip() or f"dev-{trade_no}"
+        try:
+            with db.db_session(settings.db_path) as conn:
+                order = db.get_order_by_trade_no(conn, trade_no)
+                if order is None:
+                    raise pay.PayError(404, "订单不存在")
+                if int(order["user_id"]) != int(uid):
+                    raise pay.PayError(403, "只能开通自己的订单")
+                paid, replay = pay.apply_paid_notify(
+                    conn,
+                    out_trade_no=trade_no,
+                    provider_txn_id=txn,
+                    amount_fen=int(order["amount_fen"]),
+                    settings=settings,
+                )
+                user = db.get_user(conn, uid)
+                quota = entitlement.quota_status(
+                    conn, user, limit=settings.free_daily_feed_items,
+                ) if user else None
+        except pay.PayError as e:
+            raise _pay_error(e) from e
+        return {
+            "ok": True,
+            "replay": replay,
+            "order": pay.order_public(paid),
+            "user": db.user_public(user) if user else None,
+            "quota": quota,
+        }
+
+    @app.post("/api/pay/wechat/notify")
+    async def pay_wechat_notify(request: Request) -> JSONResponse:
+        raw = await request.body()
+        try:
+            payload = pay.verify_wechat_notify(raw, request.headers, settings)
+            with db.db_session(settings.db_path) as conn:
+                pay.apply_paid_notify(
+                    conn,
+                    out_trade_no=str(payload.get("out_trade_no") or ""),
+                    provider_txn_id=str(payload.get("transaction_id") or ""),
+                    amount_fen=payload.get("amount_fen"),
+                    settings=settings,
+                )
+        except pay.PayError as e:
+            return JSONResponse(
+                {"code": "FAIL", "message": e.detail},
+                status_code=e.status,
+            )
+        return JSONResponse({"code": "SUCCESS", "message": "成功"})
 
     # —— Feed ——
     @app.get("/api/feed")
@@ -673,6 +864,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         scene: str = Query(""),
         scene_l2: str = Query(""),
         debug: int = Query(0),
+        unlock: int = Query(1, ge=0, le=1),
     ) -> dict[str, Any]:
         cfg = app.state.ranking_config
         device_id = _device_id(request, device_id)
@@ -757,8 +949,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             )
             app.state.order_cache.mark_served(cache_key, offset + limit)
 
-        total = len(ranked)
-        page = ranked[offset: offset + limit]
+        visible, quota = _apply_feed_quota(
+            request, settings, ranked, claim=bool(unlock),
+        )
+        total = len(visible)
+        page = visible[offset: offset + limit]
         if not debug:
             for it in page:
                 it.pop("rank_debug", None)
@@ -771,6 +966,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "total": total,
             "ugc_count": len(ugc_items) if source != "official" else 0,
             "official_count": len(official),
+            "quota": quota,
             "generated_mode": "api-merge",
             "session_id": session_id,
             "ranking_mode": (
@@ -929,40 +1125,105 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return result
 
     # —— Posts ——
+    def _submit_post(uid: int, title: str, github_url: str, description: str) -> dict[str, Any]:
+        with db.db_session(settings.db_path) as conn:
+            user = db.get_user(conn, uid)
+            if not user:
+                raise HTTPException(401, "login required")
+            if (user.get("status") or "active") != "active":
+                raise HTTPException(403, "账号不可用，不能投稿")
+            if db.count_posts_today(conn, uid) >= settings.submit_per_day:
+                raise HTTPException(400, f"今天不能再交（限额 {settings.submit_per_day}）")
+            try:
+                prepared = ugc.prepare_post_payload(
+                    title=title,
+                    github_url=github_url,
+                    description=description,
+                    author_login=user.get("login") or "",
+                )
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+            if not (prepared.get("github_meta") or {}).get("owner_ok"):
+                raise HTTPException(400, "这不是你的仓库，不能认领")
+            taken = db.find_post_by_coord(
+                conn, prepared["full_name"], prepared["skill_path"],
+            )
+            if taken:
+                raise HTTPException(400, "这条已被认领")
+            return db.create_post(conn, uid, prepared)
+
     @app.post("/api/posts")
     async def api_create_post(request: Request, body: PostCreate) -> dict[str, Any]:
         uid = auth.require_user_id(request, settings)
-        try:
-            prepared = ugc.prepare_post_payload(
-                title=body.title,
-                body_md=body.body_md,
-                github_url=body.github_url,
-                description=body.description,
-            )
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from e
-        with db.db_session(settings.db_path) as conn:
-            post = db.create_post(conn, uid, prepared)
-        return {"ok": True, "post": post, "feed_item": ugc.post_to_feed_item(post)}
+        post = _submit_post(uid, body.title, body.github_url, body.description)
+        return {"ok": True, "post": post, "status": post.get("status")}
 
     @app.post("/api/posts/form")
     async def api_create_post_form(
         request: Request,
         title: str = Form(""),
-        body_md: str = Form(""),
         github_url: str = Form(""),
         description: str = Form(""),
+        body_md: str = Form(""),
     ) -> RedirectResponse:
+        del body_md
         uid = auth.require_user_id(request, settings)
+        _submit_post(uid, title, github_url, description)
+        return RedirectResponse("/publish?ok=1", status_code=303)
+
+    def _op_user(request: Request) -> tuple[int, dict[str, Any]]:
+        uid = auth.require_user_id(request, settings)
+        with db.db_session(settings.db_path) as conn:
+            user = db.get_user(conn, uid)
+        if not user:
+            raise HTTPException(401, "login required")
+        auth.require_operator(request, settings, user.get("login") or "")
+        return uid, user
+
+    @app.get("/api/op/queue")
+    def api_op_queue(
+        request: Request, status: str = Query("pending"),
+    ) -> dict[str, Any]:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_moderation_queue(conn, status=status)
+        return {"posts": rows}
+
+    @app.get("/api/op/queue.csv")
+    def api_op_queue_csv(request: Request, status: str = Query("pending")) -> Response:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_moderation_queue(conn, status=status)
+        lines = [
+            "id,title,copy,github_url,skill_path,author_login,trust_level,approved_count,submitted_at"
+        ]
+        for r in rows:
+            cell = lambda v: '"' + str(v or "").replace('"', '""') + '"'
+            lines.append(",".join(cell(r.get(k)) for k in (
+                "id", "title", "description", "github_url", "skill_path",
+                "author_login", "trust_level", "approved_count", "created_at",
+            )))
+        return Response(
+            "\n".join(lines) + "\n",
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=skillfeeder-queue.csv"},
+        )
+
+    @app.post("/api/op/posts/{post_id}")
+    def api_op_moderate(
+        post_id: int, request: Request, body: ModerateBody,
+    ) -> dict[str, Any]:
+        uid, _ = _op_user(request)
         try:
-            prepared = ugc.prepare_post_payload(
-                title=title, body_md=body_md, github_url=github_url, description=description,
-            )
+            with db.db_session(settings.db_path) as conn:
+                post = db.moderate_post(
+                    conn, post_id, action=body.action, actor_id=uid, note=body.note,
+                )
+                if body.ban_author or body.action == "ban":
+                    db.set_user_banned(conn, int(post["author_id"]), True)
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
-        with db.db_session(settings.db_path) as conn:
-            db.create_post(conn, uid, prepared)
-        return RedirectResponse("/publish?ok=1", status_code=303)
+        return {"ok": True, "post": post}
 
     @app.get("/api/posts/me")
     def api_my_posts(request: Request) -> dict[str, Any]:
@@ -976,7 +1237,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         uid = auth.require_user_id(request, settings)
         with db.db_session(settings.db_path) as conn:
             post = db.get_post(conn, post_id)
-            if not post or post.get("status") != "published":
+            if not post or post.get("status") not in ("published", "approved"):
                 raise HTTPException(404, "post not found")
             db.set_reaction(conn, user_id=uid, post_id=post_id, kind=body.kind, on=body.on)
         return {"ok": True}

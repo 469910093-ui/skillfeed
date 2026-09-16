@@ -64,10 +64,10 @@
     <div class="user" id="userBox">检查登录…</div>
   </div>
   <div class="wrap">
-    <h1>发布自己的 Skill</h1>
-    <p class="sub">粘贴 <code>SKILL.md</code> 正文，或附上公开 GitHub 仓库链接。发布后进入混排 Feed（不代装到本机）。</p>
+    <h1>提交自己的 Skill</h1>
+    <p class="sub">只填三项：GitHub 链接、标题、文案。不传 zip，不贴 SKILL.md 正文。提交后进入审核，通过才进发现流。</p>
 
-    <div id="okBanner" class="ok" style="display:none">已发布！可在下方「我的帖子」或 <a href="/api/feed?source=ugc">/api/feed?source=ugc</a> 查看。</div>
+    <div id="okBanner" class="ok" style="display:none">已进入审核。通过后会出现在发现流；被拒时这里会看到原因。</div>
 
     <div id="needLogin" class="need-login gate">
       <p>发布需要 GitHub 登录</p>
@@ -76,20 +76,17 @@
     </div>
 
     <form id="form" class="gate" method="post" action="/api/posts/form">
-      <label for="title">标题（可空，默认从 SKILL.md 解析）</label>
-      <input id="title" name="title" placeholder="例如：stop-slop / brainstorming">
+      <label for="github_url">GitHub 链接</label>
+      <input id="github_url" name="github_url" required placeholder="https://github.com/owner/repo 或具体 skill 目录">
+      <div class="hint">只认 github.com。monorepo 请贴到含 SKILL.md 的目录。仓库 owner 必须是当前登录的 GitHub 账号。</div>
 
-      <label for="github_url">GitHub 仓库链接（推荐）</label>
-      <input id="github_url" name="github_url" placeholder="https://github.com/owner/repo">
+      <label for="title">标题（60 字）</label>
+      <input id="title" name="title" required maxlength="60" placeholder="手搓周报结构">
 
-      <label for="description">一句话简介（可空）</label>
-      <input id="description" name="description" placeholder="这个 skill 解决什么问题">
+      <label for="description">文案（280 字）</label>
+      <input id="description" name="description" required maxlength="280" placeholder="一句话说清这个 skill 帮人做什么">
 
-      <label for="body_md">SKILL.md 正文</label>
-      <textarea id="body_md" name="body_md" placeholder="---&#10;name: my-skill&#10;description: ...&#10;---&#10;&#10;# My Skill&#10;..."></textarea>
-      <div class="hint">至少提供正文或仓库链接之一；描述需足够说明用途。</div>
-
-      <p style="margin-top:18px"><button class="btn" type="submit">发布到 Feed</button></p>
+      <p style="margin-top:18px"><button class="btn" type="submit">提交审核</button></p>
     </form>
 
     <div class="list" id="mine"></div>

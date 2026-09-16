@@ -7,6 +7,7 @@
 CI 不需要真凭据，也不会真发短信。
 """
 
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -40,6 +41,15 @@ def _settings(tmpdir: str, **over) -> "Settings":
     s.dev_mode = False
     s.dev_auth = False
     s.require_login = True
+    s.operator_logins = frozenset()
+    s.submit_per_day = 3
+    s.free_daily_feed_items = 8
+    s.subscriber_days = 365
+    s.activation_codes = frozenset()
+    s.sku_year_fen = 9900
+    s.wechat_pay_mchid = ""
+    s.wechat_pay_api_v3_key = ""
+    s.wechat_pay_serial = ""
     for k, v in over.items():
         setattr(s, k, v)
     return s
@@ -71,11 +81,19 @@ class TestLoginGate(unittest.TestCase):
 
     def test_anonymous_api_is_also_redirected_not_200(self):
         """/api/* 未登录也是 302（产品口径），关键是**绝不能**返回数据。"""
-        for path in ("/api/feed", "/api/posts/me", "/feed.json", "/api/stats/items"):
+        for path in ("/api/feed", "/api/posts/me", "/feed.json", "/api/stats/items",
+                     "/api/pay/create", "/api/pay/orders"):
             with self.subTest(path=path):
-                r = self.client.get(path)
+                r = self.client.get(path) if path != "/api/pay/create" else self.client.post(path, json={})
                 self.assertEqual(r.status_code, 302, path)
                 self.assertTrue(r.headers["location"].startswith("/login"))
+
+    def test_wechat_pay_notify_is_public_but_does_not_grant(self):
+        """回调必须免登录，否则微信服务器会被 302 到登录页。未配置时不能开通。"""
+        r = self.client.post("/api/pay/wechat/notify", content=b"{}")
+        self.assertEqual(r.status_code, 503)
+        self.assertEqual(r.json()["code"], "FAIL")
+        self.assertNotIn("SUCCESS", r.text)
 
     def test_redirect_carries_next_target(self):
         r = self.client.get("/api/feed?source=ugc&limit=5")
@@ -783,7 +801,10 @@ class TestServerAPI(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         # 无凭据登录现在是 fail-closed 的：必须同时显式打开 dev_mode 和 dev_auth，
         # 缺任一即 404。这里两个都设，正是为了证明它需要刻意开启
-        self.settings = _settings(self.tmp.name, dev_mode=True, dev_auth=True)
+        self.settings = _settings(
+            self.tmp.name, dev_mode=True, dev_auth=True,
+            operator_logins=frozenset({"dev-user"}),
+        )
         self.app = server_app.create_app(self.settings)
         self.client = TestClient(self.app)
 
@@ -804,26 +825,39 @@ class TestServerAPI(unittest.TestCase):
         me = self.client.get("/auth/me")
         self.assertEqual(me.status_code, 200)
         self.assertEqual(me.json()["user"]["login"], "dev-user")
+        self.assertEqual(me.json()["user"]["plan"], "free")
+        self.assertFalse(me.json()["user"]["subscriber"])
+        self.assertTrue(me.json()["quota"]["unlimited"])
+        self.assertIsNone(me.json()["quota"]["limit"])
 
         created = self.client.post("/api/posts", json={
-            "title": "my-writing-skill",
-            "body_md": (
-                "---\nname: my-writing-skill\n"
-                "description: 去掉 AI 味写作技能包，润色文案减少套话\n---\n\n"
-                "# Writing\n\nCut filler phrases from prose.\n"
-            ),
-            "github_url": "https://github.com/acme/my-writing-skill",
+            "title": "手搓周报结构",
+            "description": "把一周工作收成固定四段：结论、数字、风险、下周。",
+            "github_url": "https://github.com/dev-user/week-report",
         })
         self.assertEqual(created.status_code, 200, created.text)
         self.assertTrue(created.json()["ok"])
-        self.assertEqual(created.json()["feed_item"]["source"], "ugc")
+        self.assertEqual(created.json()["post"]["status"], "pending")
+        post_id = created.json()["post"]["id"]
 
         feed = self.client.get("/api/feed?source=ugc")
         self.assertEqual(feed.status_code, 200)
-        items = feed.json()["items"]
-        self.assertGreaterEqual(len(items), 1)
-        self.assertEqual(items[0]["name"], "my-writing-skill")
-        self.assertTrue(items[0].get("ugc"))
+        self.assertEqual(feed.json()["items"], [])
+
+        denied = self.client.post("/api/posts", json={
+            "title": "别人的仓",
+            "description": "想认领一个不是自己的仓库。",
+            "github_url": "https://github.com/hardikpandya/stop-slop",
+        })
+        self.assertEqual(denied.status_code, 400)
+
+        approved = self.client.post(f"/api/op/posts/{post_id}", json={"action": "approve"})
+        self.assertEqual(approved.status_code, 200, approved.text)
+
+        feed = self.client.get("/api/feed?source=ugc")
+        self.assertEqual(len(feed.json()["items"]), 1)
+        self.assertEqual(feed.json()["items"][0]["name"], "手搓周报结构")
+        self.assertTrue(feed.json()["items"][0].get("ugc"))
 
         mine = self.client.get("/api/posts/me")
         self.assertEqual(len(mine.json()["posts"]), 1)
@@ -831,7 +865,7 @@ class TestServerAPI(unittest.TestCase):
     def test_prepare_rejects_empty(self):
         from server import ugc
         with self.assertRaises(ValueError):
-            ugc.prepare_post_payload(title="", body_md="", github_url="")
+            ugc.prepare_post_payload(title="", github_url="", description="")
 
     def test_full_feed_after_login_reads_local_artifact(self):
         """2.10/2.11：登录后拿到的 full Feed 来自服务器本地产物，不出网。"""
@@ -856,12 +890,125 @@ class TestServerAPI(unittest.TestCase):
         # 同源 feed.json 端点也能拿到，且在门禁后面
         self.assertEqual(client.get("/feed.json").status_code, 200)
 
+    def test_free_login_sees_the_whole_official_feed(self):
+        site = Path(self.tmp.name) / "site"
+        site.mkdir()
+        items = [
+            {"id": f"off-{i}", "full_name": f"acme/s-{i}", "name": f"s-{i}"}
+            for i in range(12)
+        ]
+        (site / "feed.json").write_text(
+            json.dumps({"items": items, "corpus": [{"id": "keep"}]}),
+            encoding="utf-8",
+        )
+        s = _settings(
+            self.tmp.name, dev_mode=True, dev_auth=True,
+            site_dir=site, official_feed_file=site / "feed.json",
+            activation_codes=frozenset({"VIP-TEST"}),
+            subscriber_days=365,
+        )
+        client = TestClient(server_app.create_app(s))
+        client.get("/auth/dev-login")
+        first = client.get("/api/feed?source=official&limit=40")
+        self.assertEqual(first.status_code, 200)
+        body = first.json()
+        self.assertEqual(len(body["items"]), 12)
+        self.assertEqual(body["total"], 12)
+        self.assertTrue(body["quota"]["unlimited"])
+        dumped = client.get("/feed.json")
+        self.assertEqual(len(dumped.json()["items"]), 12)
+        self.assertEqual(dumped.json()["corpus"], [{"id": "keep"}])
+
+        ok = client.post("/api/account/activate", json={"code": "VIP-TEST"})
+        self.assertEqual(ok.status_code, 200, ok.text)
+        self.assertTrue(ok.json()["user"]["subscriber"])
+        unlimited = client.get("/api/feed?source=official&limit=40")
+        self.assertEqual(len(unlimited.json()["items"]), 12)
+        self.assertTrue(unlimited.json()["quota"]["unlimited"])
+
+    def test_gate_off_anonymous_is_not_quotad(self):
+        site = Path(self.tmp.name) / "site"
+        site.mkdir()
+        items = [
+            {"id": f"off-{i}", "full_name": f"acme/s-{i}", "name": f"s-{i}"}
+            for i in range(12)
+        ]
+        (site / "feed.json").write_text(
+            json.dumps({"items": items}), encoding="utf-8",
+        )
+        s = _settings(
+            self.tmp.name, require_login=False,
+            site_dir=site, official_feed_file=site / "feed.json",
+        )
+        client = TestClient(server_app.create_app(s))
+        feed = client.get("/api/feed?source=official&limit=40")
+        self.assertEqual(len(feed.json()["items"]), 12)
+        self.assertIsNone(feed.json()["quota"])
+
     def test_default_official_feed_url_is_not_github_io(self):
         """2.11：默认不再指向 github.io。"""
         import os
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("SKILLFEED_OFFICIAL_FEED_URL", None)
             self.assertEqual(Settings().official_feed_url, "")
+
+
+@unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")
+class TestPayOrders(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.settings = _settings(
+            self.tmp.name, dev_mode=True, dev_auth=True, sku_year_fen=9900,
+        )
+        self.client = TestClient(server_app.create_app(self.settings))
+        self.client.get("/auth/dev-login")
+
+    def tearDown(self):
+        try:
+            self.tmp.cleanup()
+        except PermissionError:
+            pass
+
+    def test_create_then_dev_notify_unlocks(self):
+        catalog = self.client.get("/api/pay/catalog")
+        self.assertEqual(catalog.status_code, 200)
+        self.assertTrue(catalog.json()["dev_notify"])
+        self.assertFalse(catalog.json()["wechat_pay"])
+        created = self.client.post("/api/pay/create", json={"sku": "subscriber_year"})
+        self.assertEqual(created.status_code, 200, created.text)
+        order = created.json()["order"]
+        self.assertEqual(order["status"], "pending")
+        self.assertEqual(order["amount_fen"], 9900)
+        paid = self.client.post(
+            "/api/pay/dev-notify", json={"out_trade_no": order["out_trade_no"]},
+        )
+        self.assertEqual(paid.status_code, 200, paid.text)
+        self.assertFalse(paid.json()["replay"])
+        self.assertTrue(paid.json()["user"]["subscriber"])
+        again = self.client.post(
+            "/api/pay/dev-notify", json={"out_trade_no": order["out_trade_no"]},
+        )
+        self.assertTrue(again.json()["replay"])
+        self.assertEqual(
+            again.json()["order"]["plan_until"], paid.json()["order"]["plan_until"],
+        )
+        mine = self.client.get("/api/pay/orders")
+        self.assertEqual(len(mine.json()["orders"]), 1)
+        self.assertEqual(mine.json()["orders"][0]["status"], "paid")
+
+    def test_dev_notify_off_when_not_dev(self):
+        s = _settings(self.tmp.name, dev_mode=False, require_login=False)
+        client = TestClient(server_app.create_app(s), follow_redirects=False)
+        r = client.post("/api/pay/dev-notify", json={"out_trade_no": "SF1"})
+        self.assertEqual(r.status_code, 404)
+
+    def test_cannot_notify_someone_elses_order(self):
+        created = self.client.post("/api/pay/create", json={})
+        trade_no = created.json()["order"]["out_trade_no"]
+        other = TestClient(server_app.create_app(self.settings))
+        other.get("/auth/dev-login?login=other-user")
+        stolen = other.post("/api/pay/dev-notify", json={"out_trade_no": trade_no})
+        self.assertEqual(stolen.status_code, 403)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>审核队列 · SkillFeeder</title>
+<style>
+  body { margin: 0; font: 14px/1.45 "Segoe UI", "PingFang SC", sans-serif; background: #f3f3f1; color: #1a1a1a; }
+  header { display: flex; gap: 12px; align-items: center; padding: 12px 16px; background: #fff; border-bottom: 1px solid #c8c8c8; }
+  h1 { font-size: 16px; margin: 0; }
+  .views button { margin-right: 6px; }
+  .wrap { display: grid; grid-template-columns: 1fr 300px; gap: 16px; padding: 16px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; }
+  th, td { border-bottom: 1px solid #c8c8c8; padding: 7px 8px; text-align: left; vertical-align: top; }
+  tr { cursor: pointer; }
+  tr.on td { background: #dbe4f0; }
+  .panel { background: #fff; border: 1px solid #c8c8c8; padding: 12px; }
+  textarea { width: 100%; min-height: 72px; }
+  .err { color: #8a1f1f; }
+  .ok { color: #1f5c3a; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>SkillFeeder 审核队列</h1>
+    <div class="views">
+      <button type="button" data-status="pending">待审核</button>
+      <button type="button" data-status="rejected">已拒绝</button>
+      <button type="button" data-status="approved">已上架</button>
+      <button type="button" data-status="hidden">已隐藏</button>
+    </div>
+    <a href="/api/op/queue.csv">导出 CSV（飞书）</a>
+    <a href="/publish">投稿页</a>
+  </header>
+  <div class="wrap">
+    <table>
+      <thead>
+        <tr><th>标题</th><th>文案</th><th>GitHub</th><th>path</th><th>作者</th><th>提交</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <aside class="panel" id="panel">先选一行。打开 GitHub 看仓库，不要在站内渲染正文。</aside>
+  </div>
+<script nonce="{{csp_nonce}}">
+let status = "pending";
+let rows = [];
+let selected = 0;
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+async function load() {
+  const r = await fetch("/api/op/queue?status=" + encodeURIComponent(status), { credentials: "include" });
+  if (r.status === 403) { document.body.innerHTML = "<p style='padding:24px'>需要运营账号（SKILLFEED_OPERATOR_LOGINS）</p>"; return; }
+  const data = await r.json();
+  rows = data.posts || [];
+  selected = 0;
+  document.getElementById("rows").innerHTML = rows.map((p, i) => `
+    <tr data-i="${i}" class="${i === selected ? "on" : ""}">
+      <td>${esc(p.title)}</td>
+      <td>${esc((p.description || "").slice(0, 80))}</td>
+      <td><a href="${esc(p.github_url)}" target="_blank" rel="noopener">${esc(p.full_name)}</a></td>
+      <td><code>${esc(p.skill_path)}</code></td>
+      <td>${esc(p.author_login)} / ${esc(p.trust_level)} · ${esc(p.approved_count)}</td>
+      <td>${esc((p.created_at || "").slice(0, 16))}</td>
+    </tr>`).join("") || "<tr><td colspan='6'>没有记录</td></tr>";
+  renderPanel();
+}
+
+function renderPanel() {
+  const p = rows[selected];
+  const el = document.getElementById("panel");
+  if (!p) { el.textContent = "这个视图没有记录"; return; }
+  el.innerHTML = `
+    <p><b>${esc(p.title)}</b></p>
+    <p>${esc(p.description)}</p>
+    <p><a href="${esc(p.github_url)}" target="_blank" rel="noopener">打开 GitHub</a><br><code>${esc(p.skill_path)}</code></p>
+    ${p.reject_reason ? `<p class="err">上次拒绝：${esc(p.reject_reason)}</p>` : ""}
+    <label>拒绝原因</label>
+    <textarea id="note" placeholder="拒绝时必填"></textarea>
+    <p>
+      <button type="button" data-act="approve">通过</button>
+      <button type="button" data-act="reject">拒绝</button>
+      <button type="button" data-act="feature">精选</button>
+      <button type="button" data-act="hide">隐藏</button>
+      <button type="button" data-act="ban">封禁作者</button>
+    </p>
+    <p class="ok" id="log"></p>`;
+}
+
+document.getElementById("rows").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-i]");
+  if (!tr) return;
+  selected = Number(tr.dataset.i);
+  document.querySelectorAll("#rows tr").forEach(x => x.classList.toggle("on", x === tr));
+  renderPanel();
+});
+
+document.querySelector(".views").addEventListener("click", e => {
+  const b = e.target.closest("button[data-status]");
+  if (!b) return;
+  status = b.dataset.status;
+  document.getElementById("csv") && (document.querySelector("header a").href = "/api/op/queue.csv?status=" + status);
+  load();
+});
+
+document.getElementById("panel").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-act]");
+  if (!b || !rows[selected]) return;
+  const note = (document.getElementById("note") || {}).value || "";
+  const r = await fetch("/api/op/posts/" + rows[selected].id, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: b.dataset.act, note, ban_author: b.dataset.act === "ban" }),
+  });
+  const data = await r.json().catch(() => ({}));
+  const log = document.getElementById("log");
+  if (!r.ok) { if (log) log.className = "err"; if (log) log.textContent = data.detail || "失败"; return; }
+  load();
+});
+
+load();
+</script>
+</body>
+</html>

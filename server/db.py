@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,8 @@ CREATE TABLE IF NOT EXISTS {name} (
   nickname TEXT,
   avatar_url TEXT,
   name TEXT,
+  plan TEXT DEFAULT 'free',
+  plan_until TEXT,
   created_at TEXT NOT NULL
 );
 """
@@ -42,6 +45,8 @@ USERS_COLUMNS: tuple[tuple[str, str], ...] = (
     ("nickname", "TEXT"),
     ("avatar_url", "TEXT"),
     ("name", "TEXT"),
+    ("plan", "TEXT DEFAULT 'free'"),
+    ("plan_until", "TEXT"),
     ("created_at", "TEXT"),
 )
 
@@ -90,6 +95,15 @@ CREATE TABLE IF NOT EXISTS posts (
 
 CREATE INDEX IF NOT EXISTS idx_posts_status_created
   ON posts(status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS moderation_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id INTEGER,
+  action TEXT NOT NULL,
+  post_id INTEGER,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS reactions (
   user_id INTEGER NOT NULL,
@@ -181,6 +195,40 @@ CREATE TABLE IF NOT EXISTS sms_codes (
   expires_at  TEXT NOT NULL,
   attempts    INTEGER NOT NULL DEFAULT 0
 );
+
+-- 免费用户当天解锁过的发现条目。订阅用户不写这张表。
+CREATE TABLE IF NOT EXISTS feed_unlocks (
+  user_id INTEGER NOT NULL,
+  day TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, day, item_id),
+  FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_feed_unlocks_user_day
+  ON feed_unlocks(user_id, day);
+
+-- 订阅订单。开通只信 status=paid 这一跳（回调验签之后），创建订单本身不发权益。
+CREATE TABLE IF NOT EXISTS orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  out_trade_no TEXT NOT NULL UNIQUE,
+  user_id INTEGER NOT NULL,
+  sku TEXT NOT NULL,
+  amount_fen INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'CNY',
+  status TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'wechat',
+  provider_txn_id TEXT,
+  paid_at TEXT,
+  plan_until TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_orders_user_created
+  ON orders(user_id, created_at DESC);
 """
 
 
@@ -255,12 +303,54 @@ def _migrate_users(conn: sqlite3.Connection) -> None:
         _rebuild_users(conn)
 
 
+_POST_EXTRA_COLS: tuple[tuple[str, str], ...] = (
+    ("skill_path", "TEXT"),
+    ("public_id", "TEXT"),
+    ("reject_reason", "TEXT"),
+    ("featured", "INTEGER NOT NULL DEFAULT 0"),
+    ("github_meta", "TEXT"),
+    ("reviewed_at", "TEXT"),
+    ("reviewed_by", "INTEGER"),
+)
+
+_USER_GOV_COLS: tuple[tuple[str, str], ...] = (
+    ("role", "TEXT NOT NULL DEFAULT 'creator'"),
+    ("status", "TEXT NOT NULL DEFAULT 'active'"),
+    ("trust_level", "TEXT NOT NULL DEFAULT 'new'"),
+    ("approved_count", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+
+def _migrate_posts(conn: sqlite3.Connection) -> None:
+    post_cols = _table_columns(conn, "posts")
+    if post_cols:
+        for name, decl in _POST_EXTRA_COLS:
+            if name not in post_cols:
+                conn.execute(f"ALTER TABLE posts ADD COLUMN {name} {decl}")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_public_id "
+            "ON posts(public_id) WHERE public_id IS NOT NULL AND public_id <> ''"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_coord "
+            "ON posts(full_name, skill_path) "
+            "WHERE full_name IS NOT NULL AND full_name <> '' "
+            "AND skill_path IS NOT NULL AND skill_path <> ''"
+        )
+    user_cols = _table_columns(conn, "users")
+    if user_cols:
+        for name, decl in _USER_GOV_COLS:
+            if name not in user_cols:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {name} {decl}")
+
+
 def init_db(db_path: Path) -> None:
     conn = connect(db_path)
     try:
         conn.executescript(SCHEMA)
         conn.commit()
         _migrate_users(conn)
+        _migrate_posts(conn)
         for stmt in USER_INDEXES:
             conn.execute(stmt)
         conn.commit()
@@ -400,27 +490,37 @@ def get_user(conn: sqlite3.Connection, user_id: int) -> Optional[dict[str, Any]]
 
 def create_post(conn: sqlite3.Connection, author_id: int, data: dict[str, Any]) -> dict[str, Any]:
     now = _now()
+    meta = data.get("github_meta") or {}
+    if isinstance(meta, dict):
+        meta_s = json.dumps(meta, ensure_ascii=False)
+    else:
+        meta_s = str(meta or "")
     cur = conn.execute(
         """
         INSERT INTO posts (
           author_id, title, body_md, description, github_url, full_name,
+          skill_path, public_id, github_meta,
           scene, scene_l2, scene_label, scene_l2_label, cover_url,
-          status, created_at, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          status, featured, created_at, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             author_id,
             data["title"],
-            data["body_md"],
+            "",
             data.get("description") or "",
             data.get("github_url") or "",
             data.get("full_name") or "",
+            data.get("skill_path") or "SKILL.md",
+            data.get("public_id") or "",
+            meta_s,
             data.get("scene") or "other",
             data.get("scene_l2") or "",
             data.get("scene_label") or "其他",
             data.get("scene_l2_label") or "",
             data.get("cover_url") or "",
-            data.get("status") or "published",
+            data.get("status") or "pending",
+            1 if data.get("featured") else 0,
             now,
             now,
         ),
@@ -445,7 +545,7 @@ def list_published_posts(conn: sqlite3.Connection, *, limit: int = 50, offset: i
         """
         SELECT p.*, u.login AS author_login, u.avatar_url AS author_avatar
         FROM posts p JOIN users u ON u.id = p.author_id
-        WHERE p.status = 'published'
+        WHERE p.status IN ('published', 'approved')
         ORDER BY p.created_at DESC
         LIMIT ? OFFSET ?
         """,
@@ -466,6 +566,111 @@ def list_user_posts(conn: sqlite3.Connection, user_id: int, *, limit: int = 50) 
         (user_id, limit),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def count_posts_today(conn: sqlite3.Connection, author_id: int) -> int:
+    day = _now()[:10]
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM posts WHERE author_id=? AND created_at >= ?",
+        (author_id, day),
+    ).fetchone()
+    return int(row["n"] or 0)
+
+
+def find_post_by_coord(
+    conn: sqlite3.Connection, full_name: str, skill_path: str,
+) -> Optional[dict[str, Any]]:
+    row = conn.execute(
+        "SELECT * FROM posts WHERE full_name=? AND skill_path=?",
+        (full_name, skill_path),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def list_moderation_queue(
+    conn: sqlite3.Connection, *, status: str = "pending", limit: int = 100,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT p.*, u.login AS author_login, u.avatar_url AS author_avatar,
+               u.trust_level, u.approved_count, u.status AS author_status
+        FROM posts p JOIN users u ON u.id = p.author_id
+        WHERE p.status = ?
+        ORDER BY p.created_at ASC
+        LIMIT ?
+        """,
+        (status, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def moderate_post(
+    conn: sqlite3.Connection,
+    post_id: int,
+    *,
+    action: str,
+    actor_id: int,
+    note: str = "",
+) -> dict[str, Any]:
+    post = get_post(conn, post_id)
+    if not post:
+        raise ValueError("投稿不存在")
+    now = _now()
+    featured = int(post.get("featured") or 0)
+    status = post["status"]
+    reject_reason = post.get("reject_reason") or ""
+    if action == "approve":
+        status = "approved"
+        reject_reason = ""
+        if post["status"] != "approved":
+            conn.execute(
+                "UPDATE users SET approved_count = approved_count + 1, "
+                "trust_level = CASE WHEN approved_count + 1 >= 3 AND trust_level = 'new' "
+                "THEN 'trusted' ELSE trust_level END WHERE id=?",
+                (post["author_id"],),
+            )
+    elif action == "reject":
+        if len((note or "").strip()) < 2:
+            raise ValueError("拒绝必须填写原因")
+        status = "rejected"
+        reject_reason = note.strip()
+        featured = 0
+    elif action == "hide":
+        status = "hidden"
+        featured = 0
+    elif action == "feature":
+        if status not in ("approved", "published"):
+            raise ValueError("只有已上架的条目能精选")
+        status = "approved"
+        featured = 1
+    elif action == "ban":
+        status = "banned"
+        featured = 0
+    else:
+        raise ValueError("未知动作")
+    conn.execute(
+        """
+        UPDATE posts SET status=?, featured=?, reject_reason=?,
+               reviewed_at=?, reviewed_by=?, updated_at=? WHERE id=?
+        """,
+        (status, featured, reject_reason, now, actor_id, now, post_id),
+    )
+    conn.execute(
+        "INSERT INTO moderation_events (actor_id, action, post_id, note, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (actor_id, action, post_id, note or "", now),
+    )
+    out = get_post(conn, post_id)
+    if out is None:
+        raise ValueError("投稿不存在")
+    return out
+
+
+def set_user_banned(conn: sqlite3.Connection, user_id: int, banned: bool) -> None:
+    conn.execute(
+        "UPDATE users SET status=? WHERE id=?",
+        ("banned" if banned else "active", user_id),
+    )
 
 
 def set_reaction(
@@ -523,7 +728,97 @@ def user_public(u: dict[str, Any]) -> dict[str, Any]:
                 ("github", u.get("github_id")),
             ) if v
         ],
+        "plan": (u.get("plan") or "free") or "free",
+        "plan_until": u.get("plan_until") or "",
+        "subscriber": _user_is_subscriber(u),
     }
+
+
+def _user_is_subscriber(u: dict[str, Any]) -> bool:
+    # 延迟导入：entitlement 不依赖 db，这边可以读它的判定，避免两套过期规则。
+    from server.entitlement import is_subscriber
+    return is_subscriber(u)
+
+
+def set_user_plan(
+    conn: sqlite3.Connection,
+    user_id: int,
+    plan: str,
+    plan_until: Optional[str] = None,
+) -> None:
+    conn.execute(
+        "UPDATE users SET plan=?, plan_until=? WHERE id=?",
+        (plan, plan_until, user_id),
+    )
+
+
+def insert_order(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any]:
+    cur = conn.execute(
+        """
+        INSERT INTO orders (
+          out_trade_no, user_id, sku, amount_fen, currency, status, provider,
+          provider_txn_id, paid_at, plan_until, created_at, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            row["out_trade_no"],
+            int(row["user_id"]),
+            row["sku"],
+            int(row["amount_fen"]),
+            row.get("currency") or "CNY",
+            row.get("status") or "pending",
+            row.get("provider") or "wechat",
+            row.get("provider_txn_id"),
+            row.get("paid_at"),
+            row.get("plan_until"),
+            row["created_at"],
+            row["updated_at"],
+        ),
+    )
+    return get_order(conn, int(cur.lastrowid))  # type: ignore[return-value]
+
+
+def get_order(conn: sqlite3.Connection, order_id: int) -> Optional[dict[str, Any]]:
+    row = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_order_by_trade_no(
+    conn: sqlite3.Connection, out_trade_no: str,
+) -> Optional[dict[str, Any]]:
+    row = conn.execute(
+        "SELECT * FROM orders WHERE out_trade_no=?", (out_trade_no,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def list_orders_for_user(
+    conn: sqlite3.Connection, user_id: int, *, limit: int = 20,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "SELECT * FROM orders WHERE user_id=? ORDER BY id DESC LIMIT ?",
+        (int(user_id), max(1, min(100, int(limit)))),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_order_paid(
+    conn: sqlite3.Connection,
+    order_id: int,
+    *,
+    provider_txn_id: str,
+    paid_at: str,
+    plan_until: Optional[str],
+) -> dict[str, Any]:
+    now = _now()
+    conn.execute(
+        """
+        UPDATE orders SET status='paid', provider_txn_id=?, paid_at=?,
+               plan_until=?, updated_at=? WHERE id=?
+        """,
+        (provider_txn_id, paid_at, plan_until, now, order_id),
+    )
+    return get_order(conn, order_id)  # type: ignore[return-value]
 
 
 # —— 短信验证码 ——

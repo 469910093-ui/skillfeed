@@ -10,6 +10,12 @@
 
 **https://469910093-ui.github.io/skillfeed/**
 
+公开 Pages 只发登录说明壳页（默认 0 条目录），不含全量 `feed.json`、打分明细和语料库。
+完整精选库在本机 `~/.skill-feed/feed.json` 或登录主站阅读。发现流全量免费，不按天切条。
+不要把 `publish-site --full` 推到 GitHub Pages。
+
+MIT 覆盖源代码。**SkillFeeder / Skill Picker** 的名称、Logo、Demo 素材未授权不得用于商业销售。
+
 - 仓库：[469910093-ui/skillfeed](https://github.com/469910093-ui/skillfeed)
 - 手动刷新：GitHub → Actions → **Refresh & Pages** → Run workflow
 - 赞/藏目前仅保存在浏览者本机（localStorage）；服务端 UGC 另议
@@ -34,6 +40,8 @@ cp .env.example .env
 # 主登录：SKILLFEED_WECHAT_APP_ID / SKILLFEED_WECHAT_APP_SECRET
 # 短信兜底：SKILLFEED_SMS_PROVIDER=aliyun 以及签名 / 模板 / AccessKey
 # 本机先跑通可以：SKILLFEED_DEV=1 + SKILLFEED_SMS_PROVIDER=console（验证码打服务端日志，不真发）
+# 订阅（收款未接前用激活码）：SKILLFEED_ACTIVATION_CODES=内测券1,内测券2
+# 测订单开通（不碰真密钥）：SKILLFEED_DEV=1 后「我的」点「测试下单并开通」
 python skillfeed.py publish-site --out ~/.skill-feed/site
 python skillfeed.py api --port 8787
 ```

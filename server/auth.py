@@ -155,6 +155,13 @@ def require_user_id(request: Request, settings: Settings) -> int:
     return uid
 
 
+def require_operator(request: Request, settings: Settings, login: str) -> int:
+    uid = require_user_id(request, settings)
+    if (login or "").lower() not in settings.operator_logins:
+        raise HTTPException(status_code=403, detail="operator only")
+    return uid
+
+
 # —— OAuth state：签名 + Cookie 双绑 ——
 #
 # 「回传的 state 等于我发出去的 state」这件事有两种验证方式，这里两个都要：

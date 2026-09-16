@@ -134,8 +134,12 @@ class Settings:
         site = _env("SKILLFEED_SITE_DIR")
         self.site_dir = Path(site).expanduser() if site else (data_home() / "site")
         feed_file = _env("SKILLFEED_OFFICIAL_FEED_FILE")
+        refresh_feed = data_home() / "feed.json"
+        site_feed = self.site_dir / "feed.json"
+        # 登录主站读 refresh 全量。Pages 上的 feed.json 是预览，不能当官方源。
         self.official_feed_file = (
-            Path(feed_file).expanduser() if feed_file else (self.site_dir / "feed.json")
+            Path(feed_file).expanduser() if feed_file
+            else (refresh_feed if refresh_feed.is_file() else site_feed)
         )
         db = _env("SKILLFEED_DB")
         self.db_path = Path(db).expanduser() if db else (data_home() / "server.db")
@@ -167,6 +171,25 @@ class Settings:
         # 运维只读令牌：给监控/CI 拉埋点健康和站内热度导出用。
         # 不设就只能靠登录态访问那两个端点——不会退化成公开可读
         self.metrics_token = _env("SKILLFEED_METRICS_TOKEN")
+        # 历史「每天 N 条」开关。2026-09-16 起发现流全量免费，此值不再切片。
+        self.free_daily_feed_items = max(0, _int_env("SKILLFEED_FREE_DAILY_ITEMS", 0))
+        # 激活码兑换订阅的天数；0 = 终身。收款通道未接前靠这个发权益。
+        self.subscriber_days = _int_env("SKILLFEED_SUBSCRIBER_DAYS", 365)
+        self.activation_codes = frozenset(
+            c.strip() for c in _env("SKILLFEED_ACTIVATION_CODES").split(",") if c.strip()
+        )
+        self.operator_logins = frozenset(
+            c.strip().lower()
+            for c in _env("SKILLFEED_OPERATOR_LOGINS").split(",") if c.strip()
+        )
+        self.submit_per_day = max(1, _int_env("SKILLFEED_SUBMIT_PER_DAY", 3))
+        # 年费档标价，单位分。定价未锁定，只先把订单金额钉死，方便以后对账。
+        self.sku_year_fen = max(1, _int_env("SKILLFEED_SKU_YEAR_FEN", 9900))
+        # 微信支付商户。三件都空 = 未接；缺一件也不算配置好，避免半套密钥上线。
+        # 验签还没写：填了也会在 notify 里 503，先用 /api/pay/dev-notify 测开通。
+        self.wechat_pay_mchid = _env("SKILLFEED_WECHAT_PAY_MCHID")
+        self.wechat_pay_api_v3_key = _env("SKILLFEED_WECHAT_PAY_API_V3_KEY")
+        self.wechat_pay_serial = _env("SKILLFEED_WECHAT_PAY_SERIAL")
         self.config = self._load_config()
 
     def _load_config(self) -> dict[str, Any]:
@@ -200,6 +223,14 @@ class Settings:
     @property
     def wechat_configured(self) -> bool:
         return bool(self.wechat_app_id and self.wechat_app_secret)
+
+    @property
+    def wechat_pay_configured(self) -> bool:
+        return bool(
+            self.wechat_pay_mchid
+            and self.wechat_pay_api_v3_key
+            and self.wechat_pay_serial
+        )
 
     @property
     def sms_configured(self) -> bool:

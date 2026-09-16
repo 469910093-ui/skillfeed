@@ -680,14 +680,68 @@ def _copy_wechat_verify_files(out: Path) -> None:
             print(f"[publish-site] wrote {dest.resolve()}")
 
 
+PUBLIC_PREVIEW_LIMIT = 0
+# 公开静态站不发可下载目录（全库仍在本机 / 登录主站）。发现流本身全量免费。
+# 公开静态站只带这些字段。打分、排序理由、门禁明细、语料库不随 Pages 走。
+_PREVIEW_ITEM_KEYS = (
+    "id", "full_name", "name", "description", "url", "source", "kind",
+    "scene", "scene_label", "owner", "cover_url", "skill_url",
+    "one_liner", "highlights", "problem", "stars", "soft", "body_preview",
+)
+
+
+def public_preview_feed(feed: dict, limit: int = PUBLIC_PREVIEW_LIMIT) -> dict:
+    """把全量 feed 收成可公开的预览：条数封顶，选品内部信号去掉。"""
+    items = [it for it in (feed.get("items") or []) if isinstance(it, dict)]
+    preview_items = [{k: it[k] for k in _PREVIEW_ITEM_KEYS if k in it}
+                     for it in items[: max(0, int(limit))]]
+    ui = dict(feed.get("ui") or {})
+    ui["preview"] = True
+    ui["preview_limit"] = int(limit)
+    ui["free_daily"] = 8
+    gates = dict(feed.get("gates") or {})
+    return {
+        "generated_at": feed.get("generated_at"),
+        "meta": {
+            "preview": True,
+            "preview_limit": int(limit),
+            "full_item_count": len(items),
+        },
+        "items": preview_items,
+        "corpus": [],
+        "gates": {k: gates[k] for k in ("input", "passed", "rejected") if k in gates},
+        "ui": ui,
+        "_note": (
+            "Public preview only. Full catalog, ranking scores, gate details, "
+            "and corpus are not published as static files."
+        ),
+    }
+
+
 def cmd_publish_site(argv: list[str]) -> int:
-    """导出独立网页产物：site/index.html（full）+ site/embed.html（lite）+ feed.json。"""
+    """导出独立网页产物：site/index.html（full）+ site/embed.html（lite）+ feed.json。
+
+    默认写成公开壳页（0 条目录、不含打分与语料）。完整库请留在
+    ~/.skill-feed/feed.json 或登录主站阅读（发现流全量免费）；
+    不要把 --full 推到 GitHub Pages。
+    """
     refresh_paths()
     out = Path("site")
+    preview = True
+    preview_limit = PUBLIC_PREVIEW_LIMIT
     i = 0
     while i < len(argv):
         if argv[i] in ("--out", "-o") and i + 1 < len(argv):
             out = Path(argv[i + 1])
+            i += 2
+            continue
+        if argv[i] == "--full":
+            preview = False
+            i += 1
+            continue
+        if argv[i] == "--preview" and i + 1 < len(argv):
+            preview = True
+            preview_limit = int(argv[i + 1])
             i += 2
             continue
         print(f"unknown arg: {argv[i]}", file=sys.stderr)
@@ -725,28 +779,35 @@ def cmd_publish_site(argv: list[str]) -> int:
         (out / "CNAME").write_text(domain + "\n", encoding="utf-8")
         print(f"[publish-site] wrote {out.resolve()}/CNAME ({domain})")
     _copy_wechat_verify_files(out)
+    published = public_preview_feed(feed, preview_limit) if preview else feed
+    pub_ui = dict(published.get("ui") or {})
     (out / "feed.json").write_text(
-        json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+        json.dumps(published, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
     )
-    feed_dashboard.write_feed_html(feed, out / "index.html", variant="full")
-    lite_feed = dict(feed)
-    lite_ui = dict(ui)
+    feed_dashboard.write_feed_html(published, out / "index.html", variant="full")
+    lite_feed = dict(published)
+    lite_ui = dict(pub_ui)
     lite_ui["variant"] = "lite"
     lite_ui.pop("api_base", None)
     lite_feed["ui"] = lite_ui
     feed_dashboard.write_feed_html(lite_feed, out / "embed.html", variant="lite")
+    mode = "preview" if preview else "full"
     (out / "BUILD.txt").write_text(
         "skill-feed static web product\n"
         "index.html = full site (updates ring/follow/publish when api_base set)\n"
         "embed.html = lite for skill-picker (no follow/publish/me)\n"
-        f"generated_at={feed.get('generated_at')}\n"
-        f"items={len(feed.get('items') or [])}\n"
-        f"corpus={len(feed.get('corpus') or [])}\n",
+        f"mode={mode}\n"
+        f"generated_at={published.get('generated_at')}\n"
+        f"items={len(published.get('items') or [])}\n"
+        f"corpus={len(published.get('corpus') or [])}\n"
+        "MIT covers source code only. SkillFeeder / Skill Picker names and "
+        "demo assets are not licensed for commercial resale.\n",
         encoding="utf-8",
     )
-    print(f"[publish-site] wrote {out.resolve()}/index.html (full web)")
-    print(f"[publish-site] wrote {out.resolve()}/embed.html (lite embed)")
-    print(f"[publish-site] items={len(feed.get('items') or [])} corpus={len(feed.get('corpus') or [])}")
+    print(f"[publish-site] wrote {out.resolve()}/index.html (full web, {mode})")
+    print(f"[publish-site] wrote {out.resolve()}/embed.html (lite embed, {mode})")
+    print(f"[publish-site] items={len(published.get('items') or [])} "
+          f"corpus={len(published.get('corpus') or [])} mode={mode}")
     return 0
 
 
