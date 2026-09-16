@@ -216,6 +216,13 @@ jobs:
         with:
           path: site
 
+      - name: Keep a copy for the Aliyun Nginx job
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-index
+          path: site/index.html
+          if-no-files-found: error
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -226,6 +233,37 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # skillfeeder.cn 的 Nginx。密钥在仓库 Secrets：ALIYUN_SSH_KEY / HOST / USER。
+  # 没配密钥就跳过，不影响 Pages。失败也不回滚 Pages。
+  deploy-aliyun:
+    name: Nginx · skillfeeder.cn
+    needs: build
+    if: ${{ github.ref == 'refs/heads/main' && vars.ALIYUN_DEPLOY == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download site html
+        uses: actions/download-artifact@v4
+        with:
+          name: nginx-index
+          path: nginx-index
+
+      - name: scp index.html onto the box
+        env:
+          ALIYUN_SSH_KEY: ${{ secrets.ALIYUN_SSH_KEY }}
+          ALIYUN_HOST: ${{ secrets.ALIYUN_HOST }}
+          ALIYUN_USER: ${{ secrets.ALIYUN_USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ALIYUN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 15 -H "$ALIYUN_HOST" >> ~/.ssh/known_hosts
+          scp -o ConnectTimeout=15 nginx-index/index.html \
+            "$ALIYUN_USER@$ALIYUN_HOST:/var/www/html/index.html"
+          ssh -o ConnectTimeout=15 "$ALIYUN_USER@$ALIYUN_HOST" \
+            'test -s /var/www/html/index.html && grep -q "<title>SkillFeeder</title>" /var/www/html/index.html'
 
   # 门禁拦下发布时，说清「站点没坏，只是没更新」。
   #
