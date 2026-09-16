@@ -1194,11 +1194,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         _op_user(request)
         with db.db_session(settings.db_path) as conn:
             rows = db.list_moderation_queue(conn, status=status)
+        def cell(v: Any) -> str:
+            return '"' + str(v or "").replace('"', '""') + '"'
+
         lines = [
             "id,title,copy,github_url,skill_path,author_login,trust_level,approved_count,submitted_at"
         ]
         for r in rows:
-            cell = lambda v: '"' + str(v or "").replace('"', '""') + '"'
             lines.append(",".join(cell(r.get(k)) for k in (
                 "id", "title", "description", "github_url", "skill_path",
                 "author_login", "trust_level", "approved_count", "created_at",
