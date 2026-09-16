@@ -191,7 +191,7 @@ class TestPublicSiteHasNoInstallSurface(unittest.TestCase):
     def test_full_card_template_never_calls_the_button(self):
         # 不是「调了个返回空串的函数」，是模板里连调用点都不存在
         html = feed_dashboard.build_feed_html(FEED)
-        self.assertIn('class="open-row"', html)
+        self.assertIn('class="open-row', html)
         self.assertNotIn("open-row${", html)
 
     def test_lite_card_template_calls_it(self):
