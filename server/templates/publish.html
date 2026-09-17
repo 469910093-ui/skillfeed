@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>发布 Skill · SkillFeeder</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,25 +27,28 @@
     --font: "Outfit", "PingFang SC", "Microsoft YaHei", sans-serif;
     --logo: "Outfit", "PingFang SC", sans-serif;
     --phone: 448px;
+    --feed: 100%;
+    --shell: 100%;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }
-  body { min-height: 100vh; }
+  html { overflow-x: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body { min-height: 100vh; min-height: 100dvh; }
   .shell {
-    max-width: var(--phone);
+    max-width: var(--shell);
     margin: 0 auto;
     min-height: 100vh;
+    min-height: 100dvh;
     background: var(--bg);
-    border-left: 1px solid var(--line);
-    border-right: 1px solid var(--line);
     position: relative;
     display: flex;
     flex-direction: column;
   }
+  .stage { flex: 1; min-width: 0; }
   .topbar {
     position: sticky; top: 0; z-index: 40;
     display: flex; flex-direction: column;
-    padding: 10px 14px 8px;
+    padding: calc(10px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left));
     background: rgba(244,247,255,.92);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
@@ -77,7 +80,7 @@
     -webkit-text-fill-color: transparent;
   }
   .top-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-  .me-panel { padding: 18px 16px 28px; flex: 1; }
+  .me-panel { padding: 18px 16px calc(28px + 80px + env(safe-area-inset-bottom)); flex: 1; }
   .me-panel h2 { margin: 0 0 6px; font-size: 1.2rem; }
   .me-panel .lead { color: var(--muted); font-size: .88rem; line-height: 1.45; margin: 0 0 16px; }
   .me-card {
@@ -122,7 +125,7 @@
   .pub-form .count { font-weight: 600; }
   .pub-form input, .pub-form textarea {
     width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
-    font: inherit; font-size: .85rem; background: #fff; color: var(--ink);
+    font: inherit; font-size: 16px; background: #fff; color: var(--ink);
   }
   .pub-form textarea { min-height: 96px; font-size: .8rem; line-height: 1.5; resize: vertical; }
   .pub-form input:focus, .pub-form textarea:focus {
@@ -175,6 +178,88 @@
     margin: 22px 0 8px; font-size: .72rem; font-weight: 700;
     color: var(--muted); letter-spacing: .04em; text-transform: uppercase;
   }
+  @media (max-width: 380px) {
+    .logo { font-size: 1.22rem; }
+    .value-line { font-size: .72rem; letter-spacing: .04em; }
+    .site-foot { display: none; }
+  }
+  @media (min-width: 720px) {
+    :root {
+      --phone: 560px;
+      --feed: 560px;
+      --shell: 560px;
+    }
+    html, body { background: #e8eefc; }
+    .shell {
+      max-width: var(--shell);
+      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+    }
+    .pub-form input, .pub-form textarea { font-size: .85rem; }
+  }
+  @media (min-width: 1100px) {
+    :root {
+      --phone: 720px;
+      --feed: 720px;
+      --shell: 1080px;
+    }
+    .shell {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
+      grid-template-areas:
+        "nav top"
+        "nav stage";
+      max-width: var(--shell);
+    }
+    .topbar { grid-area: top; padding: 14px 20px 12px; }
+    .stage { grid-area: stage; }
+    .dock {
+      grid-area: nav;
+      position: sticky;
+      top: 0;
+      align-self: start;
+      height: 100vh;
+      height: 100dvh;
+      border-top: 0;
+      border-right: 1px solid var(--line);
+      background: var(--card);
+      display: flex;
+      flex-direction: column;
+      padding: 18px 12px 20px;
+    }
+    .site-foot { justify-content: flex-start; padding: 0 8px 16px; }
+    .bottom {
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      gap: 4px;
+      padding: 0;
+    }
+    .nav {
+      display: flex;
+      flex-direction: row;
+      justify-content: flex-start;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: .82rem;
+    }
+    .nav svg { width: 22px; height: 22px; }
+    .nav::before {
+      top: 50%;
+      left: 0;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 18px;
+      border-radius: 0 3px 3px 0;
+    }
+    .nav.on { background: #eef3ff; }
+    .me-panel { padding: 22px 20px 36px; }
+  }
 </style>
 </head>
 <body>
@@ -189,6 +274,7 @@
       </div>
     </header>
 
+    <div class="stage">
     <main class="me-panel">
       <h2>发布 Skill</h2>
       <p class="lead">只填三项：公开 GitHub 链接、标题、文案。不传 zip，不贴 SKILL.md 正文。提交后进审核，通过才进发现流，<strong>不代装到任何人的机器</strong>。</p>
@@ -241,6 +327,7 @@
       <h3 class="list-title hide" id="mineTitle">我发布的</h3>
       <div id="mine"></div>
     </main>
+    </div>
 
     <div class="dock">
       <footer class="site-foot">

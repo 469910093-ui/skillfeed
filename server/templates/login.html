@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>登录 · SkillFeeder</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -13,11 +13,13 @@
     --wx:#07c160;
   }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body {
     margin: 0; font-family: Outfit, "PingFang SC", "Microsoft YaHei", sans-serif;
-    color: var(--ink); min-height: 100vh;
+    color: var(--ink); min-height: 100vh; min-height: 100dvh;
     background: var(--chassis);
-    display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+    display: flex; align-items: center; justify-content: center;
+    padding: calc(24px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
   .card {
     width: 100%; max-width: 420px; background: #f4f7ff; border: 1px solid rgba(152, 96, 231, .28);
@@ -47,7 +49,15 @@
   label { display: block; font-size: .78rem; font-weight: 600; margin: 12px 0 6px; }
   input {
     width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px;
-    font: inherit; background: #fff;
+    font: inherit; font-size: 16px; background: #fff;
+  }
+  @media (max-width: 420px) {
+    body { align-items: flex-start; }
+    .card { padding: 22px 16px 20px; border-radius: 14px; }
+    h1 { font-size: 1.28rem; }
+  }
+  @media (min-width: 1100px) {
+    .card { max-width: 440px; padding: 36px 28px 32px; }
   }
   .hint { font-size: .75rem; color: var(--muted); margin-top: 8px; line-height: 1.5; }
   .warn {

@@ -503,7 +503,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{page_title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -554,25 +554,30 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     --font: "Outfit", "PingFang SC", "Microsoft YaHei", sans-serif;
     --logo: "Outfit", "PingFang SC", sans-serif;
     --phone: 448px;
+    --feed: 100%;
+    --shell: 100%;
   }}
   * {{ box-sizing: border-box; }}
   html, body {{ margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }}
-  body {{ min-height: 100vh; }}
+  html {{ overflow-x: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }}
+  body {{ min-height: 100vh; min-height: 100dvh; }}
 
   .shell {{
-    max-width: var(--phone);
+    max-width: var(--shell);
     margin: 0 auto;
     min-height: 100vh;
+    min-height: 100dvh;
     background: var(--bg);
-    border-left: 1px solid var(--line);
-    border-right: 1px solid var(--line);
     position: relative;
+    display: flex;
+    flex-direction: column;
   }}
+  .stage {{ flex: 1; min-width: 0; }}
 
   .topbar {{
     position: sticky; top: 0; z-index: 40;
     display: flex; flex-direction: column;
-    padding: 10px 14px 8px;
+    padding: calc(10px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left));
     background: rgba(244,247,255,.92);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
@@ -667,7 +672,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .search {{
     width: 100%; border: 0; border-radius: 10px;
     background: #efefef; padding: 9px 12px;
-    font: inherit; font-size: .9rem; color: var(--ink);
+    font: inherit; font-size: 16px; color: var(--ink);
   }}
   .search::placeholder {{ color: var(--muted); }}
   /* 原来是 #c7c7c7，对 #efefef 底只有 1.47:1，等于没有焦点提示（SC 1.4.11 要 3:1） */
@@ -764,7 +769,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .pill.on {{ background: var(--ink); color: #fff; border-color: var(--ink); }}
   .sr-only {{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }}
 
-  .feed {{ background: var(--bg); padding-bottom: 88px; }}
+  .feed {{ background: var(--bg); padding-bottom: calc(88px + env(safe-area-inset-bottom)); }}
   .post {{
     background: var(--card);
     border-bottom: 1px solid var(--line);
@@ -1142,7 +1147,8 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 
   /* —— 回到顶部 ——
      滚动容器是文档本身（.shell 只是限宽，没有自己的滚动条），所以监听 window、
-     滚 window。横向位置贴住手机壳右缘：窄屏退回 14px，宽屏跟着壳走。 */
+     滚 window。横向位置贴住内容壳右缘：手机铺满退回 14px，平板跟着 --phone，
+     电脑跟着 --shell。 */
   .to-top {{
     position: fixed; z-index: 55;
     bottom: calc(108px + env(safe-area-inset-bottom));
@@ -1236,7 +1242,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     z-index: 60; display: none; align-items: center; gap: 10px;
     background: rgba(38,38,38,.92); color: #fff;
     padding: 10px 14px; border-radius: 999px;
-    font-size: .78rem; font-weight: 600; max-width: calc(var(--phone) - 24px);
+    font-size: .78rem; font-weight: 600; max-width: min(calc(100vw - 24px), calc(var(--phone) - 24px));
     width: max-content;
   }}
   .demo-bar.show {{ display: flex; }}
@@ -1258,7 +1264,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     background: rgba(10,24,72,.92); color: #fff;
     padding: 10px 14px; border-radius: 10px; font-size: .8rem;
     opacity: 0; transition: opacity .2s; z-index: 80; pointer-events: none;
-    max-width: calc(var(--phone) - 32px); text-align: center;
+    max-width: min(calc(100vw - 32px), calc(var(--phone) - 32px)); text-align: center;
   }}
   .toast.show {{ opacity: 1; }}
 
@@ -1266,8 +1272,8 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .story-viewer {{
     position: fixed; inset: 0; z-index: 100;
     background: #111; display: none; flex-direction: column;
-    max-width: var(--phone); margin: 0 auto;
-    left: 50%; transform: translateX(-50%);
+    max-width: 100%; margin: 0 auto;
+    left: 0; transform: none;
     width: 100%;
   }}
   .story-viewer.open {{ display: flex; }}
@@ -1407,7 +1413,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     position: absolute; left: 16px; right: 16px;
     background: #fff; border-radius: 14px; padding: 14px 14px 12px;
     pointer-events: auto; box-shadow: 0 12px 40px rgba(12, 16, 32, .28);
-    max-width: calc(var(--phone) - 32px); margin: 0 auto;
+    max-width: min(calc(100vw - 32px), calc(var(--phone) - 32px)); margin: 0 auto;
   }}
   .coach-card .step {{
     font-size: .68rem; font-weight: 700; color: var(--accent); margin: 0 0 6px;
@@ -1440,9 +1446,113 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   body.variant-lite .lite-banner b {{ color: var(--ink); }}
   .lite-banner {{ display: none; }}
 
-  @media (max-width: 520px) {{
-    .shell {{ border: 0; }}
-    .story-viewer {{ max-width: 100%; left: 0; transform: none; }}
+  /* 手机：铺满 + 安全区。平板：居中加宽单列。电脑：左侧导航 + 更宽阅读栏。 */
+  @media (max-width: 380px) {{
+    .logo {{ font-size: 1.22rem; }}
+    .value-line {{ font-size: .72rem; letter-spacing: .04em; }}
+    .site-foot {{ display: none; }}
+  }}
+  @media (min-width: 720px) {{
+    :root {{
+      --phone: 560px;
+      --feed: 560px;
+      --shell: 560px;
+    }}
+    html, body {{ background: #e8eefc; }}
+    .shell {{
+      max-width: var(--shell);
+      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+    }}
+    .search {{ font-size: .9rem; }}
+    .story-viewer {{
+      max-width: min(448px, var(--phone));
+      left: 50%;
+      transform: translateX(-50%);
+    }}
+  }}
+  @media (min-width: 1100px) {{
+    :root {{
+      --phone: 720px;
+      --feed: 720px;
+      --shell: 1080px;
+    }}
+    .shell {{
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
+      grid-template-areas:
+        "nav top"
+        "nav stage";
+      max-width: var(--shell);
+      min-height: 100vh;
+      min-height: 100dvh;
+    }}
+    .topbar {{
+      grid-area: top;
+      padding: 14px 20px 12px;
+    }}
+    .stage {{ grid-area: stage; }}
+    .dock {{
+      grid-area: nav;
+      position: sticky;
+      top: 0;
+      align-self: start;
+      height: 100vh;
+      height: 100dvh;
+      border-top: 0;
+      border-right: 1px solid var(--line);
+      background: var(--card);
+      display: flex;
+      flex-direction: column;
+      padding: 18px 12px 20px;
+    }}
+    .site-foot {{
+      display: flex;
+      justify-content: flex-start;
+      padding: 0 8px 16px;
+    }}
+    .bottom {{
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      gap: 4px;
+      padding: 0;
+    }}
+    .nav {{
+      display: flex;
+      flex-direction: row;
+      justify-content: flex-start;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: .82rem;
+    }}
+    .nav svg {{ width: 22px; height: 22px; }}
+    .nav::before {{
+      top: 50%;
+      left: 0;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 18px;
+      border-radius: 0 3px 3px 0;
+    }}
+    .nav.on {{ background: #eef3ff; }}
+    .feed {{ padding-bottom: 32px; }}
+    body.variant-lite .feed {{ padding-bottom: 32px; }}
+    .to-top {{
+      bottom: 28px;
+      right: max(24px, calc(50% - (var(--shell) / 2) + 24px));
+    }}
+    .sheet {{ align-items: center; }}
+    .sheet-panel {{
+      width: min(480px, calc(100% - 48px));
+      border-radius: 16px;
+      max-height: 80vh;
+    }}
   }}
 </style>
 </head>
@@ -1480,6 +1590,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
         <div class="intent-keys" id="intentKeys" hidden></div>
       </div>
     </header>
+    <div class="stage">
     <div class="lite-banner" id="liteBanner" data-i18n-html="liteBanner">
       <b>本机没有合适 skill 时</b>，在这里按意图浏览远程线索，点「打开 GitHub」自行安装；装好后回 skill-picker 再扫一遍。
     </div>
@@ -1501,6 +1612,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     <!-- 一个 tabpanel 配四个 tab：aria-labelledby 跟着激活的 tab 走（renderTabs）。
          切 tab 换的是同一块内容区，做四个常驻 panel 只会多出三块空 DOM。 -->
     <main class="feed" id="feed" role="tabpanel" aria-labelledby="tab-all"></main>
+    </div>
 
     <!-- 底栏四入口：发现 / 主题分类 / 发布 / 我的。lite 用 CSS 藏发布和我的。 -->
     <div class="dock">

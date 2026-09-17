@@ -2335,6 +2335,38 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
                 self.assertIn(key + ":", en, key + " 缺英文")
 
 
+class TestResponsiveShell(unittest.TestCase):
+    """电脑 / 平板网页 / 手机共用一套壳，断点写在源码里而不是生成后的快照。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
+
+    def test_viewport_asks_for_safe_area(self):
+        self.assertIn("viewport-fit=cover", self.html)
+
+    def test_stage_wraps_the_feed_so_desktop_can_grid(self):
+        self.assertIn('class="stage"', self.html)
+        self.assertLess(
+            self.html.index('class="stage"'),
+            self.html.index('id="feed"'),
+            "stage 必须包住信息流，电脑端才能把导航甩到左侧")
+        self.assertGreater(
+            self.html.index("</div>", self.html.index('id="feed"')),
+            self.html.index('id="feed"'))
+
+    def test_three_widths_are_declared(self):
+        self.assertIn("@media (max-width: 380px)", self.html)
+        self.assertIn("@media (min-width: 720px)", self.html)
+        self.assertIn("@media (min-width: 1100px)", self.html)
+        self.assertIn("grid-template-areas", self.html)
+        self.assertIn("safe-area-inset-top", self.html)
+        self.assertNotIn("@media (max-width: 520px)", self.html)
+
+    def test_phone_search_is_16px_to_avoid_ios_zoom(self):
+        self.assertRegex(self.html, r"\.search \{[^}]*font-size: 16px")
+
+
 @unittest.skipIf(NODE is None, "需要 node 才能跑模板里的 tab / 账户逻辑")
 class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
     """tab ↔ URL、三种运行形态下入口的显隐。"""
