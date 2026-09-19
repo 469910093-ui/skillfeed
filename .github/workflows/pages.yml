@@ -248,7 +248,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # skillfeeder.cn 的 Nginx。密钥在仓库 Secrets：ALIYUN_SSH_KEY / HOST / USER。
   # 没配密钥就跳过，不影响 Pages。失败也不回滚 Pages。
