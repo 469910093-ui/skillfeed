@@ -48,6 +48,7 @@ class TestEventsAPI(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         s = Settings()
         s.db_path = Path(self.tmp.name) / "t.db"
+        s.backup_dir = Path(self.tmp.name) / "backups"
         s.dev_mode = True
         s.dev_auth = True
         s.session_secret = "test-secret"
@@ -97,6 +98,17 @@ class TestEventsAPI(unittest.TestCase):
             stats = ranking_service.load_item_stats(conn)
         self.assertEqual(stats["a/b::SKILL.md"].total_impressions, 1)
         self.assertEqual(stats["a/b::SKILL.md"].total_clicks, 1)
+
+    def test_journey_actions_do_not_bump_item_stats(self):
+        r = self._post([
+            {"action": "view_tab", "item_key": "all", "client_ts": "j1"},
+            {"action": "open_card", "item_key": "a/b::SKILL.md", "client_ts": "j2"},
+        ])
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["accepted"], 2)
+        from server import db, ranking_service
+        with db.db_session(self.settings.db_path) as conn:
+            self.assertEqual(ranking_service.load_item_stats(conn), {})
 
     def test_retry_does_not_double_count(self):
         """离线补报会重发同样的事件，client_ts 相同就必须去重，否则点击数被刷高。"""

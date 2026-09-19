@@ -345,14 +345,49 @@ def new_sms_code() -> str:
     return f"{secrets.randbelow(1000000):06d}"
 
 
+def github_redirect_uri(settings: Settings) -> str:
+    """Must match the GitHub OAuth App callback exactly."""
+    return f"{settings.public_url.rstrip('/')}/auth/github/callback"
+
+
 def github_authorize_url(settings: Settings, state: str) -> str:
     q = urlencode({
         "client_id": settings.github_client_id,
-        "redirect_uri": f"{settings.public_url}/auth/callback",
+        "redirect_uri": github_redirect_uri(settings),
         "scope": "read:user",
         "state": state,
     })
     return f"{GITHUB_AUTHORIZE}?{q}"
+
+
+def oauth_handoff_html(authorize_url: str, *, heading: str, nonce: str) -> str:
+    """200 HTML 中转页：先落下 state Cookie，再跳到 GitHub / 微信。
+
+    不要对第三方授权页直接 302。iOS Safari、微信/小红书/抖音 WebView 经常
+    **丢掉 302 响应上的 Set-Cookie**，回调里就读不到 state，表现为「电脑能登、
+    手机完全不行」。200 先让浏览器提交 Cookie，再 `location.replace`。
+    """
+    from html import escape as html_escape
+
+    safe_attr = html_escape(authorize_url, quote=True)
+    safe_js = json.dumps(authorize_url)
+    safe_heading = html_escape(heading)
+    return (
+        "<!DOCTYPE html><html lang=\"zh-CN\"><head>"
+        "<meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        f"<meta http-equiv=\"refresh\" content=\"1;url={safe_attr}\">"
+        f"<title>{safe_heading}</title>"
+        "<style>body{margin:0;min-height:100vh;display:flex;align-items:center;"
+        "justify-content:center;font-family:\"PingFang SC\",\"Microsoft YaHei\",sans-serif;"
+        "background:#0c1020;color:#f4f7ff}.box{text-align:center;padding:24px;line-height:1.6}"
+        "a{color:#64e2d4}</style></head><body><div class=\"box\">"
+        f"<p>{safe_heading}</p>"
+        f"<p><a href=\"{safe_attr}\">如果没有自动跳转，点这里继续</a></p>"
+        "</div>"
+        f"<script nonce=\"{nonce}\">setTimeout(function(){{location.replace({safe_js});}},220);"
+        "</script></body></html>"
+    )
 
 
 async def exchange_github_code(settings: Settings, code: str) -> dict[str, Any]:
@@ -364,7 +399,7 @@ async def exchange_github_code(settings: Settings, code: str) -> dict[str, Any]:
                 "client_id": settings.github_client_id,
                 "client_secret": settings.github_client_secret,
                 "code": code,
-                "redirect_uri": f"{settings.public_url}/auth/callback",
+                "redirect_uri": github_redirect_uri(settings),
             },
         )
         token_resp.raise_for_status()

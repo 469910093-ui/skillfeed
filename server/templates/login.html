@@ -80,10 +80,19 @@
 <body>
   <div class="card">
     <h1>登录 Skill<span class="feeder">Feeder</span></h1>
-    <p class="lead">每刷一下，就快人一步。登录是为了发布自己的 skill，以及把赞和收藏带到下一台设备——发现流本身全量免费。</p>
+    <p class="lead" id="lead">每刷一下，就快人一步。登录是为了发布自己的 skill，以及把赞和收藏带到下一台设备——发现流本身全量免费。</p>
 
     <!-- 2.7 环境检测：文案由脚本按 UA 填，默认不显示 -->
     <div id="envWarn" class="warn hide"></div>
+    <p id="onlyGithubHint" class="hint hide">
+      目前只能用 GitHub 登录。请用 Safari / Chrome 打开本页；
+      微信、小红书、抖音的内置浏览器打不开 GitHub 授权。
+      若手机打不开 github.com，先换可访问的网络，或改用电脑登录。
+    </p>
+
+    <div id="githubBlock" class="hide">
+      <a class="btn" href="/auth/github">使用 GitHub 登录</a>
+    </div>
 
     <a id="btnWechat" class="btn wx hide" href="/auth/wechat">微信一键登录</a>
     <p id="wechatOff" class="hint hide">微信登录暂未开通（服务端未配置服务号）。</p>
@@ -104,15 +113,6 @@
     <p id="smsOff" class="hint hide">手机号登录暂未开通（服务端未配置短信通道）。</p>
 
     <div id="msg"></div>
-
-    <!--
-      2.13：GitHub 登录降级为可选「绑定」，V1 默认不给入口。
-      代码和 /auth/github 路由都保留，只是这个按钮由服务端开关决定是否渲染。
-    -->
-    <div id="githubBlock" class="hide">
-      <div class="sep">开发者</div>
-      <a class="btn ghost" href="/auth/github">使用 GitHub 登录</a>
-    </div>
     <div id="devBlock" class="hide">
       <div class="sep">本地开发</div>
       <a class="btn ghost" href="/auth/dev-login">无凭据登录（dev）</a>
@@ -138,11 +138,9 @@ const $ = (id) => document.getElementById(id);
 
 // —— 2.7 运行环境检测 ——
 //
-// 微信网页授权只能在微信客户端里完成。小红书 / 抖音的内置浏览器打不开
-// open.weixin.qq.com 的授权页（会白屏或直接被拦），而我们的宣发渠道恰恰是
-// 小红书 / 抖音 —— 也就是说**大部分首次访问都落在走不通的环境里**。
-// 所以这里不是锦上添花的提示，是主路径：检测到这些环境就把微信按钮藏掉、
-// 把手机号登录顶上来，并明确告诉用户怎么换环境。
+// 生产当前只有 GitHub OAuth。微信 / 小红书 / 抖音 WebView 打不开
+// github.com/login/oauth，点了就像「手机完全登不进去」。
+// 微信网页授权将来开通后，只在微信客户端里走得通；小红书 / 抖音仍要换浏览器。
 function detectEnv() {
   const ua = (navigator.userAgent || "").toLowerCase();
   if (/micromessenger/.test(ua)) return "wechat";
@@ -153,25 +151,29 @@ function detectEnv() {
   return "browser";
 }
 
-const ENV_TEXT = {
-  xhs: "你正在<b>小红书内置浏览器</b>里打开本页，微信登录在这里走不通。" +
-       "请点右上角「…」→「在浏览器打开」，或复制本页链接到微信里打开；" +
-       "也可以直接用下面的手机号验证码登录。",
-  douyin: "你正在<b>抖音内置浏览器</b>里打开本页，微信登录在这里走不通。" +
-          "请点右上角「…」→「在浏览器打开」，或复制本页链接到微信里打开；" +
-          "也可以直接用下面的手机号验证码登录。",
-  weibo: "你正在<b>微博内置浏览器</b>里打开本页，微信登录可能无法完成。" +
-         "建议用系统浏览器打开，或用手机号验证码登录。",
-  qq: "你正在 <b>QQ 内置浏览器</b>里打开本页，微信登录可能无法完成。" +
-      "建议用系统浏览器打开，或用手机号验证码登录。",
-};
-
+const ENV_NAME = { wechat: "微信", xhs: "小红书", douyin: "抖音", weibo: "微博", qq: "QQ" };
 const env = detectEnv();
-const inAppBlocked = ENV_TEXT[env] !== undefined;
+const inApp = env !== "browser";
+const wechatInAppBlocked = env === "xhs" || env === "douyin" || env === "weibo" || env === "qq";
 
-if (inAppBlocked) {
+function envWarnHtml() {
+  const open = "请点右上角「…」→「在浏览器打开」，用 Safari 或 Chrome 打开本页。";
+  if (!inApp) return "";
+  if (env === "wechat" && WECHAT_ON && !GITHUB_ON) return "";
+  if (env === "wechat" && WECHAT_ON && GITHUB_ON) {
+    return "你正在<b>微信</b>里。微信登录可以直接点；<b>GitHub 登录在这里走不通</b>。" + open;
+  }
+  const name = ENV_NAME[env] || "App";
+  let html = "你正在<b>" + name + "内置浏览器</b>里。GitHub 登录在这里走不通。" + open;
+  if (SMS_ON) html += "也可以用下面的手机号验证码登录。";
+  else if (WECHAT_ON && env !== "wechat") html += "也可以复制链接到微信里打开。";
+  return html;
+}
+
+const warnHtml = envWarnHtml();
+if (warnHtml) {
   const box = $("envWarn");
-  box.innerHTML = ENV_TEXT[env] +
+  box.innerHTML = warnHtml +
     '<p style="margin:10px 0 0"><button class="btn ghost" type="button" id="btnCopy" ' +
     'style="width:auto;padding:8px 12px;font-size:.8rem">复制本页链接</button></p>';
   box.classList.remove("hide");
@@ -179,30 +181,48 @@ if (inAppBlocked) {
     const url = location.href;
     try {
       await navigator.clipboard.writeText(url);
-      $("btnCopy").textContent = "已复制，去微信粘贴打开";
+      $("btnCopy").textContent = "已复制，去系统浏览器粘贴打开";
     } catch (e) {
-      // 内置浏览器常常没有 clipboard 权限，退回让用户自己长按地址栏
       $("btnCopy").textContent = "复制失败，请长按地址栏复制";
     }
   });
 }
 
-// 微信按钮：配置开了、且当前环境不是已知走不通的内置浏览器，才显示
-if (WECHAT_ON && !inAppBlocked) {
+if (GITHUB_ON) {
+  $("githubBlock").classList.remove("hide");
+  const gh = $("githubBlock").querySelector("a");
+  if (gh) gh.href = "/auth/github?next=" + encodeURIComponent(NEXT || "/");
+}
+if (WECHAT_ON && !wechatInAppBlocked) {
   const a = $("btnWechat");
   a.href = "/auth/wechat?next=" + encodeURIComponent(NEXT || "/");
   a.classList.remove("hide");
-} else if (!WECHAT_ON) {
-  $("wechatOff").classList.remove("hide");
 }
-if (SMS_ON) $("smsBlock").classList.remove("hide");
-else $("smsOff").classList.remove("hide");
-if (GITHUB_ON) $("githubBlock").classList.remove("hide");
+const githubOnly = GITHUB_ON && !WECHAT_ON && !SMS_ON;
+if (githubOnly) {
+  $("onlyGithubHint").classList.remove("hide");
+} else {
+  if (!WECHAT_ON) $("wechatOff").classList.remove("hide");
+  if (SMS_ON) $("smsBlock").classList.remove("hide");
+  else $("smsOff").classList.remove("hide");
+}
 if (DEV_ON) $("devBlock").classList.remove("hide");
+
+fetch("/auth/me", { credentials: "include" }).then(r => r.json()).then(data => {
+  if (!data || !data.user) return;
+  $("lead").textContent = "你已经登录。在这里再绑一把微信或手机，GitHub 出问题时还能进「我的」、导出账本。";
+  const wx = $("btnWechat");
+  if (wx) { wx.textContent = "绑定微信"; wx.href = "/auth/wechat?next=" + encodeURIComponent("/?tab=me"); }
+  const verify = $("btnVerify");
+  if (verify) verify.textContent = "绑定手机号";
+}).catch(() => {});
 
 function say(kind, text) {
   $("msg").innerHTML = '<div class="' + kind + '"></div>';
   $("msg").firstChild.textContent = text;
+}
+if (new URLSearchParams(location.search).get("err") === "identity_taken") {
+  say("err", "这把钥匙已经绑在别的账号上。请换一个微信 / 手机号，或先退出那个账号。");
 }
 
 async function postJSON(url, payload) {

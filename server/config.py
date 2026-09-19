@@ -143,6 +143,11 @@ class Settings:
         )
         db = _env("SKILLFEED_DB")
         self.db_path = Path(db).expanduser() if db else (data_home() / "server.db")
+        backup = _env("SKILLFEED_BACKUP_DIR")
+        self.backup_dir = (
+            Path(backup).expanduser() if backup else (self.db_path.parent / "backups")
+        )
+        self.backup_keep = max(1, min(90, _int_env("SKILLFEED_BACKUP_KEEP", 14)))
         origins = _env(
             "SKILLFEED_CORS_ORIGINS",
             "https://469910093-ui.github.io,http://127.0.0.1:8473,http://127.0.0.1:8787",
@@ -182,6 +187,8 @@ class Settings:
             c.strip().lower()
             for c in _env("SKILLFEED_OPERATOR_LOGINS").split(",") if c.strip()
         )
+        # 飞书自定义机器人 / 通用 webhook。投稿进 pending 时 POST 一条；空=不推。
+        self.review_webhook = _env("SKILLFEED_REVIEW_WEBHOOK")
         self.submit_per_day = max(1, _int_env("SKILLFEED_SUBMIT_PER_DAY", 3))
         # 年费档标价，单位分。定价未锁定，只先把订单金额钉死，方便以后对账。
         self.sku_year_fen = max(1, _int_env("SKILLFEED_SKU_YEAR_FEN", 9900))

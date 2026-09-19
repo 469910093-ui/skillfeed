@@ -1,0 +1,10 @@
+[Unit]
+Description=SkillFeeder SQLite account ledger backup
+After=network.target
+
+[Service]
+Type=oneshot
+User=admin
+WorkingDirectory=/opt/skill-feed
+EnvironmentFile=/opt/skill-feed/.env
+ExecStart=/opt/skill-feed/.venv/bin/python skillfeed.py backup-db

@@ -1,0 +1,15 @@
+[Unit]
+Description=SkillFeeder API
+After=network.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/opt/skill-feed
+EnvironmentFile=/opt/skill-feed/.env
+ExecStart=/opt/skill-feed/.venv/bin/python skillfeed.py api --host 127.0.0.1 --port 8787
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

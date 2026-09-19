@@ -30,6 +30,8 @@ from server.ratelimit import SmsLimiter
 def _settings(tmpdir: str, **over) -> "Settings":
     s = Settings()
     s.db_path = Path(tmpdir) / "t.db"
+    s.backup_dir = Path(tmpdir) / "backups"
+    s.backup_keep = 3
     s.session_secret = "test-secret"
     s.public_url = "http://testserver"
     s.github_client_id = ""
@@ -81,7 +83,7 @@ class TestLoginGate(unittest.TestCase):
 
     def test_anonymous_api_is_also_redirected_not_200(self):
         """/api/* 未登录也是 302（产品口径），关键是**绝不能**返回数据。"""
-        for path in ("/api/feed", "/api/posts/me", "/feed.json", "/api/stats/items",
+        for path in ("/api/posts/me", "/feed.json", "/api/stats/items",
                      "/api/pay/create", "/api/pay/orders"):
             with self.subTest(path=path):
                 r = self.client.get(path) if path != "/api/pay/create" else self.client.post(path, json={})
@@ -96,15 +98,33 @@ class TestLoginGate(unittest.TestCase):
         self.assertNotIn("SUCCESS", r.text)
 
     def test_redirect_carries_next_target(self):
-        r = self.client.get("/api/feed?source=ugc&limit=5")
+        r = self.client.get("/api/posts/me?limit=5")
         self.assertEqual(r.status_code, 302)
         self.assertIn("next=", r.headers["location"])
-        self.assertIn("source%3Dugc", r.headers["location"])
+        self.assertIn("limit%3D5", r.headers["location"])
+
+    def test_anonymous_feed_is_public_but_only_approved(self):
+        """发现流全量免费：未登录也能拉混排，但看不到 pending。"""
+        r = self.client.get("/api/feed?source=ugc&limit=5")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertIn("items", data)
+        self.assertIsInstance(data["items"], list)
+        for item in data["items"]:
+            self.assertNotEqual(item.get("status"), "pending")
 
     def test_exempt_paths_are_not_gated(self):
         """豁免路径必须真的不被拦，否则登录页自己会无限重定向。"""
         self.assertEqual(self.client.get("/health").status_code, 200)
         self.assertEqual(self.client.get("/login").status_code, 200)
+        self.assertEqual(self.client.get("/api/feed").status_code, 200)
+        self.assertEqual(self.client.get("/api/site-config").status_code, 200)
+        posted = self.client.post("/api/events", json={
+            "device_id": "web-anon", "session_id": "s-anon",
+            "events": [{"action": "session_start", "client_ts": "boot1"}],
+        })
+        self.assertEqual(posted.status_code, 200, posted.text)
+        self.assertGreaterEqual(posted.json().get("accepted", 0), 1)
         # /auth/me 免登录返回 200 + user:null，前端靠它判断登录态
         me = self.client.get("/auth/me")
         self.assertEqual(me.status_code, 200)
@@ -177,12 +197,31 @@ class TestLoginGate(unittest.TestCase):
         client = TestClient(server_app.create_app(s), follow_redirects=False)
         self.assertIn('id="githubBlock" class="hide"', client.get("/login").text)
         self.assertIn('{{github_enabled}}', "" .join(["{{github_enabled}}"]))
-        # 路由没被删：配置打开时应能发起
+        # 路由没被删：配置打开时应能发起。必须是 200 中转页而不是 302——
+        # 手机 WebView 会丢掉 302 上的 Set-Cookie，回调变成 bad oauth state。
         s2 = _settings(
             self.tmp.name, github_client_id="cid", github_client_secret="csec",
         )
         c2 = TestClient(server_app.create_app(s2), follow_redirects=False)
-        self.assertEqual(c2.get("/auth/github").status_code, 302)
+        start = c2.get("/auth/github")
+        self.assertEqual(start.status_code, 200)
+        self.assertIn("github.com/login/oauth/authorize", start.text)
+        self.assertTrue(c2.cookies.get(auth.STATE_COOKIE["github"]))
+        self.assertNotIn("TOP-SECRET", start.text)
+
+    def test_login_page_github_primary_when_only_live_method(self):
+        """生产未接通微信/短信时，登录页必须把 GitHub 当主按钮，并写明内置浏览器走不通。"""
+        s = _settings(
+            self.tmp.name,
+            github_client_id="cid", github_client_secret="csec",
+            github_login_visible=True,
+        )
+        body = TestClient(server_app.create_app(s), follow_redirects=False).get("/login").text
+        self.assertIn("使用 GitHub 登录", body)
+        self.assertIn("onlyGithubHint", body)
+        self.assertIn("内置浏览器", body)
+        self.assertIn("Safari", body)
+        self.assertIn("micromessenger", body)
 
     def test_health_reports_switches_not_secrets(self):
         s = _settings(
@@ -222,11 +261,10 @@ class TestWechatLogin(unittest.TestCase):
 
     def _start(self, next_path: str = "/") -> str:
         r = self.client.get(f"/auth/wechat?next={next_path}")
-        self.assertEqual(r.status_code, 302)
-        loc = r.headers["location"]
-        self.assertIn("open.weixin.qq.com", loc)
-        self.assertIn("appid=wx-app-id", loc)
-        self.assertIn("#wechat_redirect", loc)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("open.weixin.qq.com", r.text)
+        self.assertIn("appid=wx-app-id", r.text)
+        self.assertIn("#wechat_redirect", r.text)
         # state 由服务端签发并落在 HttpOnly cookie 里
         state = self.client.cookies.get(auth.STATE_COOKIE["wechat"])
         self.assertTrue(state)
@@ -248,7 +286,7 @@ class TestWechatLogin(unittest.TestCase):
 
     def test_secret_never_appears_in_redirect(self):
         r = self.client.get("/auth/wechat")
-        self.assertNotIn("wx-secret", r.headers["location"])
+        self.assertNotIn("wx-secret", r.headers.get("location", ""))
         self.assertNotIn("wx-secret", r.text)
 
     def test_callback_creates_user_and_session(self):
@@ -873,6 +911,40 @@ class TestServerAPI(unittest.TestCase):
         mine = self.client.get("/api/posts/me")
         self.assertEqual(len(mine.json()["posts"]), 1)
 
+    def test_auth_me_returns_user_saved_and_liked_arrays(self):
+        """D2：/auth/me 返回账号收藏/点赞的 full_name 数组，前端用它做跨设备一致的「查看收藏」列表与计数。"""
+        # 1) 设备先匿名点几条赞/收藏（拿 device_token）
+        r = self.client.post("/api/events", json={
+            "device_id": "devA", "session_id": "s1", "events": [
+                {"action": "save", "item_key": "acme/saved::SKILL.md", "client_ts": "t1"},
+                {"action": "useful", "item_key": "acme/liked::SKILL.md", "client_ts": "t2"},
+                {"action": "save", "item_key": "other/skip::SKILL.md", "client_ts": "t3"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        token = r.json()["device_token"]
+
+        # 2) 登录并把这台设备并档到账号
+        self.client.get("/auth/dev-login", follow_redirects=False)
+        claim = self.client.post("/api/profile/claim", json={
+            "device_id": "devA", "device_token": token,
+        })
+        self.assertEqual(claim.status_code, 200, claim.text)
+
+        # 3) /auth/me 应返 saved/liked 数组，跨设备聚合、去重
+        me = self.client.get("/auth/me").json()
+        self.assertEqual(me["user"]["login"], "dev-user")
+        self.assertEqual(sorted(me["saved"]),
+                         ["acme/saved::SKILL.md", "other/skip::SKILL.md"])
+        self.assertEqual(me["liked"], ["acme/liked::SKILL.md"])
+
+        # 4) 未登录时 saved/liked 不出现（user 为 null）
+        self.client.post("/auth/logout")
+        me2 = self.client.get("/auth/me").json()
+        self.assertIsNone(me2["user"])
+        self.assertNotIn("saved", me2)
+        self.assertNotIn("liked", me2)
+
     def test_prepare_rejects_empty(self):
         from server import ugc
         with self.assertRaises(ValueError):
@@ -1020,6 +1092,257 @@ class TestPayOrders(unittest.TestCase):
         other.get("/auth/dev-login?login=other-user")
         stolen = other.post("/api/pay/dev-notify", json={"out_trade_no": trade_no})
         self.assertEqual(stolen.status_code, 403)
+
+
+@unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")
+class TestReviewNotify(unittest.TestCase):
+    def test_empty_webhook_is_a_no_op(self):
+        from server import notify
+        from server.config import Settings
+
+        s = Settings()
+        s.review_webhook = ""
+        s.public_url = "https://skillfeeder.cn"
+        self.assertFalse(notify.notify_pending_review(s, {"title": "x"}))
+
+    def test_feishu_webhook_posts_text(self):
+        from server import notify
+
+        s = _settings(
+            tempfile.mkdtemp(),
+            review_webhook="https://open.feishu.cn/open-apis/bot/v2/hook/test",
+            public_url="https://skillfeeder.cn",
+        )
+        with mock.patch("server.notify.httpx.post") as post:
+            post.return_value.raise_for_status = mock.Mock()
+            ok = notify.notify_pending_review(s, {
+                "title": "手搓周报",
+                "author_login": "alice",
+                "github_url": "https://github.com/alice/week-report",
+            })
+        self.assertTrue(ok)
+        args, kwargs = post.call_args
+        self.assertEqual(args[0], s.review_webhook)
+        body = kwargs["json"]
+        self.assertEqual(body["msg_type"], "text")
+        self.assertIn("手搓周报", body["content"]["text"])
+        self.assertIn("/op?tab=review", body["content"]["text"])
+
+    def test_webhook_can_come_from_site_settings(self):
+        from server import db as sdb
+        from server import notify
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        s = _settings(tmp.name, review_webhook="", public_url="https://skillfeeder.cn")
+        sdb.init_db(s.db_path)
+        with sdb.db_session(s.db_path) as conn:
+            sdb.set_site_setting(
+                conn, "review_webhook",
+                "https://open.feishu.cn/open-apis/bot/v2/hook/from-db",
+            )
+        with mock.patch("server.notify.httpx.post") as post:
+            post.return_value.raise_for_status = mock.Mock()
+            ok = notify.notify_pending_review(s, {"title": "涨了么"})
+        self.assertTrue(ok)
+        self.assertEqual(
+            post.call_args[0][0],
+            "https://open.feishu.cn/open-apis/bot/v2/hook/from-db",
+        )
+
+    def test_submit_does_not_fail_when_notify_raises(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        s = _settings(
+            tmp.name,
+            github_client_id="cid",
+            github_client_secret="csec",
+            github_login_visible=True,
+            operator_logins=frozenset({"dev-user"}),
+            dev_mode=True,
+            dev_auth=True,
+            review_webhook="https://open.feishu.cn/open-apis/bot/v2/hook/test",
+        )
+        client = TestClient(server_app.create_app(s), follow_redirects=False)
+        client.get("/auth/dev-login")
+        with mock.patch("server.notify.httpx.post", side_effect=RuntimeError("down")):
+            created = client.post("/api/posts", json={
+                "title": "手搓周报结构",
+                "description": "把一周工作收成固定四段：结论、数字、风险、下周。",
+                "github_url": "https://github.com/dev-user/week-report",
+            })
+        self.assertEqual(created.status_code, 200, created.text)
+        self.assertEqual(created.json()["post"]["status"], "pending")
+
+
+@unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")
+class TestAdminSite(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.settings = _settings(
+            self.tmp.name,
+            github_client_id="cid",
+            github_client_secret="csec",
+            operator_logins=frozenset({"dev-user"}),
+            dev_mode=True,
+            dev_auth=True,
+        )
+        self.client = TestClient(server_app.create_app(self.settings), follow_redirects=False)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_site_config_is_public_and_hides_webhook(self):
+        r = self.client.get("/api/site-config")
+        self.assertEqual(r.status_code, 200)
+        cfg = r.json()["config"]
+        self.assertIn("slogan", cfg)
+        self.assertNotIn("review_webhook", cfg)
+
+    def test_operator_can_save_copy_and_webhook(self):
+        self.client.get("/auth/dev-login")
+        saved = self.client.post("/api/op/settings", json={
+            "slogan": "测一口号",
+            "search_placeholder": "搜技能",
+            "logo_url": "",
+            "review_webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+        })
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertTrue(saved.json()["webhook_on"])
+        public = self.client.get("/api/site-config").json()["config"]
+        self.assertEqual(public["slogan"], "测一口号")
+        self.assertNotIn("review_webhook", public)
+
+    def test_anonymous_cannot_write_settings(self):
+        r = self.client.post("/api/op/settings", json={"slogan": "x"})
+        self.assertEqual(r.status_code, 302)
+
+    def test_admin_aliases_require_login(self):
+        for path in ("/op", "/op/", "/admin", "/admin/"):
+            r = self.client.get(path)
+            self.assertEqual(r.status_code, 302, path)
+            self.assertIn("/login", r.headers.get("location", ""), path)
+
+    def test_missing_card_short_link_is_404(self):
+        r = self.client.get("/p/no-such-skill")
+        self.assertEqual(r.status_code, 404)
+
+    def test_operator_can_read_journeys(self):
+        self.client.post("/api/events", json={
+            "device_id": "web-op", "session_id": "s-op",
+            "events": [
+                {"action": "session_start", "client_ts": "j1"},
+                {"action": "view_tab", "item_key": "all", "client_ts": "j2"},
+                {"action": "search", "item_key": "周报", "client_ts": "j3"},
+            ],
+        })
+        self.client.get("/auth/dev-login")
+        r = self.client.get("/api/op/journeys?hours=24")
+        self.assertEqual(r.status_code, 200, r.text)
+        data = r.json()
+        self.assertGreaterEqual(data["kpis"]["sessions"], 1)
+        paths = " ".join(s.get("path") or "" for s in data["sessions"])
+        self.assertIn("进入", paths)
+        csv = self.client.get("/api/op/journeys.csv?hours=24")
+        self.assertEqual(csv.status_code, 200)
+        self.assertIn("session_start", csv.text)
+
+    def test_stranger_cannot_read_journeys(self):
+        self.client.get("/auth/dev-login?login=other-user")
+        r = self.client.get("/api/op/journeys")
+        self.assertEqual(r.status_code, 403)
+
+
+@unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")
+class TestIdentityBind(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.settings = _settings(
+            self.tmp.name,
+            wechat_app_id="wx-app-id", wechat_app_secret="wx-secret",
+            sms_provider="console", sms_resend_cooldown_s=0,
+            dev_mode=True, dev_auth=True,
+            operator_logins=frozenset({"dev-user"}),
+        )
+        self.client = TestClient(server_app.create_app(self.settings), follow_redirects=False)
+        self.sent: list[tuple[str, str]] = []
+
+        async def _fake_send(settings, phone, code):
+            self.sent.append((phone, code))
+            return {"ok": True}
+
+        self.patch = mock.patch.object(sms, "send_code", _fake_send)
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        self.tmp.cleanup()
+
+    def _wechat_state(self):
+        r = self.client.get("/auth/wechat")
+        return self.client.cookies.get(auth.STATE_COOKIE["wechat"])
+
+    def _fake_wechat(self, openid="oBIND-1", unionid=""):
+        async def _token(settings, code):
+            return {"access_token": "at", "openid": openid, "unionid": unionid}
+
+        async def _info(settings, access_token, oid):
+            return {"openid": oid, "nickname": "绑", "headimgurl": "", "unionid": unionid}
+
+        return (
+            mock.patch.object(auth, "exchange_wechat_code", _token),
+            mock.patch.object(auth, "fetch_wechat_userinfo", _info),
+        )
+
+    def test_logged_in_github_user_can_bind_wechat_and_phone(self):
+        self.client.get("/auth/dev-login")
+        before = self.client.get("/auth/me").json()["user"]
+        self.assertIn("github", before["providers"])
+        uid = before["id"]
+        state = self._wechat_state()
+        p1, p2 = self._fake_wechat()
+        with p1, p2:
+            r = self.client.get(f"/auth/wechat/callback?code=the-code&state={state}")
+        self.assertEqual(r.status_code, 302)
+        self.client.post("/auth/sms/send", json={"phone": "13900139000"})
+        _, code = self.sent[-1]
+        v = self.client.post("/auth/sms/verify", json={"phone": "13900139000", "code": code})
+        self.assertEqual(v.status_code, 200, v.text)
+        me = self.client.get("/auth/me").json()["user"]
+        self.assertEqual(me["id"], uid)
+        self.assertEqual(set(me["providers"]), {"github", "wechat", "phone"})
+        exported = self.client.get("/api/me/export")
+        self.assertEqual(exported.status_code, 200)
+        self.assertNotIn("13900139000", exported.text)
+        self.assertIn("skillfeeder-account.json", exported.headers.get("content-disposition", ""))
+
+    def test_cannot_steal_another_users_wechat(self):
+        state = self._wechat_state()
+        p1, p2 = self._fake_wechat(openid="oTAKEN")
+        with p1, p2:
+            self.client.get(f"/auth/wechat/callback?code=the-code&state={state}")
+        first = self.client.get("/auth/me").json()["user"]["id"]
+        other = TestClient(server_app.create_app(self.settings), follow_redirects=False)
+        other.get("/auth/dev-login?login=other-user")
+        state2 = other.cookies.get(auth.STATE_COOKIE["wechat"])
+        other.get("/auth/wechat")
+        state2 = other.cookies.get(auth.STATE_COOKIE["wechat"])
+        p3, p4 = self._fake_wechat(openid="oTAKEN")
+        with p3, p4:
+            stolen = other.get(f"/auth/wechat/callback?code=the-code&state={state2}")
+        self.assertEqual(stolen.status_code, 302)
+        self.assertIn("bind=taken", stolen.headers.get("location", ""))
+        self.assertEqual(other.get("/auth/me").json()["user"]["id"], other.get("/auth/me").json()["user"]["id"])
+        self.assertNotEqual(other.get("/auth/me").json()["user"]["id"], first)
+        self.assertNotIn("wechat", other.get("/auth/me").json()["user"]["providers"])
+
+    def test_operator_can_backup_ledger(self):
+        self.client.get("/auth/dev-login")
+        r = self.client.post("/api/op/backup")
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertGreaterEqual(r.json()["count"], 1)
+        stats = self.client.get("/api/op/stats").json()
+        self.assertGreaterEqual(stats["backup"]["count"], 1)
 
 
 if __name__ == "__main__":

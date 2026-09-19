@@ -145,6 +145,8 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_device_ts ON events(device_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_session_ts ON events(session_id, ts);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 
 CREATE TABLE IF NOT EXISTS item_stats (
   item_key TEXT NOT NULL,
@@ -229,6 +231,12 @@ CREATE TABLE IF NOT EXISTS orders (
 
 CREATE INDEX IF NOT EXISTS idx_orders_user_created
   ON orders(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS site_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 """
 
 
@@ -383,6 +391,127 @@ def _synthetic_login(prefix: str, secret_ish: str) -> str:
     """
     digest = hashlib.blake2b(secret_ish.encode("utf-8"), digest_size=6).hexdigest()
     return f"{prefix}-{digest}"
+
+
+class IdentityBound(ValueError):
+    """这把钥匙已经挂在另一个 users.id 上，不能偷绑。"""
+
+
+def attach_wechat(
+    conn: sqlite3.Connection,
+    user_id: int,
+    *,
+    openid: str,
+    unionid: str = "",
+    nickname: str = "",
+    avatar_url: str = "",
+) -> dict[str, Any]:
+    """把微信绑到已有户口。已占用则 IdentityBound。"""
+    openid = (openid or "").strip()
+    if not openid:
+        raise ValueError("openid is required")
+    unionid = (unionid or "").strip()
+    taken = None
+    if unionid:
+        taken = conn.execute("SELECT * FROM users WHERE unionid=?", (unionid,)).fetchone()
+    if taken is None:
+        taken = conn.execute(
+            "SELECT * FROM users WHERE wechat_openid=?", (openid,),
+        ).fetchone()
+    if taken and int(taken["id"]) != int(user_id):
+        raise IdentityBound("wechat already bound")
+    row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row:
+        raise ValueError("user not found")
+    nickname = (nickname or "")[:64] or (row["nickname"] or "")
+    avatar_url = (avatar_url or "")[:512] or (row["avatar_url"] or "")
+    conn.execute(
+        """
+        UPDATE users SET wechat_openid=?,
+               unionid=COALESCE(NULLIF(?, ''), unionid),
+               nickname=?, avatar_url=?
+        WHERE id=?
+        """,
+        (openid, unionid, nickname, avatar_url, user_id),
+    )
+    return dict(conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
+
+
+def attach_phone(conn: sqlite3.Connection, user_id: int, *, phone: str) -> dict[str, Any]:
+    phone = (phone or "").strip()
+    if not phone:
+        raise ValueError("phone is required")
+    taken = conn.execute("SELECT * FROM users WHERE phone=?", (phone,)).fetchone()
+    if taken and int(taken["id"]) != int(user_id):
+        raise IdentityBound("phone already bound")
+    row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row:
+        raise ValueError("user not found")
+    conn.execute("UPDATE users SET phone=? WHERE id=?", (phone, user_id))
+    return dict(conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
+
+
+def attach_github(
+    conn: sqlite3.Connection,
+    user_id: int,
+    *,
+    github_id: int,
+    login: str,
+    avatar_url: str = "",
+    name: str = "",
+) -> dict[str, Any]:
+    taken = conn.execute("SELECT * FROM users WHERE github_id=?", (github_id,)).fetchone()
+    if taken and int(taken["id"]) != int(user_id):
+        raise IdentityBound("github already bound")
+    row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row:
+        raise ValueError("user not found")
+    conn.execute(
+        "UPDATE users SET github_id=?, login=?, avatar_url=?, name=? WHERE id=?",
+        (github_id, login, avatar_url or (row["avatar_url"] or ""), name or (row["name"] or ""), user_id),
+    )
+    return dict(conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
+
+
+def list_user_reactions(conn: sqlite3.Connection, user_id: int, *, limit: int = 200) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT r.kind, r.created_at, p.public_id, p.full_name, p.title, p.github_url
+        FROM reactions r
+        JOIN posts p ON p.id = r.post_id
+        WHERE r.user_id=?
+        ORDER BY r.created_at DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def export_account(conn: sqlite3.Connection, user_id: int) -> dict[str, Any]:
+    user = get_user(conn, user_id)
+    if not user:
+        raise ValueError("user not found")
+    posts = []
+    for p in list_user_posts(conn, user_id, limit=200):
+        posts.append({
+            "id": p.get("id"),
+            "title": p.get("title") or "",
+            "description": p.get("description") or "",
+            "github_url": p.get("github_url") or "",
+            "full_name": p.get("full_name") or "",
+            "skill_path": p.get("skill_path") or "",
+            "public_id": p.get("public_id") or "",
+            "status": p.get("status") or "",
+            "created_at": p.get("created_at") or "",
+        })
+    return {
+        "exported_at": _now(),
+        "user": user_public(user),
+        "posts": posts,
+        "reactions": list_user_reactions(conn, user_id),
+        "note": "github_url 是作品外链；仓本身仍在 GitHub。这是 SkillFeeder 户口账本。",
+    }
 
 
 def upsert_user(
@@ -575,6 +704,29 @@ def count_posts_today(conn: sqlite3.Connection, author_id: int) -> int:
         (author_id, day),
     ).fetchone()
     return int(row["n"] or 0)
+
+
+def find_live_card(conn: sqlite3.Connection, slug: str) -> Optional[dict[str, Any]]:
+    """用仓库名或 public_id 找已上架的卡，给 /p/{slug} 短链用。"""
+    key = (slug or "").strip()
+    if not key or "/" in key or "\\" in key or len(key) > 120:
+        return None
+    row = conn.execute(
+        """
+        SELECT * FROM posts
+        WHERE status IN ('approved', 'published')
+          AND (
+            public_id = ?
+            OR full_name = ?
+            OR full_name LIKE ?
+            OR public_id LIKE ?
+          )
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        (key, key, "%/" + key, "%/" + key + "::%"),
+    ).fetchone()
+    return dict(row) if row else None
 
 
 def find_post_by_coord(
@@ -895,6 +1047,15 @@ def touch_device(conn: sqlite3.Connection, device_id: str, *, ua_hash: str = "")
     return created
 
 
+def link_device_user(conn: sqlite3.Connection, device_id: str, user_id: int) -> None:
+    if not device_id or not user_id:
+        return
+    conn.execute(
+        "UPDATE devices SET user_id=? WHERE device_id=? AND (user_id IS NULL OR user_id=?)",
+        (int(user_id), device_id, int(user_id)),
+    )
+
+
 def resolve_device(conn: sqlite3.Connection, device_id: str, *, max_hops: int = 8) -> str:
     """顺 merged_into 链找到主设备。链有环或过长就地停下，不死循环。"""
     seen = {device_id}
@@ -1128,6 +1289,84 @@ def load_device_reactions(
     return [dict(r) for r in rows]
 
 
+def load_user_reactions(
+    conn: sqlite3.Connection,
+    user_id: int,
+    *,
+    actions: tuple[str, ...] = ("useful", "save", "open_github"),
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """账号自己的正向动作流水，供「我的」面板跨设备回看。
+
+    和 :func:`load_device_reactions` 的区别：这里按 ``user_id`` 聚合该账号下
+    **所有**设备（含已 ``merged_into`` 主设备的从设备）的动作——登录后并档，
+    旧设备上点过的赞/收藏仍要能在新设备上看到。按 ``(action, item_key)``
+    去重取最早那次，和设备版口径一致。
+    """
+    if not actions:
+        return []
+    placeholders = ",".join("?" * len(actions))
+    rows = conn.execute(
+        f"""
+        SELECT action, item_key, scene, scene_l2, owner, language, source,
+               MIN(ts) AS ts
+        FROM events
+        WHERE device_id IN (SELECT device_id FROM devices WHERE user_id = ?)
+          AND item_key != ''
+          AND action IN ({placeholders})
+        GROUP BY action, item_key
+        ORDER BY ts DESC
+        LIMIT ?
+        """,
+        (int(user_id), *actions, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def user_saved_full_names(
+    conn: sqlite3.Connection, user_id: int, *, limit: int = 1000
+) -> list[str]:
+    """账号收藏过的 ``item_key``（= 卡片 full_name）数组，按收藏时间倒序、去重。
+
+    给前端「我的 → 查看收藏」做跨设备一致列表：列表和计数都从这里出，
+    不会再出现「计数读云端、列表读本机」两边对不上。
+    """
+    rows = conn.execute(
+        """
+        SELECT item_key, MIN(ts) AS ts
+        FROM events
+        WHERE device_id IN (SELECT device_id FROM devices WHERE user_id = ?)
+          AND action = 'save'
+          AND item_key != ''
+        GROUP BY item_key
+        ORDER BY ts DESC
+        LIMIT ?
+        """,
+        (int(user_id), limit),
+    ).fetchall()
+    return [str(r["item_key"]) for r in rows if r["item_key"]]
+
+
+def user_liked_full_names(
+    conn: sqlite3.Connection, user_id: int, *, limit: int = 1000
+) -> list[str]:
+    """账号赞过的 ``item_key`` 数组，口径同 :func:`user_saved_full_names`。"""
+    rows = conn.execute(
+        """
+        SELECT item_key, MIN(ts) AS ts
+        FROM events
+        WHERE device_id IN (SELECT device_id FROM devices WHERE user_id = ?)
+          AND action = 'useful'
+          AND item_key != ''
+        GROUP BY item_key
+        ORDER BY ts DESC
+        LIMIT ?
+        """,
+        (int(user_id), limit),
+    ).fetchall()
+    return [str(r["item_key"]) for r in rows if r["item_key"]]
+
+
 def item_stats_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """扁平导出全站曝光/点击。只有聚合量，没有任何设备维度信息。"""
     rows = conn.execute(
@@ -1141,3 +1380,209 @@ def prune_events(conn: sqlite3.Connection, *, days: int = 30) -> int:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     cur = conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
     return cur.rowcount or 0
+
+
+SITE_SETTING_DEFAULTS: dict[str, str] = {
+    "slogan": "每刷一下，就快人一步",
+    "search_placeholder": "短关键词更好，如：去AI味 / 剪视频",
+    "logo_url": "",
+    "review_webhook": "",
+}
+PUBLIC_SITE_KEYS: tuple[str, ...] = ("slogan", "search_placeholder", "logo_url")
+
+
+def get_site_setting(conn: sqlite3.Connection, key: str) -> str:
+    row = conn.execute("SELECT value FROM site_settings WHERE key=?", (key,)).fetchone()
+    if row and row["value"] is not None:
+        return str(row["value"])
+    return SITE_SETTING_DEFAULTS.get(key, "")
+
+
+def set_site_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    if key not in SITE_SETTING_DEFAULTS:
+        raise ValueError(f"unknown site setting: {key}")
+    conn.execute(
+        """
+        INSERT INTO site_settings(key, value, updated_at) VALUES(?,?,?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+        """,
+        (key, value, _now()),
+    )
+
+
+def list_site_settings(conn: sqlite3.Connection, *, public_only: bool = False) -> dict[str, str]:
+    keys = PUBLIC_SITE_KEYS if public_only else tuple(SITE_SETTING_DEFAULTS)
+    out = {k: SITE_SETTING_DEFAULTS[k] for k in keys}
+    rows = conn.execute(
+        f"SELECT key, value FROM site_settings WHERE key IN ({','.join('?' * len(keys))})",
+        keys,
+    ).fetchall()
+    for row in rows:
+        out[row["key"]] = str(row["value"] or "")
+    return out
+
+
+def op_stats(conn: sqlite3.Connection) -> dict[str, Any]:
+    def count(sql: str, *args: Any) -> int:
+        row = conn.execute(sql, args).fetchone()
+        return int((row["n"] if row else 0) or 0)
+
+    pending = list_moderation_queue(conn, status="pending", limit=20)
+    day = _now()[:10]
+    return {
+        "users": count("SELECT COUNT(*) AS n FROM users"),
+        "posts_total": count("SELECT COUNT(*) AS n FROM posts"),
+        "posts_pending": count("SELECT COUNT(*) AS n FROM posts WHERE status='pending'"),
+        "posts_published": count(
+            "SELECT COUNT(*) AS n FROM posts WHERE status IN ('published','approved')"
+        ),
+        "posts_rejected": count("SELECT COUNT(*) AS n FROM posts WHERE status='rejected'"),
+        "events_today": count("SELECT COUNT(*) AS n FROM events WHERE ts >= ?", day),
+        "sessions_today": count(
+            "SELECT COUNT(DISTINCT session_id) AS n FROM events WHERE ts >= ?", day,
+        ),
+        "pending": pending,
+    }
+
+
+JOURNEY_NOISE = frozenset({"impression", "dwell"})
+
+
+def journey_kpis(conn: sqlite3.Connection, *, hours: int = 24) -> dict[str, Any]:
+    hours = max(1, min(24 * 30, int(hours)))
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=hours)
+    ).isoformat()
+    week = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    def count(sql: str, *args: Any) -> int:
+        row = conn.execute(sql, args).fetchone()
+        return int((row["n"] if row else 0) or 0)
+
+    actions = [
+        {"action": r["action"], "n": int(r["n"] or 0)}
+        for r in conn.execute(
+            """
+            SELECT action, COUNT(*) AS n FROM events
+            WHERE ts >= ? AND action NOT IN ('impression', 'dwell')
+            GROUP BY action ORDER BY n DESC LIMIT 12
+            """,
+            (cutoff,),
+        )
+    ]
+    return {
+        "hours": hours,
+        "events": count(
+            "SELECT COUNT(*) AS n FROM events WHERE ts >= ? AND action NOT IN ('impression','dwell')",
+            cutoff,
+        ),
+        "sessions": count(
+            "SELECT COUNT(DISTINCT session_id) AS n FROM events WHERE ts >= ?", cutoff,
+        ),
+        "devices_7d": count(
+            "SELECT COUNT(DISTINCT device_id) AS n FROM events WHERE ts >= ?", week,
+        ),
+        "actions": actions,
+    }
+
+
+def list_journey_sessions(
+    conn: sqlite3.Connection, *, hours: int = 72, limit: int = 40,
+) -> list[dict[str, Any]]:
+    hours = max(1, min(24 * 30, int(hours)))
+    limit = max(1, min(200, int(limit)))
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=hours)
+    ).isoformat()
+    heads = conn.execute(
+        """
+        SELECT session_id, MIN(ts) AS started, MAX(ts) AS ended,
+               COUNT(*) AS steps, device_id
+        FROM events
+        WHERE ts >= ? AND action NOT IN ('impression', 'dwell')
+        GROUP BY session_id
+        ORDER BY ended DESC
+        LIMIT ?
+        """,
+        (cutoff, limit),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for head in heads:
+        sid = head["session_id"]
+        steps = [
+            dict(r)
+            for r in conn.execute(
+                """
+                SELECT e.ts, e.action, e.item_key, e.source, e.owner, e.device_id,
+                       u.login AS user_login
+                FROM events e
+                LEFT JOIN devices d ON d.device_id = e.device_id
+                LEFT JOIN users u ON u.id = d.user_id
+                WHERE e.session_id=? AND e.action NOT IN ('impression', 'dwell')
+                ORDER BY e.ts ASC
+                LIMIT 80
+                """,
+                (sid,),
+            )
+        ]
+        path = " → ".join(
+            _journey_step_label(s["action"], s.get("item_key") or "")
+            for s in steps
+        )
+        out.append({
+            "session_id": sid,
+            "device_id": head["device_id"],
+            "user_login": next((s.get("user_login") for s in steps if s.get("user_login")), ""),
+            "started": head["started"],
+            "ended": head["ended"],
+            "steps": int(head["steps"] or 0),
+            "path": path,
+            "events": steps,
+        })
+    return out
+
+
+def list_journey_rows(
+    conn: sqlite3.Connection, *, hours: int = 72, limit: int = 2000,
+) -> list[dict[str, Any]]:
+    hours = max(1, min(24 * 30, int(hours)))
+    limit = max(1, min(10000, int(limit)))
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=hours)
+    ).isoformat()
+    rows = conn.execute(
+        """
+        SELECT e.ts, e.session_id, e.device_id, e.action, e.item_key, e.source,
+               e.owner, u.login AS user_login
+        FROM events e
+        LEFT JOIN devices d ON d.device_id = e.device_id
+        LEFT JOIN users u ON u.id = d.user_id
+        WHERE e.ts >= ? AND e.action NOT IN ('impression', 'dwell')
+        ORDER BY e.ts DESC
+        LIMIT ?
+        """,
+        (cutoff, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _journey_step_label(action: str, item_key: str) -> str:
+    labels = {
+        "session_start": "进入",
+        "view_tab": "开" + (item_key or "页"),
+        "search": "搜" + (item_key[:16] if item_key else ""),
+        "open_card": "看卡",
+        "close_card": "关卡",
+        "open_github": "GitHub",
+        "useful": "赞",
+        "save": "藏",
+        "bad": "不感兴趣",
+        "login_click": "去登录",
+        "publish_view": "看发布",
+        "publish_submit": "投稿",
+        "follow": "关注",
+        "unfollow": "取关",
+        "coach": "引导",
+        "expand_detail": "展开",
+    }
+    return labels.get(action, action)

@@ -1986,6 +1986,14 @@ class TestContentSecurityPolicy(unittest.TestCase):
                 self.assertIn("'unsafe-inline'", policy["style-src"])
                 self.assertIn("'unsafe-inline'", policy["style-src-attr"])
 
+    def test_homepage_recovers_api_base_when_built_without_it(self):
+        """定时发布若漏写 SKILLFEED_PUBLIC_URL，主站仍应认出自己。"""
+        html = feed_dashboard.build_feed_html({
+            "items": [self.ITEM], "corpus": [], "ui": {},
+        }, variant="full")
+        self.assertIn("function resolveApiBase()", html)
+        self.assertIn("https://skillfeeder.cn", html)
+
     def test_api_base_is_allowed_through_connect_src_when_configured(self):
         """配了后端地址就得放行，否则反馈回传会被 connect-src 静默拦掉。"""
         html = feed_dashboard.build_feed_html({
@@ -2245,7 +2253,7 @@ NEW_I18N_KEYS = (
     "topicsTitle", "topicsSecSection", "topicsSubScene", "topicsSubSection",
     "topicsViewAria", "topicsLead", "topicsLeadSection", "topicsCount",
     "topicsCountScenes", "topicsCountNoL2", "topicsBrowse", "topicsNoL2",
-    "topicsEmpty", "topicsSectionEmpty",
+    "topicsEmpty", "topicsSectionEmpty", "topicsOther",
     "publishTitle", "publishLead", "publishFieldTitle", "publishFieldUrl",
     "publishFieldDesc", "publishFieldBody", "publishHint", "publishSubmit",
     "publishSubmitting", "publishOkMsg", "publishNeedLogin", "publishLoginBtn",
@@ -2256,6 +2264,11 @@ NEW_I18N_KEYS = (
     "acctRemoteNote", "acctOpenSite", "acctMyPosts", "acctPostsLoading",
     "acctNoPosts", "acctPostsNeedLogin", "acctServerCounts", "acctLocalCounts",
     "acctReactionsPending",
+    "acctKeysTitle", "acctKeysHint", "acctKeyGithub", "acctKeyWechat", "acctKeyPhone",
+    "acctKeyOn", "acctKeyOff", "acctBindWechat", "acctBindPhone", "acctBindGithub",
+    "acctBindNeedWx", "acctBindNeedSms", "acctExport", "acctBindTaken",
+    "previewClose", "acctPostPending", "acctPostLive",
+    "cardPreviewPending", "cardPreviewRejected",
     "refreshAria", "refreshTitle", "reshuffleToast",
     "valueLine", "coachSkip", "coachNext", "coachDone", "coachStepOf",
     "coach1Title", "coach1Body", "coach2Title", "coach2Body",
@@ -2272,6 +2285,21 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         cls.full = feed_dashboard.build_feed_html({"items": [], "corpus": []})
         cls.lite = feed_dashboard.build_feed_html(
             {"items": [], "corpus": []}, variant="lite")
+
+    def test_my_posts_open_a_card_preview_or_feed_deep_link(self):
+        self.assertIn('id="cardPreview"', self.full)
+        self.assertIn('data-i18n="previewClose"', self.full)
+        js = _script_source(self.full)
+        self.assertIn("function openMyPostCard", js)
+        self.assertIn("js-me-post", js)
+        self.assertIn("hydrateSiteConfig", js)
+        fn = js[js.index("function openMyPostCard"):js.index("async function hydrateSiteConfig")]
+        self.assertNotIn("state.mode = 'all'", fn)
+        self.assertNotIn("render(true)", fn)
+        self.assertNotIn("meAboutTitle", _script_source(self.full).split("function mePanelHtml")[1][:2500])
+        self.assertIn("function track", js)
+        self.assertIn("flushJourney", js)
+        self.assertIn("/api/events", js)
 
     def test_the_bottom_bar_is_a_real_tablist(self):
         """div + class 也能画出一样的东西，但读屏不会播报「4 个中的第 2 个」。"""
@@ -2455,15 +2483,22 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
 
     def test_a_shape_without_a_usable_api_never_paints_a_dead_control(self):
         """形态 2/3 不能出现「点了没反应」的入口。"""
-        for kw in (dict(), dict(lite=True)):
-            with self.subTest(**kw):
-                html = self.harness(**kw).eval("publishPanelHtml()")
-                self.assertNotIn("<button", html)
-                self.assertNotIn("<form", html)
-                self.assertNotIn("href=", html)
-                acct = self.harness(**kw).eval("mePanelHtml()")
-                self.assertNotIn("/publish", acct)
-                self.assertNotIn("/login", acct)
+        pub = self.harness(lite=True).eval("publishPanelHtml()")
+        self.assertNotIn("<button", pub)
+        self.assertNotIn("<form", pub)
+        self.assertNotIn("href=", pub)
+        lite_acct = self.harness(lite=True).eval("mePanelHtml()")
+        self.assertNotIn("/publish", lite_acct)
+        self.assertNotIn("/login", lite_acct)
+
+        pub = self.harness().eval("publishPanelHtml()")
+        self.assertNotIn("<button", pub)
+        self.assertNotIn("<form", pub)
+        self.assertNotIn("href=", pub)
+        acct = self.harness().eval("mePanelHtml()")
+        self.assertNotIn("/publish", acct)
+        self.assertNotIn('href="/login"', acct)
+        self.assertNotIn('type="password"', acct)
 
     def test_a_cross_origin_api_only_offers_a_full_page_hop(self):
         """跨站请求带不上 SameSite=Lax 的会话 Cookie，所以不在页内做表单。"""
@@ -2493,13 +2528,33 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
             extra="Object.assign(ACCT, { loaded: true,"
                   " user: { login: 'kai', name: 'Kai L' },"
                   " posts: [{ title: 'my-skill', description: 'd', status: 'published',"
+                  " public_id: 'ugc:kai/my-skill::SKILL.md',"
                   " scene_label: '内容创作', created_at: '2026-09-09T10:00:00' }] });")
         html = js.eval("mePanelHtml()")
         self.assertIn("@kai", html)
         self.assertIn("Kai L", html)
-        self.assertIn("my-skill", html)
         self.assertIn("js-acct-logout", html)
+        self.assertIn("我发布的", html)
+        self.assertIn("js-me-post", html)
         self.assertNotIn("acctAnonTitle", html)
+        self.assertNotIn("发现站", html)
+        posts = js.eval("mePanelHtml()")
+        self.assertIn("my-skill", posts)
+
+    def test_the_account_page_drops_the_discover_explainer(self):
+        html = self.harness().eval("mePanelHtml()")
+        self.assertNotIn("发现站", html)
+        self.assertNotIn("meAboutTitle", html)
+        self.assertIn("本机收藏", html)
+        self.assertIn("我关注的 Builder", html)
+        live = self.harness(api_base="https://skillfeeder.cn",
+                            extra="Object.assign(ACCT, { loaded: true });").eval(
+            "mePanelHtml()")
+        self.assertIn("我发布的", live)
+        self.assertNotIn("发现站", live)
+        follow = self.harness(extra="followBuilders.add('acme');").eval(
+            "mePanelHtml()")
+        self.assertIn("@acme", follow)
 
     def test_a_signed_out_visitor_is_pointed_at_the_real_login(self):
         js = self.harness(api_base="https://skillfeeder.cn",
@@ -2513,9 +2568,15 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
     def test_server_side_counts_win_once_they_are_readable(self):
         local = self.harness(api_base="https://skillfeeder.cn",
                              extra="Object.assign(ACCT, { loaded: true });")
+        # 云端读到了账号收藏/点赞数组（/auth/me 返 saved/liked）就以它为准；
+        # 计数与「查看收藏」列表同源（effectiveSavedSet/effectiveLikedSet）。
         remote = self.harness(api_base="https://skillfeeder.cn",
                               extra="Object.assign(ACCT, { loaded: true, remote: true,"
-                                    " liked: 7, saved: 3 });")
+                                    " likedNames: ['a/x::SKILL.md','b/y::SKILL.md',"
+                                    " 'c/z::SKILL.md','d/w::SKILL.md','e/v::SKILL.md',"
+                                    " 'f/u::SKILL.md','g/t::SKILL.md'],"
+                                    " savedNames: ['a/x::SKILL.md','b/y::SKILL.md',"
+                                    " 'c/z::SKILL.md'] });")
         self.assertIn("本机记录", local.eval("mePanelHtml()"))
         got = remote.eval("mePanelHtml()")
         self.assertIn("云端记录", got)
@@ -2551,6 +2612,31 @@ class TestTopicsPanelAndFirstScreen(unittest.TestCase):
                          "空场景不该占一整块，其他/other 在这份夹具里是 0 条")
         self.assertEqual([2, 1], [r["n"] for r in rows], "按条目数排，多的在前")
         self.assertEqual(["writing", "podcast"], [k["id"] for k in rows[0]["kids"]])
+
+    def test_the_uncategorised_topic_block_uses_the_interesting_finds_name(self):
+        """主题分类里 other 改叫「有意思的发现」；发现流 chips / 栏目仍用「其他」。"""
+        feed = {
+            "ui": {},
+            "items": [dict(REAL_SKILL, full_name="z/odd", name="odd", owner="z",
+                           scene="other", scene_l2="")],
+            "corpus": [],
+        }
+        js = JsHarness(self.html, lang="zh", scenes=TOPIC_SCENES,
+                       scenes_l2=TOPIC_SCENES_L2, feed=feed)
+        rows = js.eval("topicRows()")
+        other = [r for r in rows if r["id"] == "other"]
+        self.assertEqual(1, len(other))
+        self.assertEqual("有意思的发现", other[0]["label"])
+        html = js.eval("topicsPanelHtml()")
+        self.assertIn("有意思的发现", html)
+        self.assertEqual("其他", js.eval("chipLabel(SCENES.find(s => s.id === 'other'))"),
+                         "发现流 chips 仍走 scene 原名，不能跟着主题分类改")
+        en = JsHarness(self.html, lang="en", scenes=TOPIC_SCENES,
+                       scenes_l2=TOPIC_SCENES_L2, feed=feed)
+        self.assertEqual("Interesting finds",
+                         en.eval("topicRows().find(r => r.id === 'other').label"))
+        self.assertEqual("Other",
+                         en.eval("chipLabel(SCENES.find(s => s.id === 'other'))"))
 
     def test_the_block_says_how_many_in_words_not_just_in_colour(self):
         """分类色是卡片徽章那套色的复述，条目数必须是文字。"""

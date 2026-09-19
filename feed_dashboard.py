@@ -1026,12 +1026,31 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .pub-sec {{ font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .04em;
     text-transform: uppercase; margin: 14px 0 8px; }}
   .pub-item {{
+    display: block; width: 100%; text-align: left; font: inherit;
     background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     padding: 12px; margin-bottom: 8px; cursor: pointer;
   }}
   .pub-item strong {{ display: block; margin-bottom: 4px; }}
   .pub-item p {{ margin: 0; font-size: .8rem; color: var(--muted); line-height: 1.4; }}
   .pub-item .meta {{ margin-top: 6px; font-size: .72rem; color: var(--muted); }}
+  .pub-item:hover {{ border-color: var(--accent); }}
+  .card-preview {{
+    position: fixed; inset: 0; z-index: 80; background: rgba(10,24,72,.46);
+    display: none; align-items: flex-start; justify-content: center;
+    padding: calc(18px + env(safe-area-inset-top)) 12px 24px;
+    overflow: auto;
+  }}
+  .card-preview.on {{ display: flex; }}
+  .card-preview .preview-box {{ width: min(430px, 100%); }}
+  .card-preview .preview-banner {{
+    background: #fff3cd; color: #7a5b00; border-radius: 12px;
+    padding: 8px 12px; margin-bottom: 8px; font-size: .8rem; font-weight: 600;
+  }}
+  .card-preview .preview-close {{
+    appearance: none; border: 0; background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 6px 12px; font: inherit; font-weight: 700;
+    margin-bottom: 8px; cursor: pointer;
+  }}
 
   .actions {{
     display: flex; align-items: center; justify-content: space-between;
@@ -1646,6 +1665,13 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   <button class="to-top" id="toTop" type="button" hidden aria-label="回到顶部" data-i18n-aria="backToTop">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V6"/><path d="M6 12l6-6 6 6"/></svg>
   </button>
+  <div class="card-preview" id="cardPreview" hidden>
+    <div class="preview-box">
+      <button type="button" class="preview-close" id="cardPreviewClose" data-i18n="previewClose">关闭预览</button>
+      <div class="preview-banner" id="cardPreviewBanner"></div>
+      <div id="cardPreviewBody"></div>
+    </div>
+  </div>
 
   <div class="coach" id="coach" hidden role="dialog" aria-modal="true" aria-labelledby="coachTitle">
     <div class="coach-mask" id="coachMask"></div>
@@ -1702,14 +1728,25 @@ const VARIANT = ((FEED.ui && FEED.ui.variant) || 'full');
 const IS_LITE = VARIANT === 'lite';
 const PAGE = 6;
 const STORY_MS = 3500;
-const API_BASE = IS_LITE ? '' : (((FEED.ui && FEED.ui.api_base) || '').replace(/\\/$/, ''));
+function resolveApiBase() {{
+  if (IS_LITE) return '';
+  const fromFeed = ((FEED.ui && FEED.ui.api_base) || '').replace(/\\/$/, '');
+  if (fromFeed) return fromFeed;
+  // 定时 Pages→Aliyun 若漏写 SKILLFEED_PUBLIC_URL，主站不能退化成「静态镜像」
+  try {{
+    const here = new URL(typeof document !== 'undefined' ? document.baseURI : '').origin;
+    if (here === 'https://skillfeeder.cn') return here;
+  }} catch (e) {{}}
+  return '';
+}}
+const API_BASE = resolveApiBase();
 const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', topicsView: 'scene', shown: 0, intent: '', publisher: '' }};
 const demo = {{ on: false, step: 0, timer: null, focus: -1 }};
 const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
 const publisherCache = {{}};
 /* 「我的」的服务端侧状态。loaded 分「没拉过」和「拉过但是空的」，
    否则每次 render 都会再打一轮请求。 */
-const ACCT = {{ loading: false, loaded: false, user: null, posts: null, liked: 0, saved: 0, remote: false, quota: null, devAuth: false }};
+const ACCT = {{ loading: false, loaded: false, user: null, posts: null, liked: 0, saved: 0, savedNames: null, likedNames: null, remote: false, quota: null, devAuth: false, wechat: false, sms: false, oauth: false }};
 /* 登录页路径。另一个 agent 正在给 server/ 加强制登录墙（认证服务号 + 短信兜底），
    落地后页面路径可能不是 /login；这里留成一个常量，改一行就能对齐。 */
 const LOGIN_PATH = '/login';
@@ -1840,6 +1877,7 @@ const I18N = {{
     topicsNoL2: '这一类当前没有细分到二级场景。',
     topicsEmpty: 'Feed 里暂时没有任何分类条目，先 refresh 一次。',
     topicsSectionEmpty: 'Feed 里暂时没有任何栏目条目，先 refresh 一次。',
+    topicsOther: '有意思的发现',
 
     /* 发布 */
     publishTitle: '发布 Skill',
@@ -1851,7 +1889,7 @@ const I18N = {{
     publishHint: '只认 github.com。monorepo 请贴到含 SKILL.md 的目录。认领时登录名必须等于仓库 owner。',
     publishSubmit: '提交审核', publishSubmitting: '提交中…',
     publishOkMsg: '已进入审核。通过后会出现在发现流。',
-    publishNeedLogin: '发布要先登录。登录主体是认证服务号，手机号短信兜底。',
+    publishNeedLogin: '发布要先用 GitHub 登录。请用 Safari / Chrome 打开；微信、小红书、抖音内置页打不开 GitHub 授权。',
     publishLoginBtn: '去登录',
     publishOpenPage: '打开完整发布页',
     publishNoBackendTitle: '这份是静态镜像',
@@ -1879,6 +1917,20 @@ const I18N = {{
     acctServerCounts: '云端记录：点赞 {{liked}} · 收藏 {{saved}}',
     acctLocalCounts: '本机记录：点赞 {{liked}} · 书签 {{saved}}',
     acctReactionsPending: '云端赞藏要等埋点链路接上才会有数，当前以本机记录为准。',
+    acctKeysTitle: '登录钥匙',
+    acctKeysHint: 'GitHub 只用来认领仓库。再绑微信或手机，GitHub 出问题时还能进「我的」、导出账本。',
+    acctKeyGithub: 'GitHub',
+    acctKeyWechat: '微信',
+    acctKeyPhone: '手机',
+    acctKeyOn: '已绑',
+    acctKeyOff: '未绑',
+    acctBindWechat: '绑定微信',
+    acctBindPhone: '绑定手机',
+    acctBindGithub: '绑定 GitHub',
+    acctBindNeedWx: '微信登录还没开通，配好服务号后就能绑。',
+    acctBindNeedSms: '短信通道还没开通，配好后就能绑手机。',
+    acctExport: '导出我的账本',
+    acctBindTaken: '这把钥匙已经绑在别的账号上。',
     quotaTitle: '发现额度',
     quotaSubscriber: '订阅会员 · 今日不限条数',
     quotaFreeToday: '今日还可看 {{n}} / {{limit}} 条',
@@ -1993,8 +2045,11 @@ const I18N = {{
     meNoApi: '尚未配置云端 API（ui.api_base / skillfeed.py api）',
     meGoPublish: '去发布 Skill',
     meApiDocs: 'API 文档', meApiHome: 'API 首页', meGithubLogin: 'GitHub 登录',
-    meAboutTitle: '发现站',
-    meAboutBody: '动态圆环 = 关注动态；行业与栏目筛选搬到「主题分类」tab，只在真的筛着时才回到发现页顶部。',
+    previewClose: '关闭预览',
+    acctPostPending: '审核中 · 点开看卡片预览',
+    acctPostLive: '已上架 · 点开看发现流',
+    cardPreviewPending: '审核中，还没进发现流。这是你的卡片预览。',
+    cardPreviewRejected: '已拒绝，不会出现在发现流。',
 
     /* 列表尾 */
     moreShown: '下滑加载更多 · 已显 <b>{{n}}</b> / {{total}}',
@@ -2065,6 +2120,7 @@ const I18N = {{
     topicsNoL2: 'Nothing in this topic is split into subcategories yet.',
     topicsEmpty: 'The feed has no categorised items yet — run a refresh first.',
     topicsSectionEmpty: 'The feed has no section-tagged items yet — run a refresh first.',
+    topicsOther: 'Interesting finds',
 
     publishTitle: 'Post a skill',
     publishLead: 'Three fields only: a public GitHub URL, a title, and a short pitch. No zip, no SKILL.md body. Posts go to review first, then the feed, and <strong>are never installed for anyone</strong>.',
@@ -2075,7 +2131,7 @@ const I18N = {{
     publishHint: 'github.com only. For a monorepo, link the directory that holds SKILL.md. Your login must match the repository owner.',
     publishSubmit: 'Submit for review', publishSubmitting: 'Submitting…',
     publishOkMsg: 'In review. It will appear in the feed if approved.',
-    publishNeedLogin: 'Posting needs a sign-in. The account is the verification service account, with SMS as the fallback.',
+    publishNeedLogin: 'Sign in with GitHub first. Use Safari or Chrome — in-app browsers (WeChat / Xiaohongshu / Douyin) cannot finish GitHub OAuth.',
     publishLoginBtn: 'Sign in',
     publishOpenPage: 'Open the full posting page',
     publishNoBackendTitle: 'This is a static mirror',
@@ -2102,6 +2158,20 @@ const I18N = {{
     acctServerCounts: 'On your account: {{liked}} liked · {{saved}} saved',
     acctLocalCounts: 'In this browser: {{liked}} liked · {{saved}} bookmarked',
     acctReactionsPending: 'Server-side likes and saves need the analytics pipeline wired up; until then this browser is the source of truth.',
+    acctKeysTitle: 'Sign-in keys',
+    acctKeysHint: 'GitHub is only for claiming a repo. Bind WeChat or a phone so you can still open Me and export your ledger if GitHub is down.',
+    acctKeyGithub: 'GitHub',
+    acctKeyWechat: 'WeChat',
+    acctKeyPhone: 'Phone',
+    acctKeyOn: 'Bound',
+    acctKeyOff: 'Not bound',
+    acctBindWechat: 'Bind WeChat',
+    acctBindPhone: 'Bind phone',
+    acctBindGithub: 'Bind GitHub',
+    acctBindNeedWx: 'WeChat sign-in is not configured yet.',
+    acctBindNeedSms: 'SMS is not configured yet.',
+    acctExport: 'Export my ledger',
+    acctBindTaken: 'That key is already bound to another account.',
     quotaTitle: 'Discovery quota',
     quotaSubscriber: 'Subscriber · unlimited today',
     quotaFreeToday: '{{n}} / {{limit}} left today',
@@ -2207,8 +2277,11 @@ const I18N = {{
     meNoApi: 'No cloud API configured (ui.api_base / skillfeed.py api)',
     meGoPublish: 'Post a skill',
     meApiDocs: 'API docs', meApiHome: 'API home', meGithubLogin: 'Sign in with GitHub',
-    meAboutTitle: 'About this feed',
-    meAboutBody: 'The top updates ring shows what you follow. Industry and section filters moved to the “Topics” tab and only come back to the top of Discover while a filter is on.',
+    previewClose: 'Close preview',
+    acctPostPending: 'In review · tap to preview the card',
+    acctPostLive: 'Live · open in the feed',
+    cardPreviewPending: 'In review — not in the feed yet. This is your card preview.',
+    cardPreviewRejected: 'Rejected — it will not appear in the feed.',
 
     moreShown: 'Scroll for more · showing <b>{{n}}</b> of {{total}}',
     allDone: 'That is everything · <b>{{total}}</b> items, library backup included',
@@ -2342,6 +2415,21 @@ const hidden = loadSet('sf_hidden');
 const batchSkip = new Set();
 const followBuilders = loadSet('sf_follow_builders');
 const followIndustries = loadSet('sf_follow_industries');
+
+/* 收藏/点赞的「生效集合」：登录且云端读到了账号数组时 = 云端 ∪ 本机，
+   否则 = 本机。列表（filtered 的 saved 模式）和计数（mePanelHtml）都从这里出，
+   保证「查看收藏」的计数与列表长度恒等，跨设备也一致（D2：列表读云端）。
+   本机为辅：本机刚点、还没同步上云的收藏仍会出现在列表里。 */
+function effectiveSavedSet() {{
+  const out = new Set(saved);
+  if (ACCT.savedNames) for (const fn of ACCT.savedNames) out.add(fn);
+  return out;
+}}
+function effectiveLikedSet() {{
+  const out = new Set(liked);
+  if (ACCT.likedNames) for (const fn of ACCT.likedNames) out.add(fn);
+  return out;
+}}
 
 function toast(msg, ms) {{
   const el = document.getElementById('toast');
@@ -2579,6 +2667,7 @@ function toggleFollowBuilder(owner, opts) {{
   if (opts && opts.silent) return now;
   if (now) followToast('builder', owner);
   else toast(trn('unfollowedBuilder', {{ who: owner }}));
+  track(now ? 'follow' : 'unfollow', {{ item_key: owner, owner, source: 'builder' }});
   render(false);
   return now;
 }}
@@ -2591,6 +2680,7 @@ function toggleFollowIndustry(sceneId, opts) {{
   if (opts && opts.silent) return now;
   if (now) followToast('industry', sceneLabelOf(sceneId));
   else toast(trn('unfollowedIndustry', {{ who: sceneLabelOf(sceneId) }}));
+  track(now ? 'follow' : 'unfollow', {{ item_key: sceneId, source: 'industry' }});
   render(false);
   return now;
 }}
@@ -2873,6 +2963,9 @@ function applyIntentInput(raw, {{ forceCompress = false, silent = false }} = {{}
     toast(trn('intentToast', {{ q: use }}), 2200);
   }}
   renderIntentKeys();
+  if (forceCompress && !silent && use) {{
+    track('search', {{ item_key: String(use).slice(0, 80), source: 'intent' }});
+  }}
 }}
 
 function intentHay(it) {{
@@ -3145,7 +3238,7 @@ function filtered() {{
   const q = effectiveIntent();
 
   if (state.mode === 'saved') {{
-    const keep = new Set([...liked, ...saved]);
+    const keep = effectiveSavedSet();
     const rows = allPool().filter(it => {{
       const fn = it.full_name || '';
       if (!fn || !keep.has(fn)) return false;
@@ -3232,6 +3325,14 @@ function sectionOptions() {{
 
 async function sendFeedback(action, it, opts) {{
   const silent = !!(opts && opts.silent);
+  const mapped = action === 'opened_github' ? 'open_github' : action;
+  track(mapped, {{
+    item_key: (it && (it.id || it.full_name)) || '',
+    full_name: (it && it.full_name) || '',
+    source: (it && it.source) || '',
+    scene: (it && it.scene) || '',
+    owner: (it && it.owner) || '',
+  }});
   const body = {{
     action,
     full_name: it.full_name || '',
@@ -3249,7 +3350,7 @@ async function sendFeedback(action, it, opts) {{
     const data = await resp.json();
     if (!silent && !demo.on) toast(data.ok ? trn('feedbackLogged', {{ action }}) : (data.error || tr('feedbackFailed')));
   }} catch (e) {{
-    if (!silent && !demo.on) toast(tr('feedbackServeOnly'));
+    if (!silent && !demo.on && mapped === action) toast(tr('feedbackServeOnly'));
   }}
 }}
 
@@ -3357,6 +3458,7 @@ function cardHtml(it, idx) {{
   // 头像与作者行点的是同一个「打开发布者」。头像只是重复的鼠标热区，所以挂
   // aria-hidden + tabindex=-1：继续可点，但不占 Tab 序、读屏也不重复播报一遍。
   return `<article class="post ${{it.from_corpus ? 'corpus' : ''}}${{softCls}} ${{focus}}" id="post-${{idx}}"
+      data-id="${{escapeHtml(String(it.id || fn))}}"
       data-fn="${{escapeHtml(fn)}}" data-src="${{escapeHtml(it.source || '')}}"
       data-scene="${{escapeHtml(sceneId)}}" data-l2="${{escapeHtml(it.scene_l2 || '')}}"
       data-owner="${{escapeHtml(owner)}}"
@@ -3749,6 +3851,8 @@ function switchTab(mode, opts) {{
   render(true);
   syncTabUrl();
   if (!(opts && opts.keepScroll)) scrollToTop();
+  track('view_tab', {{ item_key: mode, source: 'nav' }});
+  if (mode === 'publish') track('publish_view', {{ source: 'tab' }});
 }}
 
 /* 键盘：左右键在 tab 之间走、Home/End 到两端。这是 role=tablist 的既定交互，
@@ -3808,7 +3912,12 @@ function topicRows() {{
       const kids = (SCENES_L2[s.id] || [])
         .map(k => ({{ id: k.id || k[0], label: chipLabel(k), n: countSceneL2(s.id, k.id || k[0]) }}))
         .filter(k => k.n > 0);
-      return {{ id: s.id, label: chipLabel(s), n, kids }};
+      return {{
+        id: s.id,
+        label: s.id === 'other' ? tr('topicsOther') : chipLabel(s),
+        n,
+        kids,
+      }};
     }})
     .filter(r => r.n > 0)
     .sort((a, b) => b.n - a.n);
@@ -4010,6 +4119,69 @@ function deviceId() {{
   }}
 }}
 
+function sessionId() {{
+  try {{
+    let id = sessionStorage.getItem('sf_session_id');
+    if (!id) {{
+      id = 's-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      sessionStorage.setItem('sf_session_id', id);
+    }}
+    return id;
+  }} catch (e) {{
+    return 's-tmp';
+  }}
+}}
+
+function journeyState() {{
+  const g = typeof globalThis !== 'undefined' ? globalThis : window;
+  if (!g.__sfJourney) g.__sfJourney = {{ q: [], timer: 0 }};
+  return g.__sfJourney;
+}}
+function track(action, extra) {{
+  if (typeof IS_LITE !== 'undefined' && IS_LITE) return;
+  if (!action) return;
+  const row = extra && typeof extra === 'object' ? extra : {{}};
+  const st = journeyState();
+  st.q.push({{
+    action: String(action),
+    item_key: String(row.item_key || row.full_name || '').slice(0, 200),
+    full_name: String(row.full_name || '').slice(0, 200),
+    source: String(row.source || '').slice(0, 40),
+    scene: String(row.scene || '').slice(0, 40),
+    owner: String(row.owner || '').slice(0, 80),
+    client_ts: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+  }});
+  if (st.q.length >= 8) {{ flushJourney(); return; }}
+  if (!st.timer) st.timer = setTimeout(flushJourney, 800);
+}}
+function flushJourney() {{
+  const st = journeyState();
+  if (st.timer) {{ clearTimeout(st.timer); st.timer = 0; }}
+  if (!st.q.length) return;
+  const events = st.q.splice(0, st.q.length);
+  const id = deviceId();
+  const sid = sessionId();
+  if (!id || !sid) return;
+  const url = (API_BASE || '') + '/api/events';
+  try {{
+    fetch(url, {{
+      method: 'POST',
+      credentials: 'include',
+      headers: {{ 'Content-Type': 'application/json', 'X-Device-Id': id }},
+      body: JSON.stringify({{ device_id: id, session_id: sid, events }}),
+      keepalive: true,
+    }}).catch(() => {{}});
+  }} catch (e) {{}}
+}}
+if (typeof document !== 'undefined' && document.addEventListener) {{
+  document.addEventListener('visibilitychange', () => {{
+    if (document.visibilityState === 'hidden') flushJourney();
+  }});
+}}
+if (typeof window !== 'undefined' && window.addEventListener) {{
+  window.addEventListener('pagehide', flushJourney);
+}}
+
 function deviceToken() {{
   try {{ return localStorage.getItem('sf_device_token') || ''; }} catch (e) {{ return ''; }}
 }}
@@ -4044,10 +4216,19 @@ async function loadAccount() {{
     ACCT.user = (data && data.user) || null;
     ACCT.quota = (data && data.quota) || null;
     ACCT.devAuth = !!(data && data.dev_auth);
+    ACCT.wechat = !!(data && data.wechat);
+    ACCT.sms = !!(data && data.sms);
+    ACCT.oauth = !!(data && data.oauth);
+    // 账号收藏/点赞的 full_name 数组（跨设备聚合，见 server db.user_saved_full_names）。
+    // 没登录或后端旧版没返这俩字段时为 null，前端退回本机 Set。
+    ACCT.savedNames = (data && data.user && Array.isArray(data.saved)) ? data.saved : null;
+    ACCT.likedNames = (data && data.user && Array.isArray(data.liked)) ? data.liked : null;
   }} catch (e) {{
     ACCT.user = null;
     ACCT.quota = null;
     ACCT.devAuth = false;
+    ACCT.savedNames = null;
+    ACCT.likedNames = null;
   }}
   if (ACCT.user) {{
     try {{
@@ -4214,6 +4395,34 @@ function acctIdentityHtml() {{
     <div class="me-actions">
       <button type="button" class="js-acct-logout">${{escapeHtml(tr('acctLogout'))}}</button>
     </div>
+    ${{acctKeysHtml()}}
+  </div>`;
+}}
+
+function acctKeysHtml() {{
+  const providers = (ACCT.user && ACCT.user.providers) || [];
+  const has = (k) => providers.indexOf(k) >= 0;
+  const row = (label, on, extra) =>
+    `<p>${{escapeHtml(label)}} · ${{escapeHtml(on ? tr('acctKeyOn') : tr('acctKeyOff'))}}${{extra || ''}}</p>`;
+  const phone = ACCT.user && ACCT.user.phone_masked ? (' · ' + ACCT.user.phone_masked) : '';
+  const wxHref = ACCT.wechat ? (API_BASE + '/auth/wechat?next=' + encodeURIComponent('/?tab=me')) : '';
+  const smsHref = API_BASE + '/login?next=' + encodeURIComponent('/?tab=me');
+  const ghHref = ACCT.oauth ? (API_BASE + '/auth/github?next=' + encodeURIComponent('/?tab=me')) : '';
+  let actions = `<a href="${{escapeHtml(safeUrl(API_BASE + '/api/me/export'))}}">${{escapeHtml(tr('acctExport'))}}</a>`;
+  if (!has('wechat') && wxHref) actions += `<a href="${{escapeHtml(safeUrl(wxHref))}}">${{escapeHtml(tr('acctBindWechat'))}}</a>`;
+  if (!has('phone')) actions += `<a href="${{escapeHtml(safeUrl(smsHref))}}">${{escapeHtml(tr('acctBindPhone'))}}</a>`;
+  if (!has('github') && ghHref) actions += `<a href="${{escapeHtml(safeUrl(ghHref))}}">${{escapeHtml(tr('acctBindGithub'))}}</a>`;
+  let need = '';
+  if (!has('wechat') && !ACCT.wechat) need += `<p class="hint">${{escapeHtml(tr('acctBindNeedWx'))}}</p>`;
+  if (!has('phone') && !ACCT.sms) need += `<p class="hint">${{escapeHtml(tr('acctBindNeedSms'))}}</p>`;
+  return `<div class="me-card" style="margin-top:10px">
+    <strong>${{escapeHtml(tr('acctKeysTitle'))}}</strong>
+    <p>${{escapeHtml(tr('acctKeysHint'))}}</p>
+    ${{row(tr('acctKeyGithub'), has('github'))}}
+    ${{row(tr('acctKeyWechat'), has('wechat'))}}
+    ${{row(tr('acctKeyPhone'), has('phone'), phone)}}
+    <div class="me-actions">${{actions}}</div>
+    ${{need}}
   </div>`;
 }}
 
@@ -4225,11 +4434,15 @@ function acctPostsHtml() {{
   else if (!ACCT.user) inner = `<p>${{escapeHtml(tr('acctPostsNeedLogin'))}}</p>`;
   else if (!ACCT.posts || !ACCT.posts.length) inner = `<p>${{escapeHtml(tr('acctNoPosts'))}}</p>`;
   else {{
-    inner = ACCT.posts.map(p => `<div class="pub-item">
+    inner = ACCT.posts.map(p => {{
+      const pid = String(p.public_id || '');
+      const st = String(p.status || '');
+      return `<button type="button" class="pub-item js-me-post" data-id="${{escapeHtml(pid)}}" data-status="${{escapeHtml(st)}}">
       <strong>${{escapeHtml(String(p.title || p.name || ''))}}</strong>
       <p>${{escapeHtml(String(p.description || '').slice(0, 160))}}</p>
-      <div class="meta">${{escapeHtml(String(p.scene_label || ''))}} · ${{escapeHtml(String(p.status || ''))}} · ${{escapeHtml(String(p.created_at || '').slice(0, 19))}}</div>
-    </div>`).join('');
+      <div class="meta">${{escapeHtml(String(p.scene_label || ''))}} · ${{escapeHtml(st === 'pending' ? tr('acctPostPending') : ((st === 'approved' || st === 'published') ? tr('acctPostLive') : st))}} · ${{escapeHtml(String(p.created_at || '').slice(0, 19))}}</div>
+    </button>`;
+    }}).join('');
   }}
   return `<div class="me-card">
     <strong>${{escapeHtml(tr('acctMyPosts'))}}</strong>
@@ -4341,6 +4554,107 @@ function paintQuotaBanner(quota) {{
   }})) + '</b> · ' + escapeHtml(tr('quotaSubscribeHint'));
 }}
 
+function postRecordToItem(p) {{
+  const fn = String(p.full_name || '');
+  const desc = String(p.description || '');
+  const path = String(p.skill_path || 'SKILL.md');
+  return {{
+    id: p.public_id || ('ugc:' + fn + '::' + path),
+    full_name: fn,
+    name: p.title || p.name || 'skill',
+    description: desc,
+    one_liner: desc.slice(0, 140),
+    problem: desc.slice(0, 140),
+    highlights: [],
+    url: p.github_url || (fn ? ('https://github.com/' + fn) : ''),
+    skill_url: p.github_url || '',
+    cover_url: p.cover_url || (fn ? ('https://opengraph.githubassets.com/1/' + fn) : ''),
+    scene: p.scene || 'other',
+    scene_label: p.scene_label || '',
+    source: 'ugc',
+    ugc: true,
+    owner: fn.split('/')[0] || '',
+  }};
+}}
+
+function showCardPreview(item, banner) {{
+  const host = document.getElementById('cardPreview');
+  const body = document.getElementById('cardPreviewBody');
+  const bar = document.getElementById('cardPreviewBanner');
+  if (!host || !body) return;
+  if (bar) {{
+    bar.textContent = banner || '';
+    bar.style.display = banner ? 'block' : 'none';
+  }}
+  body.innerHTML = cardHtml(item, 0);
+  host.classList.add('on');
+  host.hidden = false;
+}}
+
+function closeCardPreview() {{
+  const host = document.getElementById('cardPreview');
+  if (!host) return;
+  host.classList.remove('on');
+  host.hidden = true;
+  track('close_card', {{ source: 'preview' }});
+}}
+
+function openMyPostCard(publicId, status) {{
+  if (!publicId) return;
+  let id = String(publicId);
+  try {{ id = decodeURIComponent(id); }} catch (e) {{}}
+  const mine = (ACCT.posts || []).find(p => String(p.public_id || '') === id);
+  const st = status || (mine && mine.status) || '';
+  const live = (FEED.items || []).find(it => String(it.id) === id);
+  const item = live || (mine ? postRecordToItem(mine) : null);
+  if (!item) return;
+  // 我发布的始终出预览：已上架也不切发现流。发现流会重排，第二下会
+  // 看起来像「跳回首页并刷新成别人的卡」。
+  const banner = (st === 'pending')
+    ? tr('cardPreviewPending')
+    : (st === 'rejected' ? tr('cardPreviewRejected') : '');
+  showCardPreview(item, banner);
+  track('open_card', {{
+    item_key: id,
+    full_name: item.full_name || '',
+    source: 'me',
+  }});
+  const u = new URL(location.href);
+  u.searchParams.set('card', id);
+  if (state.mode === 'me') u.searchParams.set('tab', 'me');
+  history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString());
+}}
+
+async function hydrateSiteConfig() {{
+  if (location.protocol === 'file:') return;
+  try {{
+    const resp = await fetch((API_BASE || '') + '/api/site-config', {{
+      credentials: 'include',
+      headers: {{ 'Accept': 'application/json' }},
+    }});
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const cfg = (data && data.config) || {{}};
+    const line = document.getElementById('productLine');
+    if (line && cfg.slogan) line.textContent = cfg.slogan;
+    const intent = document.getElementById('intent');
+    if (intent && cfg.search_placeholder) intent.placeholder = cfg.search_placeholder;
+    if (cfg.logo_url) {{
+      let img = document.getElementById('logoCustom');
+      if (!img) {{
+        img = document.createElement('img');
+        img.id = 'logoCustom';
+        img.alt = 'SkillFeeder';
+        img.style.height = '28px';
+        img.style.width = 'auto';
+        const logo = document.querySelector('.logo');
+        if (logo) logo.insertBefore(img, logo.firstChild);
+      }}
+      img.src = cfg.logo_url;
+    }}
+  }} catch (e) {{}}
+}}
+
 async function hydrateLiveFeed() {{
   if (IS_LITE) return;
   if (location.protocol === 'file:') return;
@@ -4364,8 +4678,12 @@ async function hydrateLiveFeed() {{
 }}
 
 function mePanelHtml() {{
-  const nLiked = liked.size;
-  const nSaved = saved.size;
+  // 计数与「查看收藏」列表同源（effectiveSavedSet/effectiveLikedSet），
+  // 保证计数 = 列表长度恒等；云端读到账号数组时跨设备一致（D2）。
+  const effSaved = effectiveSavedSet();
+  const effLiked = effectiveLikedSet();
+  const nLiked = effLiked.size;
+  const nSaved = effSaved.size;
   const builders = [...followBuilders];
   const industries = [...followIndustries];
   const unfollowAria = escapeHtml(tr('unfollowAria'));
@@ -4378,7 +4696,7 @@ function mePanelHtml() {{
   // 云端赞藏读到了就以它为准，读不到（无后端 / 埋点链路还没接）才退回本机计数。
   // 两句文案不同，用户能看出这个数是从哪来的。
   const counts = ACCT.remote
-    ? escapeHtml(trn('acctServerCounts', {{ liked: ACCT.liked, saved: ACCT.saved }}))
+    ? escapeHtml(trn('acctServerCounts', {{ liked: nLiked, saved: nSaved }}))
     : escapeHtml(trn('acctLocalCounts', {{ liked: nLiked, saved: nSaved }}));
   const countsNote = (accountMode() === 'live' && !ACCT.remote)
     ? `<p>${{escapeHtml(tr('acctReactionsPending'))}}</p>` : '';
@@ -4409,10 +4727,6 @@ function mePanelHtml() {{
       <div class="me-actions">
         <button type="button" class="primary js-me-find-industry">${{escapeHtml(tr('sheetIndustryTitle'))}}</button>
       </div>
-    </div>
-    <div class="me-card">
-      <strong>${{escapeHtml(tr('meAboutTitle'))}}</strong>
-      <p>${{escapeHtml(tr('meAboutBody'))}}</p>
     </div>
   </div>`;
 }}
@@ -5003,6 +5317,11 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     syncTabUrl();
     return;
   }}
+  const mine = t.closest('.js-me-post');
+  if (mine) {{
+    openMyPostCard(mine.dataset.id || '', mine.dataset.status || '');
+    return;
+  }}
   if (t.closest('.js-me-find-builder')) {{
     state.mode = 'all';
     render(true);
@@ -5220,9 +5539,22 @@ try {{
 
 renderIntentKeys();
 applyLang(LANG);
-hydrateLiveFeed();
+hydrateSiteConfig();
+hydrateLiveFeed().then(() => {{
+  const card = new URLSearchParams(location.search).get('card') || '';
+  if (card) {{
+    if (ACCT.loaded) openMyPostCard(card, '');
+    else loadAccount().then(() => openMyPostCard(card, ''));
+  }}
+}});
 syncToTop();
 if (state.mode === 'me' || state.mode === 'publish') loadAccount();
+const previewClose = document.getElementById('cardPreviewClose');
+if (previewClose) previewClose.addEventListener('click', closeCardPreview);
+const previewHost = document.getElementById('cardPreview');
+if (previewHost) previewHost.addEventListener('click', (e) => {{
+  if (e.target === previewHost) closeCardPreview();
+}});
 
 /* ---------- 首访引导蒙版 ---------- */
 const COACH_KEY = 'sf_onboard_v1';
@@ -5339,6 +5671,7 @@ function coachFinish() {{
   if (host) host.hidden = true;
   if (document.body && document.body.classList) document.body.classList.remove('coaching');
   try {{ localStorage.setItem(COACH_KEY, '1'); }} catch (e) {{}}
+  track('coach', {{ item_key: 'done' }});
   renderStories();
 }}
 
@@ -5361,6 +5694,22 @@ function bindCoach() {{
 
 bindCoach();
 if (coachShouldStart()) setTimeout(() => coachShow(0), 360);
+if (new URLSearchParams(location.search).get('bind') === 'taken') {{
+  toast(tr('acctBindTaken'));
+}}
+if (!IS_LITE) {{
+  track('session_start', {{ source: 'boot' }});
+  track('view_tab', {{ item_key: state.mode || 'all', source: 'boot' }});
+  document.addEventListener('click', (e) => {{
+    const a = e.target && e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href') || '';
+    if (href.indexOf('/login') >= 0 || href.indexOf('/auth/github') >= 0) {{
+      track('login_click', {{ item_key: href.slice(0, 80), source: 'link' }});
+    }}
+    if (href.indexOf('/publish') >= 0) track('publish_view', {{ source: 'link' }});
+  }});
+}}
 
 if (!IS_LITE && new URLSearchParams(location.search).get('demo') === '1') {{
   document.body.classList.add('show-demo-tools');

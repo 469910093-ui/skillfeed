@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import ranking
-from server import auth, db, entitlement, metrics, pay, ranking_service, sms, ugc
+from server import auth, backup, db, entitlement, metrics, notify, pay, ranking_service, sms, ugc
 from server.config import Settings, get_settings
 from server.ratelimit import EventLimiter, SmsLimiter
 
@@ -75,6 +75,13 @@ class ActivateBody(BaseModel):
     code: str = ""
 
 
+class SiteSettingsBody(BaseModel):
+    slogan: str = ""
+    search_placeholder: str = ""
+    logo_url: str = ""
+    review_webhook: str = ""
+
+
 class PayCreateBody(BaseModel):
     sku: str = pay.SKU_YEAR
 
@@ -96,6 +103,13 @@ GATE_PUBLIC_EXACT = frozenset({
     "/health",      # 外部 uptime 探针，不可能带登录态
     "/login",       # 登录页自己。它要是被拦，就是无限重定向
     "/favicon.ico",  # 浏览器自动请求，拦了也只是产生一条 302 噪音
+    # 发现流全量免费：hydrateLiveFeed 用它把已过审 UGC 混进静态首页。
+    # 只出 published/approved，pending 不会从这里漏出去。
+    "/api/feed",
+    "/api/site-config",
+    # 游客进站路径也要记：首页是 Nginx 静态页，多数人还没登录。
+    # 已有 IP/设备限流；不记 IP / UA。运营读走 /op「路径」，不公开。
+    "/api/events",
     # 微信支付回调没有会话 Cookie。开通只信验签后的 out_trade_no，
     # 未配置 / 验签未接时这个端点只会 503，不会发权益。
     "/api/pay/wechat/notify",
@@ -106,6 +120,8 @@ GATE_PUBLIC_PREFIXES = (
     "/auth/",
     # 登录页要用到的静态资源；这个目录里不放任何用户数据
     "/static/",
+    # 卡片短链 /p/zhangleme，聊天软件不会在冒号处截断
+    "/p/",
 )
 
 
@@ -372,6 +388,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "wechat": settings.wechat_configured,
             # 只报「通道配好没有」，不报签名/模板/AK 任何取值
             "sms": settings.sms_configured,
+            "review_webhook": bool(notify.resolve_review_webhook(settings)),
             "require_login": settings.require_login,
             "dev_auth": settings.dev_auth,
             "official_feed": bool(
@@ -457,6 +474,33 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         html = html.replace("{{public_url}}", settings.public_url)
         return html_response(html.replace("{{csp_nonce}}", nonce), nonce)
 
+    def _admin_html(request: Request) -> HTMLResponse:
+        uid = auth.require_user_id(request, settings)
+        with db.db_session(settings.db_path) as conn:
+            user = db.get_user(conn, uid)
+        auth.require_operator(request, settings, (user or {}).get("login") or "")
+        nonce = secrets.token_urlsafe(16)
+        html = (TEMPLATES / "admin.html").read_text(encoding="utf-8")
+        return html_response(html.replace("{{csp_nonce}}", nonce), nonce)
+
+    @app.get("/op", response_class=HTMLResponse)
+    @app.get("/op/", response_class=HTMLResponse)
+    @app.get("/admin", response_class=HTMLResponse)
+    @app.get("/admin/", response_class=HTMLResponse)
+    def admin_page(request: Request) -> HTMLResponse:
+        return _admin_html(request)
+
+    @app.get("/p/{slug}")
+    def public_card(slug: str) -> RedirectResponse:
+        with db.db_session(settings.db_path) as conn:
+            row = db.find_live_card(conn, slug)
+        if not row or not row.get("public_id"):
+            raise HTTPException(404, "没有这张已上架的卡片")
+        return RedirectResponse(
+            "/?card=" + quote(str(row["public_id"]), safe=""),
+            status_code=302,
+        )
+
     @app.get("/op/review", response_class=HTMLResponse)
     def review_page(request: Request) -> HTMLResponse:
         uid = auth.require_user_id(request, settings)
@@ -469,7 +513,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     # —— Auth ——
     @app.get("/auth/github")
-    def auth_github(response: Response) -> RedirectResponse:
+    def auth_github(next: str = "") -> HTMLResponse:  # noqa: A002
         if not settings.oauth_configured:
             # 这里过去会在 dev_auth 时 302 到 /auth/dev-login（无凭据发 30 天会话）。
             # 那是个静默降级：接微信登录的改造期漏配一个环境变量，站点就变成
@@ -481,10 +525,22 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         # 与微信流程用同一套签名 state（见 server/auth.py 的说明）：
         # 原来这里是「随机串 + Cookie 比对」，能挡 CSRF 但不能证明这串是我们签的
         state = auth.issue_state(settings, "github")
-        resp = RedirectResponse(auth.github_authorize_url(settings, state), status_code=302)
+        nonce = secrets.token_urlsafe(16)
+        dest = auth.github_authorize_url(settings, state)
+        resp = html_response(
+            auth.oauth_handoff_html(dest, heading="正在前往 GitHub 登录…", nonce=nonce),
+            nonce,
+        )
+        resp.headers["Cache-Control"] = "no-store"
         auth.set_state_cookie(resp, settings, "github", state)
+        if next:
+            resp.set_cookie(
+                LOGIN_NEXT_COOKIE, _safe_next(next),
+                max_age=settings.oauth_state_ttl_s, **auth.cookie_flags(settings),
+            )
         return resp
 
+    @app.get("/auth/github/callback")
     @app.get("/auth/callback")
     async def auth_callback(request: Request, code: str = "", state: str = "") -> RedirectResponse:
         if not code:
@@ -493,22 +549,42 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not auth.verify_state(settings, "github", state, cookie):
             raise HTTPException(400, "bad oauth state")
         gh = await auth.exchange_github_code(settings, code)
-        with db.db_session(settings.db_path) as conn:
-            user = db.upsert_user(
-                conn,
-                github_id=int(gh["id"]),
-                login=gh.get("login") or "",
-                avatar_url=gh.get("avatar_url") or "",
-                name=gh.get("name") or "",
-            )
-        resp = RedirectResponse("/publish", status_code=302)
+        uid = auth.session_user_id(request, settings)
+        try:
+            with db.db_session(settings.db_path) as conn:
+                if uid:
+                    user = db.attach_github(
+                        conn, uid,
+                        github_id=int(gh["id"]),
+                        login=gh.get("login") or "",
+                        avatar_url=gh.get("avatar_url") or "",
+                        name=gh.get("name") or "",
+                    )
+                else:
+                    user = db.upsert_user(
+                        conn,
+                        github_id=int(gh["id"]),
+                        login=gh.get("login") or "",
+                        avatar_url=gh.get("avatar_url") or "",
+                        name=gh.get("name") or "",
+                    )
+        except db.IdentityBound:
+            dest = "/login?err=identity_taken" if uid is None else "/?tab=me&bind=taken"
+            resp = RedirectResponse(dest, status_code=302)
+            auth.clear_state_cookie(resp, "github")
+            return resp
+        dest = _safe_next(
+            request.cookies.get(LOGIN_NEXT_COOKIE) or ("/?tab=me" if uid else "/publish")
+        )
+        resp = RedirectResponse(dest, status_code=302)
         auth.set_session_cookie(resp, settings, int(user["id"]), user["login"])
         auth.clear_state_cookie(resp, "github")
+        resp.delete_cookie(LOGIN_NEXT_COOKIE, path="/")
         return resp
 
     # —— 微信服务号网页授权（主站 V1 的主登录方式）——
     @app.get("/auth/wechat")
-    def auth_wechat(next: str = "") -> RedirectResponse:  # noqa: A002
+    def auth_wechat(next: str = "") -> HTMLResponse:  # noqa: A002
         if not settings.wechat_configured:
             raise HTTPException(
                 status_code=503,
@@ -516,7 +592,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                        "SKILLFEED_WECHAT_APP_SECRET）。",
             )
         state = auth.issue_state(settings, "wechat")
-        resp = RedirectResponse(auth.wechat_authorize_url(settings, state), status_code=302)
+        nonce = secrets.token_urlsafe(16)
+        dest = auth.wechat_authorize_url(settings, state)
+        resp = html_response(
+            auth.oauth_handoff_html(dest, heading="正在前往微信登录…", nonce=nonce),
+            nonce,
+        )
+        resp.headers["Cache-Control"] = "no-store"
         auth.set_state_cookie(resp, settings, "wechat", state)
         # 登录成功后回到用户原本想去的地方。放 Cookie 而不是塞进 state：
         # state 要参与签名比对，往里拼可变内容就得考虑分隔符转义，没必要
@@ -546,15 +628,33 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             info = await auth.fetch_wechat_userinfo(
                 settings, str(token.get("access_token") or ""), str(token["openid"]),
             )
-        with db.db_session(settings.db_path) as conn:
-            user = db.upsert_wechat_user(
-                conn,
-                openid=str(token["openid"]),
-                unionid=str(token.get("unionid") or info.get("unionid") or ""),
-                nickname=str(info.get("nickname") or ""),
-                avatar_url=str(info.get("headimgurl") or ""),
-            )
-        dest = _safe_next(request.cookies.get(LOGIN_NEXT_COOKIE) or "/")
+        uid = auth.session_user_id(request, settings)
+        try:
+            with db.db_session(settings.db_path) as conn:
+                if uid:
+                    user = db.attach_wechat(
+                        conn, uid,
+                        openid=str(token["openid"]),
+                        unionid=str(token.get("unionid") or info.get("unionid") or ""),
+                        nickname=str(info.get("nickname") or ""),
+                        avatar_url=str(info.get("headimgurl") or ""),
+                    )
+                else:
+                    user = db.upsert_wechat_user(
+                        conn,
+                        openid=str(token["openid"]),
+                        unionid=str(token.get("unionid") or info.get("unionid") or ""),
+                        nickname=str(info.get("nickname") or ""),
+                        avatar_url=str(info.get("headimgurl") or ""),
+                    )
+        except db.IdentityBound:
+            dest = "/login?err=identity_taken" if uid is None else "/?tab=me&bind=taken"
+            resp = RedirectResponse(dest, status_code=302)
+            auth.clear_state_cookie(resp, "wechat")
+            return resp
+        dest = _safe_next(
+            request.cookies.get(LOGIN_NEXT_COOKIE) or ("/?tab=me" if uid else "/")
+        )
         resp = RedirectResponse(dest, status_code=302)
         auth.set_session_cookie(resp, settings, int(user["id"]), user["login"])
         auth.clear_state_cookie(resp, "wechat")
@@ -650,7 +750,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             else:
                 # 单次有效：验证通过立刻删行，同一个码不可能被用第二次
                 db.drop_sms_code(conn, phone)
-                user = db.upsert_phone_user(conn, phone=phone)
+                uid = auth.session_user_id(request, settings)
+                if uid:
+                    try:
+                        user = db.attach_phone(conn, uid, phone=phone)
+                    except db.IdentityBound:
+                        error = "taken"
+                else:
+                    user = db.upsert_phone_user(conn, phone=phone)
 
         if error == "expired":
             raise HTTPException(400, "验证码已过期，请重新获取")
@@ -658,6 +765,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(429, "验证码错误次数过多，请重新获取")
         if error == "bad_code":
             raise HTTPException(400, "验证码不正确")
+        if error == "taken":
+            raise HTTPException(409, "这个手机号已经绑在别的账号上")
         assert user is not None
         resp = JSONResponse({
             "ok": True,
@@ -724,11 +833,26 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 quota = entitlement.quota_status(
                     conn, user, limit=settings.free_daily_feed_items,
                 )
+                # 账号收藏/点赞的 full_name 数组：跨设备聚合，给前端「查看收藏」
+                # 做列表与计数同源，避免「计数读云端、列表读本机」两边对不上。
+                saved = db.user_saved_full_names(conn, uid)
+                liked = db.user_liked_full_names(conn, uid)
         return {
             "user": db.user_public(user) if user else None,
             "quota": quota,
+            "saved": saved,
+            "liked": liked,
             **base,
         }
+
+    @app.get("/api/me/export")
+    def api_me_export(request: Request) -> JSONResponse:
+        uid = auth.require_user_id(request, settings)
+        with db.db_session(settings.db_path) as conn:
+            payload = db.export_account(conn, uid)
+        resp = JSONResponse(payload)
+        resp.headers["Content-Disposition"] = 'attachment; filename="skillfeeder-account.json"'
+        return resp
 
     @app.post("/api/account/activate")
     def activate_subscription(request: Request, body: ActivateBody) -> dict[str, Any]:
@@ -1012,6 +1136,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
         with db.db_session(settings.db_path) as conn:
             created = db.touch_device(conn, device_id)
+            uid = auth.session_user_id(request, settings)
+            if uid:
+                db.link_device_user(conn, device_id, uid)
             result = ranking_service.ingest_events(
                 conn, device_id, session_id, events,
                 config=app.state.ranking_config,
@@ -1125,7 +1252,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return result
 
     # —— Posts ——
-    def _submit_post(uid: int, title: str, github_url: str, description: str) -> dict[str, Any]:
+    def _submit_post(
+        uid: int, title: str, github_url: str, description: str,
+        request: Optional[Request] = None,
+    ) -> dict[str, Any]:
         with db.db_session(settings.db_path) as conn:
             user = db.get_user(conn, uid)
             if not user:
@@ -1150,12 +1280,27 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             )
             if taken:
                 raise HTTPException(400, "这条已被认领")
-            return db.create_post(conn, uid, prepared)
+            post = db.create_post(conn, uid, prepared)
+            device_id = ((request.headers.get("x-device-id") if request else "") or "").strip()[:64]
+            if device_id:
+                db.link_device_user(conn, device_id, uid)
+                ranking_service.ingest_events(
+                    conn, device_id, "publish",
+                    [{
+                        "action": "publish_submit",
+                        "item_key": post.get("public_id") or post.get("full_name") or "",
+                        "source": "form",
+                        "client_ts": datetime.now(timezone.utc).isoformat(),
+                    }],
+                    config=app.state.ranking_config,
+                )
+        notify.notify_pending_review(settings, post)
+        return post
 
     @app.post("/api/posts")
     async def api_create_post(request: Request, body: PostCreate) -> dict[str, Any]:
         uid = auth.require_user_id(request, settings)
-        post = _submit_post(uid, body.title, body.github_url, body.description)
+        post = _submit_post(uid, body.title, body.github_url, body.description, request)
         return {"ok": True, "post": post, "status": post.get("status")}
 
     @app.post("/api/posts/form")
@@ -1168,7 +1313,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     ) -> RedirectResponse:
         del body_md
         uid = auth.require_user_id(request, settings)
-        _submit_post(uid, title, github_url, description)
+        _submit_post(uid, title, github_url, description, request)
         return RedirectResponse("/publish?ok=1", status_code=303)
 
     def _op_user(request: Request) -> tuple[int, dict[str, Any]]:
@@ -1179,6 +1324,53 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(401, "login required")
         auth.require_operator(request, settings, user.get("login") or "")
         return uid, user
+
+    @app.get("/api/site-config")
+    def api_site_config() -> dict[str, Any]:
+        with db.db_session(settings.db_path) as conn:
+            return {"ok": True, "config": db.list_site_settings(conn, public_only=True)}
+
+    @app.get("/api/op/stats")
+    def api_op_stats(request: Request) -> dict[str, Any]:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            stats = db.op_stats(conn)
+        stats["backup"] = backup.backup_status(settings.backup_dir)
+        return stats
+
+    @app.post("/api/op/backup")
+    def api_op_backup(request: Request) -> dict[str, Any]:
+        _op_user(request)
+        path = backup.backup_sqlite(
+            settings.db_path, settings.backup_dir, keep=settings.backup_keep,
+        )
+        return {"ok": True, "file": path.name, **backup.backup_status(settings.backup_dir)}
+
+    @app.get("/api/op/settings")
+    def api_op_settings_get(request: Request) -> dict[str, Any]:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            cfg = db.list_site_settings(conn, public_only=False)
+        return {"ok": True, "config": cfg, "webhook_on": bool(cfg.get("review_webhook"))}
+
+    @app.post("/api/op/settings")
+    def api_op_settings_set(request: Request, body: SiteSettingsBody) -> dict[str, Any]:
+        _op_user(request)
+        updates = {
+            "slogan": (body.slogan or "").strip()[:80],
+            "search_placeholder": (body.search_placeholder or "").strip()[:80],
+            "logo_url": (body.logo_url or "").strip()[:400],
+            "review_webhook": (body.review_webhook or "").strip()[:500],
+        }
+        if updates["logo_url"] and not updates["logo_url"].startswith(("https://", "/")):
+            raise HTTPException(400, "logo 只接受 https 或站内路径")
+        if updates["review_webhook"] and not updates["review_webhook"].startswith("https://"):
+            raise HTTPException(400, "webhook 必须是 https")
+        with db.db_session(settings.db_path) as conn:
+            for key, value in updates.items():
+                db.set_site_setting(conn, key, value)
+            cfg = db.list_site_settings(conn, public_only=False)
+        return {"ok": True, "config": cfg, "webhook_on": bool(cfg.get("review_webhook"))}
 
     @app.get("/api/op/queue")
     def api_op_queue(
@@ -1211,6 +1403,99 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             headers={"Content-Disposition": "attachment; filename=skillfeeder-queue.csv"},
         )
 
+    @app.get("/api/op/journeys")
+    def api_op_journeys(
+        request: Request,
+        hours: int = Query(72),
+        limit: int = Query(40),
+    ) -> dict[str, Any]:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            return {
+                "ok": True,
+                "kpis": db.journey_kpis(conn, hours=hours),
+                "sessions": db.list_journey_sessions(conn, hours=hours, limit=limit),
+            }
+
+    def _push_ugc_to_bitable(post: dict[str, Any]) -> None:
+        """审核通过的 UGC 帖子自动推送到飞书底表（来源=用户上传）。"""
+        import os
+        import subprocess
+        import tempfile
+
+        fn = post.get("full_name") or ""
+        if not fn:
+            return
+        tgt_path = Path.home() / ".skill-feed" / "bitable_export" / "target.json"
+        if not tgt_path.is_file():
+            return
+        try:
+            tgt = json.loads(tgt_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        bt = tgt.get("base_token")
+        tid = tgt.get("table_id")
+        if not bt or not tid:
+            return
+        # 构造底表记录
+        desc = (post.get("description") or "")[:500]
+        owner = fn.split("/")[0] if "/" in fn else ""
+        record = {
+            "名称": (post.get("title") or fn.split("/")[-1])[:200],
+            "仓库全名": fn,
+            "来源": "用户上传",
+            "发布人": post.get("author_login") or owner,
+            "发布时间": "",
+            "GitHub链接": post.get("github_url") or f"https://github.com/{fn}",
+            "分类": "其他",
+            "二级分类": post.get("scene_l2_label") or "",
+            "关键词": desc[:120],
+            "描述": desc,
+            "收录时间": (post.get("created_at") or "")[:16],
+            "数据池": "主Feed",
+        }
+        # 写临时文件并调 lark-cli
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as f:
+            json.dump({"create_records": [record]}, f, ensure_ascii=False)
+            tmp = f.name
+        try:
+            subprocess.run(
+                ["lark-cli", "base", "+record-batch-create",
+                 "--as", "user", "--base-token", bt,
+                 "--table-id", tid, "--json", f"@{Path(tmp).name}"],
+                capture_output=True, text=True, encoding="utf-8",
+                timeout=30, cwd=str(Path(tmp).parent),
+            )
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+    @app.get("/api/op/journeys.csv")
+    def api_op_journeys_csv(
+        request: Request, hours: int = Query(72),
+    ) -> Response:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_journey_rows(conn, hours=hours)
+        def cell(v: Any) -> str:
+            return '"' + str(v or "").replace('"', '""') + '"'
+
+        lines = ["ts,session_id,device_id,user_login,action,item_key,source,owner"]
+        for r in rows:
+            lines.append(",".join(cell(r.get(k)) for k in (
+                "ts", "session_id", "device_id", "user_login",
+                "action", "item_key", "source", "owner",
+            )))
+        return Response(
+            "\n".join(lines) + "\n",
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=skillfeeder-journeys.csv"},
+        )
+
     @app.post("/api/op/posts/{post_id}")
     def api_op_moderate(
         post_id: int, request: Request, body: ModerateBody,
@@ -1225,6 +1510,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                     db.set_user_banned(conn, int(post["author_id"]), True)
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
+        # 审核通过后自动推送到飞书底表（失败不阻塞审核流程）
+        if body.action == "approve":
+            try:
+                _push_ugc_to_bitable(post)
+            except Exception:  # noqa: BLE001
+                pass  # 推送失败不影响审核结果，下次 export 会补
         return {"ok": True, "post": post}
 
     @app.get("/api/posts/me")

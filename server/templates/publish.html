@@ -84,6 +84,7 @@
   .me-panel h2 { margin: 0 0 6px; font-size: 1.2rem; }
   .me-panel .lead { color: var(--muted); font-size: .88rem; line-height: 1.45; margin: 0 0 16px; }
   .me-card {
+    display: block; text-decoration: none; color: inherit;
     background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     padding: 12px 14px; margin-bottom: 10px;
   }
@@ -286,7 +287,7 @@
 
       <div id="needLogin" class="me-card hide">
         <strong>还没登录</strong>
-        <p>发布要先登录。登录主体是认证服务号，手机号短信兜底。</p>
+        <p>发布要先用 GitHub 登录。请用 Safari / Chrome 打开；微信、小红书、抖音内置页打不开 GitHub 授权。</p>
         <div class="me-actions">
           <a class="primary" href="/login?next=/publish">去登录</a>
         </div>
@@ -475,13 +476,14 @@ async function loadMine() {
     const st = STATUS[p.status] || [p.status, ""];
     const reason = p.reject_reason
       ? '<p class="pub-msg err">拒绝：' + escapeHtml(p.reject_reason) + "</p>" : "";
-    return '<div class="me-card">' +
+    const pid = p.public_id || "";
+    return '<a class="me-card" href="/?card=' + encodeURIComponent(pid) + '">' +
       "<strong>" + escapeHtml(p.title) + "</strong>" +
       '<span class="pill ' + st[1] + '">' + escapeHtml(st[0]) + "</span> " +
       '<span class="pill">' + escapeHtml(p.scene_label || "") + "</span>" +
       "<p>" + escapeHtml((p.description || "").slice(0, 160)) + "</p>" +
-      '<p class="hint">' + escapeHtml((p.created_at || "").slice(0, 19)) + "</p>" +
-      reason + "</div>";
+      '<p class="hint">' + escapeHtml((p.created_at || "").slice(0, 19)) + " · 点开看卡片</p>" +
+      reason + "</a>";
   }).join("");
 }
 

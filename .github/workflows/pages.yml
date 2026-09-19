@@ -100,6 +100,15 @@ jobs:
             echo "- ✅ DASHSCOPE_API_KEY / DASHSCOPE_BASE_URL 均已配置" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+          # SKILLFEED_PUBLIC_URL 协议校验：http:// 会导致 HTTPS Pages 上
+          # fetch 被混合内容策略拦截，且 cookie 不带 Secure 标志。
+          if [ -n "$SKILLFEED_PUBLIC_URL" ] && [[ "$SKILLFEED_PUBLIC_URL" != https://* ]]; then
+            echo "::warning title=SKILLFEED_PUBLIC_URL 非 HTTPS::会话 cookie 不带 Secure，且 HTTPS Pages 上 fetch 会被混合内容策略拦截。"
+            echo "- ⚠️ **SKILLFEED_PUBLIC_URL 非 HTTPS**：当前值 \`${SKILLFEED_PUBLIC_URL}\`，follow/publish/「我的」可能静默失效" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -n "$SKILLFEED_PUBLIC_URL" ]; then
+            echo "- ✅ SKILLFEED_PUBLIC_URL 已配置（HTTPS）" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Cache skill-feed data
         uses: actions/cache@v4
         with:
@@ -188,6 +197,10 @@ jobs:
           # 填法：仓库 Settings → Variables → New repository variable，
           # 名字 SITE_DOMAIN，值 skillfeeder.cn
           SKILLFEED_SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          # API 在 skillfeeder.cn 常驻之后再填。填了会把 api_base 写进 index.html，
+          # 「我的」才能同页登录。没填时前端会引导用户去 https://skillfeeder.cn/login。
+          # 空变量会让 Aliyun 全量站没有 api_base，发布 tab 显示「静态镜像」。
+          SKILLFEED_PUBLIC_URL: ${{ vars.SKILLFEED_PUBLIC_URL || 'https://skillfeeder.cn' }}
         run: |
           # pipefail：不加的话 tee 的退出码会盖掉 python 的，refresh 崩了这步照样绿
           set -o pipefail
@@ -266,6 +279,10 @@ jobs:
           bytes=$(wc -c < nginx-index/index.html)
           if [ "$bytes" -lt 100000 ]; then
             echo "::error title=全量站过小::Aliyun 产物只有 ${bytes} 字节，像是预览壳。拒绝覆盖 skillfeeder.cn。"
+            exit 1
+          fi
+          if ! grep -q 'https://skillfeeder.cn' nginx-index/index.html || ! grep -q 'api_base' nginx-index/index.html; then
+            echo "::error title=全量站缺少 api_base::发布 tab 会变成「静态镜像」。检查 SKILLFEED_PUBLIC_URL。"
             exit 1
           fi
           scp -o ConnectTimeout=15 nginx-index/index.html \

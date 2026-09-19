@@ -1,0 +1,31 @@
+# Dependabot — skill-feed 依赖与 CI 的轻量安全网。
+# 策略：只「通知」不「自动改」。每周扫一次，PR 由人审过后再合，
+# 避免自动升级撞坏 feed_dashboard.py 里对 Flask/PyMiniRacer 等的精细依赖。
+version: 2
+updates:
+  # Python 依赖（requirements*.txt / pyproject）
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    # 只升 patch / minor，major 人工评估
+    # （Dependabot 不支持在 yml 里限 major，这里靠 commit message 提示人工看）
+    commit-message:
+      prefix: "deps(pip)"
+  # GitHub Actions 工作流依赖（actions/* 等）
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "deps(ci)"

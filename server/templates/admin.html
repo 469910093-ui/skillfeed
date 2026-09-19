@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>管理后台 · SkillFeeder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f7ff; --ink: #0a1848; --muted: #717171; --line: #cfd6ea;
+    --card: #ffffff; --accent: #0d7377;
+    --brand-purple: #9860e7; --brand-cyan: #49aaeb; --brand-mint: #64e2d4;
+    --brand-grad: linear-gradient(90deg, var(--brand-purple) 0%, var(--brand-cyan) 52%, var(--brand-mint) 100%);
+    --like-ink: #991b1b;
+    --font: "Outfit", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }
+  a { color: var(--accent); }
+  header {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+    background: rgba(244,247,255,.92); border-bottom: 1px solid var(--line);
+  }
+  .logo { font-weight: 800; font-size: 1.15rem; letter-spacing: -.03em; text-decoration: none; color: var(--ink); }
+  .logo .feeder {
+    background-image: var(--brand-grad); -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  h1 { font-size: .95rem; margin: 0; font-weight: 700; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tabs a, header .ghost, .panel button, .views button {
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .78rem; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+  }
+  .tabs a.on, .views button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .wrap { padding: 16px; max-width: 1180px; margin: 0 auto; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .kpi, .card, .panel {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+  }
+  .kpi b { display: block; font-size: 1.6rem; letter-spacing: -.04em; }
+  .kpi span { color: var(--muted); font-size: .75rem; }
+  .grid { display: grid; grid-template-columns: 1fr 300px; gap: 16px; margin-top: 16px; }
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: 1fr; }
+    .table-scroll { overflow-x: auto; }
+    table { min-width: 640px; }
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #eef3ff; font-size: .72rem; color: var(--muted); }
+  tr { cursor: pointer; }
+  tr.on td { background: #eef3ff; }
+  label { display: block; font-size: .78rem; font-weight: 600; margin: 12px 0 6px; }
+  input, textarea {
+    width: 100%; border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; font: inherit; background: #fff; color: var(--ink);
+  }
+  textarea { min-height: 72px; }
+  .err { color: var(--like-ink); font-weight: 600; }
+  .ok { color: var(--accent); font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .hide { display: none !important; }
+  .hint { color: var(--muted); font-size: .78rem; line-height: 1.45; }
+  .path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.5; word-break: break-all; }
+  .tl { margin: 0; padding-left: 18px; }
+  .tl li { margin: 6px 0; }
+</style>
+</head>
+<body>
+  <header>
+    <a class="logo" href="/">Skill<span class="feeder">Feeder</span></a>
+    <h1>官方管理后台</h1>
+    <nav class="tabs" id="tabs">
+      <a href="#overview" data-tab="overview" class="on">数据</a>
+      <a href="#path" data-tab="path">路径</a>
+      <a href="#review" data-tab="review">审批</a>
+      <a href="#site" data-tab="site">页面配置</a>
+    </nav>
+    <a class="ghost" href="/">回发现流</a>
+  </header>
+
+  <div class="wrap">
+    <section id="view-overview">
+      <div class="kpis" id="kpis"></div>
+      <div class="card" style="margin-top:16px">
+        <strong>待审最新</strong>
+        <div id="pendingList" class="hint" style="margin-top:8px">读取中…</div>
+      </div>
+    </section>
+
+    <section id="view-path" class="hide">
+      <div class="kpis" id="pathKpis"></div>
+      <div class="card" style="margin-top:16px">
+        <div class="views">
+          <button type="button" data-hours="24">近 24 小时</button>
+          <button type="button" data-hours="72" class="on">近 3 天</button>
+          <button type="button" data-hours="168">近 7 天</button>
+          <a class="ghost" id="pathCsv" href="/api/op/journeys.csv?hours=72">导出 CSV</a>
+        </div>
+        <p class="hint" style="margin-top:10px">一条会话就是一次打开站点到关掉页签。曝光/停留默认不进路径，避免刷屏。登录后会把本机 device 挂到 GitHub login。</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>用户</th><th>开始</th><th>步数</th><th>路径</th></tr></thead>
+            <tbody id="pathRows"></tbody>
+          </table>
+        </div>
+      </div>
+      <aside class="panel" id="pathPanel" style="margin-top:16px">点一行看时间线。</aside>
+    </section>
+
+    <section id="view-review" class="hide">
+      <div class="views" id="views">
+        <button type="button" data-status="pending" class="on">待审核</button>
+        <button type="button" data-status="rejected">已拒绝</button>
+        <button type="button" data-status="approved">已上架</button>
+        <button type="button" data-status="hidden">已隐藏</button>
+        <a class="ghost" id="csv" href="/api/op/queue.csv">导出 CSV</a>
+      </div>
+      <div class="grid">
+        <div class="card table-scroll">
+          <table>
+            <thead><tr><th>标题</th><th>文案</th><th>GitHub</th><th>作者</th><th>提交</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <aside class="panel" id="panel">先选一行。打开 GitHub 看仓库，不要在站内渲染正文。</aside>
+      </div>
+    </section>
+
+    <section id="view-site" class="hide">
+      <form class="card" id="siteForm">
+        <p class="hint">改完立即作用于发现流（首页会拉 <code>/api/site-config</code>）。Logo 填 https 图片地址。</p>
+        <label for="slogan">口号</label>
+        <input id="slogan" name="slogan" maxlength="80" placeholder="每刷一下，就快人一步">
+        <label for="search_placeholder">搜索框占位</label>
+        <input id="search_placeholder" name="search_placeholder" maxlength="80">
+        <label for="logo_url">Logo 图片 URL</label>
+        <input id="logo_url" name="logo_url" maxlength="400" placeholder="https://… 留空则用默认肥嘚">
+        <label for="review_webhook">审核通知 Webhook（飞书自定义机器人）</label>
+        <input id="review_webhook" name="review_webhook" maxlength="500" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…">
+        <p class="hint">群设置 → 自定义机器人 → 复制 webhook。不要发到聊天。配好后新投稿会推一条到群里。</p>
+        <div class="actions">
+          <button type="submit">保存配置</button>
+        </div>
+        <p id="siteLog" class="ok"></p>
+      </form>
+    </section>
+  </div>
+<script nonce="{{csp_nonce}}">
+let status = "pending";
+let rows = [];
+let selected = 0;
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+let pathHours = 72;
+let pathSessions = [];
+let pathSelected = 0;
+
+function tabFromHash() {
+  const t = (location.hash || "#overview").replace("#", "");
+  return ["overview", "path", "review", "site"].includes(t) ? t : "overview";
+}
+function showTab(tab) {
+  ["overview", "path", "review", "site"].forEach(name => {
+    document.getElementById("view-" + name).classList.toggle("hide", name !== tab);
+  });
+  document.querySelectorAll("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
+  if (tab === "review") loadQueue();
+  if (tab === "site") loadSettings();
+  if (tab === "overview") loadStats();
+  if (tab === "path") loadJourneys();
+}
+
+async function loadStats() {
+  const r = await fetch("/api/op/stats", { credentials: "include" });
+  if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op"; return; }
+  const data = await r.json();
+  const items = [
+    ["用户", data.users],
+    ["待审", data.posts_pending],
+    ["已上架", data.posts_published],
+    ["已拒绝", data.posts_rejected],
+    ["帖子合计", data.posts_total],
+    ["今日事件", data.events_today || 0],
+    ["今日会话", data.sessions_today || 0],
+    ["库备份", (data.backup && data.backup.count) || 0],
+  ];
+  document.getElementById("kpis").innerHTML = items.map(([k, v]) =>
+    `<div class="kpi"><b>${esc(v)}</b><span>${esc(k)}</span></div>`
+  ).join("");
+  const pending = data.pending || [];
+  const bak = data.backup || {};
+  const bakLine = bak.latest
+    ? `<p class="hint">最近账本备份：<code>${esc(bak.latest)}</code>（${esc(bak.count)} 份） <button type="button" id="doBackup">立刻再备一份</button></p>`
+    : `<p class="hint">还没有账本备份。点「立刻再备一份」或等每日定时任务。<button type="button" id="doBackup">立刻再备一份</button></p>`;
+  document.getElementById("pendingList").innerHTML = bakLine + (pending.length
+    ? pending.map(p => `<p><b>${esc(p.title)}</b> · @${esc(p.author_login)} · <a href="${esc(p.github_url)}" target="_blank" rel="noopener">${esc(p.full_name)}</a></p>`).join("")
+    : "<p>现在没有待审。</p>");
+  const btn = document.getElementById("doBackup");
+  if (btn) btn.onclick = async () => {
+    const br = await fetch("/api/op/backup", { method: "POST", credentials: "include" });
+    if (br.ok) loadStats();
+  };
+}
+
+function actionLabel(action) {
+  return ({
+    session_start: "进入", view_tab: "开页", search: "搜索", open_card: "看卡",
+    close_card: "关卡", open_github: "GitHub", useful: "赞", save: "藏",
+    bad: "不感兴趣", login_click: "去登录", publish_view: "看发布",
+    publish_submit: "投稿", follow: "关注", unfollow: "取关", coach: "引导",
+    expand_detail: "展开",
+  })[action] || action;
+}
+
+async function loadJourneys() {
+  const r = await fetch("/api/op/journeys?hours=" + pathHours + "&limit=40", { credentials: "include" });
+  if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op#path"; return; }
+  const data = await r.json();
+  const k = data.kpis || {};
+  const items = [
+    ["有效事件", k.events || 0],
+    ["会话", k.sessions || 0],
+    ["7 日设备", k.devices_7d || 0],
+  ].concat((k.actions || []).slice(0, 4).map(a => [actionLabel(a.action), a.n]));
+  document.getElementById("pathKpis").innerHTML = items.map(([name, v]) =>
+    `<div class="kpi"><b>${esc(v)}</b><span>${esc(name)}</span></div>`
+  ).join("");
+  pathSessions = data.sessions || [];
+  pathSelected = 0;
+  document.getElementById("pathRows").innerHTML = pathSessions.map((s, i) => `
+    <tr data-i="${i}" class="${i === pathSelected ? "on" : ""}">
+      <td>${esc(s.user_login ? ("@" + s.user_login) : "游客")}</td>
+      <td>${esc((s.started || "").replace("T", " ").slice(0, 16))}</td>
+      <td>${esc(s.steps)}</td>
+      <td class="path">${esc(s.path)}</td>
+    </tr>`).join("") || "<tr><td colspan='4'>这个时间窗还没有路径。用户刷过首页后会出现。</td></tr>";
+  document.querySelectorAll("#view-path [data-hours]").forEach(b =>
+    b.classList.toggle("on", Number(b.dataset.hours) === pathHours));
+  document.getElementById("pathCsv").href = "/api/op/journeys.csv?hours=" + pathHours;
+  renderPathPanel();
+}
+
+function renderPathPanel() {
+  const s = pathSessions[pathSelected];
+  const el = document.getElementById("pathPanel");
+  if (!s) { el.textContent = "点一行看时间线。"; return; }
+  const evs = s.events || [];
+  el.innerHTML = `
+    <p><b>${esc(s.user_login ? ("@" + s.user_login) : "游客")}</b>
+       · ${esc(s.steps)} 步 · 设备 <code>${esc((s.device_id || "").slice(0, 18))}</code></p>
+    <ol class="tl">${evs.map(e =>
+      `<li><code>${esc((e.ts || "").replace("T", " ").slice(11, 19))}</code>
+        ${esc(actionLabel(e.action))}
+        ${e.item_key ? (" · " + esc(String(e.item_key).slice(0, 60))) : ""}
+        ${e.source ? (" · " + esc(e.source)) : ""}</li>`
+    ).join("")}</ol>`;
+}
+
+async function loadQueue() {
+  const r = await fetch("/api/op/queue?status=" + encodeURIComponent(status), { credentials: "include" });
+  if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op"; return; }
+  const data = await r.json();
+  rows = data.posts || [];
+  selected = 0;
+  document.getElementById("rows").innerHTML = rows.map((p, i) => `
+    <tr data-i="${i}" class="${i === selected ? "on" : ""}">
+      <td>${esc(p.title)}</td>
+      <td>${esc((p.description || "").slice(0, 80))}</td>
+      <td><a href="${esc(p.github_url)}" target="_blank" rel="noopener">${esc(p.full_name)}</a></td>
+      <td>@${esc(p.author_login)}</td>
+      <td>${esc((p.created_at || "").slice(0, 16))}</td>
+    </tr>`).join("") || "<tr><td colspan='5'>没有记录</td></tr>";
+  document.querySelectorAll("#views button").forEach(b => b.classList.toggle("on", b.dataset.status === status));
+  document.getElementById("csv").href = "/api/op/queue.csv?status=" + encodeURIComponent(status);
+  renderPanel();
+}
+
+function renderPanel() {
+  const p = rows[selected];
+  const el = document.getElementById("panel");
+  if (!p) { el.textContent = "这个视图没有记录"; return; }
+  const card = "/?card=" + encodeURIComponent(p.public_id || "");
+  el.innerHTML = `
+    <p><b>${esc(p.title)}</b></p>
+    <p>${esc(p.description)}</p>
+    <p><a href="${esc(p.github_url)}" target="_blank" rel="noopener">打开 GitHub</a>
+       · <a href="${esc(card)}">预览卡片</a><br><code>${esc(p.skill_path)}</code></p>
+    ${p.reject_reason ? `<p class="err">上次拒绝：${esc(p.reject_reason)}</p>` : ""}
+    <label>拒绝原因</label>
+    <textarea id="note" placeholder="拒绝时必填"></textarea>
+    <div class="actions">
+      <button type="button" data-act="approve">通过</button>
+      <button type="button" data-act="reject">拒绝</button>
+      <button type="button" data-act="feature">精选</button>
+      <button type="button" data-act="hide">隐藏</button>
+      <button type="button" data-act="ban">封禁作者</button>
+    </div>
+    <p class="ok" id="log"></p>`;
+}
+
+async function loadSettings() {
+  const r = await fetch("/api/op/settings", { credentials: "include" });
+  if (!r.ok) return;
+  const data = await r.json();
+  const cfg = data.config || {};
+  ["slogan", "search_placeholder", "logo_url", "review_webhook"].forEach(k => {
+    const el = document.getElementById(k);
+    if (el) el.value = cfg[k] || "";
+  });
+}
+
+document.getElementById("tabs").addEventListener("click", e => {
+  const a = e.target.closest("a[data-tab]");
+  if (!a) return;
+  e.preventDefault();
+  history.replaceState(null, "", "#" + a.dataset.tab);
+  showTab(a.dataset.tab);
+});
+document.getElementById("rows").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-i]");
+  if (!tr) return;
+  selected = Number(tr.dataset.i);
+  document.querySelectorAll("#rows tr").forEach(x => x.classList.toggle("on", x === tr));
+  renderPanel();
+});
+document.getElementById("pathRows").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-i]");
+  if (!tr) return;
+  pathSelected = Number(tr.dataset.i);
+  document.querySelectorAll("#pathRows tr").forEach(x => x.classList.toggle("on", x === tr));
+  renderPathPanel();
+});
+document.getElementById("view-path").addEventListener("click", e => {
+  const b = e.target.closest("[data-hours]");
+  if (!b) return;
+  pathHours = Number(b.dataset.hours);
+  loadJourneys();
+});
+document.getElementById("views").addEventListener("click", e => {
+  const b = e.target.closest("button[data-status]");
+  if (!b) return;
+  status = b.dataset.status;
+  loadQueue();
+});
+document.getElementById("panel").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-act]");
+  if (!b || !rows[selected]) return;
+  const note = (document.getElementById("note") || {}).value || "";
+  const r = await fetch("/api/op/posts/" + rows[selected].id, {
+    method: "POST", credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: b.dataset.act, note, ban_author: b.dataset.act === "ban" }),
+  });
+  const data = await r.json().catch(() => ({}));
+  const log = document.getElementById("log");
+  if (!r.ok) { if (log) { log.className = "err"; log.textContent = data.detail || "失败"; } return; }
+  loadQueue();
+  loadStats();
+});
+document.getElementById("siteForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const body = {};
+  ["slogan", "search_placeholder", "logo_url", "review_webhook"].forEach(k => {
+    body[k] = document.getElementById(k).value.trim();
+  });
+  const r = await fetch("/api/op/settings", {
+    method: "POST", credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  const log = document.getElementById("siteLog");
+  if (!r.ok) { log.className = "err"; log.textContent = data.detail || "保存失败"; return; }
+  log.className = "ok";
+  log.textContent = data.webhook_on ? "已保存。审核通知已接通。" : "已保存。审核通知仍未接通（webhook 为空）。";
+});
+
+const q = new URLSearchParams(location.search);
+if (["review", "path", "site"].includes(q.get("tab") || "")) location.hash = q.get("tab");
+showTab(tabFromHash());
+</script>
+</body>
+</html>

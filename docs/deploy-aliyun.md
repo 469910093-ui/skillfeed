@@ -3,6 +3,8 @@
 公开页仍由 GitHub Pages 出包。阿里云轻量只托管 `https://skillfeeder.cn/` 的 `index.html`。
 配好密钥后：**push `main` 或重跑 Refresh & Pages，就会自动覆盖 Nginx**，不必再开 Workbench。
 
+登录 / 发布 / 换设备同步要另挂 FastAPI，见 `docs/deploy-api.md`。没挂时「我的」会显示游客，并引导去主站登录页。
+
 额度限制那套不要走这条链路。`publish-site` 在 CI 里出的是全量 `index.html`。
 
 ## 一次授权（Workbench）

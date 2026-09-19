@@ -13,6 +13,7 @@ skill-picker 继续只做 100% 本地扫描/匹配。
   python skillfeed.py xhs-crawl [--keyword TEXT] [--max N]  # 媒讯助手/Chrome 采小红书
   python skillfeed.py publish-site [--out DIR]  # 导出静态站（GitHub Pages）
   python skillfeed.py api [--host HOST] [--port N]  # 云端 API：登录 + UGC
+  python skillfeed.py backup-db  # 备份用户库 SQLite（户口/帖子账本）
   python skillfeed.py serve [--port N]
   python skillfeed.py check
   python skillfeed.py feedback
@@ -762,6 +763,11 @@ def cmd_publish_site(argv: list[str]) -> int:
     ui["cta"] = ui.get("cta") or "open_github"
     ui["variant"] = "full"
     api_base = (os.environ.get("SKILLFEED_PUBLIC_URL") or ui.get("api_base") or "").strip().rstrip("/")
+    # --full 是给 skillfeeder.cn Nginx 的。漏写环境变量时发布 tab 会变成
+    # 「这份是静态镜像」，定时任务已经这样冲掉过一次线上首页。
+    if not api_base and not preview:
+        api_base = "https://skillfeeder.cn"
+        print("[publish-site] --full defaulted api_base to https://skillfeeder.cn")
     if api_base:
         ui["api_base"] = api_base
     feed["ui"] = ui
@@ -808,6 +814,20 @@ def cmd_publish_site(argv: list[str]) -> int:
     print(f"[publish-site] wrote {out.resolve()}/embed.html (lite embed, {mode})")
     print(f"[publish-site] items={len(published.get('items') or [])} "
           f"corpus={len(published.get('corpus') or [])} mode={mode}")
+    return 0
+
+
+def cmd_backup_db(_: list[str]) -> int:
+    """备份用户库。不走 Settings.assert_bootable，免得缺 SESSION_SECRET 就备不了。"""
+    from server import backup as backup_mod
+
+    db = os.environ.get("SKILLFEED_DB")
+    src = Path(db).expanduser() if db else (Path.home() / ".skill-feed" / "server.db")
+    dest_raw = os.environ.get("SKILLFEED_BACKUP_DIR")
+    dest = Path(dest_raw).expanduser() if dest_raw else (src.parent / "backups")
+    keep = int(os.environ.get("SKILLFEED_BACKUP_KEEP") or "14")
+    path = backup_mod.backup_sqlite(src, dest, keep=keep)
+    print(f"[backup-db] wrote {path} ({path.stat().st_size} bytes)")
     return 0
 
 
@@ -1149,6 +1169,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_publish_site(rest)
     if cmd == "api":
         return cmd_api(rest)
+    if cmd == "backup-db":
+        return cmd_backup_db(rest)
     if cmd == "serve":
         return cmd_serve(rest)
     if cmd == "install":

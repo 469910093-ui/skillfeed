@@ -8,7 +8,7 @@
 | 仓库 | https://github.com/469910093-ui/skillfeed |
 | 公开发现站 | https://469910093-ui.github.io/skillfeed/ |
 | 关联产品 | [skill-picker](https://github.com/469910093-ui/Skill-picker)（本机已装 skill 的扫描/匹配） |
-| 更新日期 | 2026-09-16 |
+| 更新日期 | 2026-09-17 |
 
 ---
 
@@ -181,8 +181,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 信息流卡片 | 见 5.2 | P0 |
 | 底栏四入口 | **发现 / 主题分类 / 发布 / 我的**；`role=tablist` + `aria-selected`，左右键/Home/End 可走，激活态除颜色外另有指示条 + 字重 | P0 |
 | **主题分类** | 一级场景各自成块（条目数 + 二级场景 chips + 按栏目浏览）；点进去落到发现流的对应筛选 | P0 |
-| 发布 | **接 `server/` 的 `POST /api/posts`**：同源时页内表单直接提交；跨源只给整页跳 `api_base/publish`；无 `api_base` 时只出说明、不摆按钮 | P0 |
-| 我的 | 真实登录态（`/auth/me`）+ 我发布的（`/api/posts/me`）+ 赞藏（`/api/profile/reactions`，读不到则退回本机）+ **关注管理**（Builder / 行业列表） | P0 |
+| 发布 | **接 `server/` 的 `POST /api/posts`**：同源时页内表单直接提交；跨源只给整页跳 `api_base/publish`；无 `api_base` 时：github.io 只出说明，**skillfeeder.cn 同源回退到本域**（防定时构建漏写环境变量） | P0 |
+| 我的 | 真实登录态（`/auth/me`）+ 我发布的（`/api/posts/me`，点开跳发现流卡片或审核中预览）+ 赞藏（`/api/profile/reactions`，读不到则退回本机）+ **关注管理**（Builder / 行业列表）。**不再放「发现站」说明行** | P0 |
 | 发布者主页 | Feed 内作品 + GitHub 仓库 + **关注/取消关注 Builder** | P0 |
 | **回到顶部** | 滚过一屏出现的悬浮按钮；平滑回顶，`prefers-reduced-motion` 下直接跳；隐藏时退出 Tab 序 | P1 |
 | Demo 巡演 | 顶栏播放键或 `?demo=1` | P1 |
@@ -197,9 +197,9 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 形态 | 判据 | 发现 | 主题分类 | 发布 | 我的 |
 |---|---|---|---|---|---|
-| **同源有后端** | `API_BASE` 且同源 | ✅ | ✅ | 页内表单 → `/api/posts` | 真实登录态 + 我发布的 |
+| **同源有后端** | `API_BASE` 且同源（含主站漏写 `api_base` 时回退 `https://skillfeeder.cn`） | ✅ | ✅ | 页内表单 → `/api/posts` | 真实登录态 + 我发布的 |
 | **Pages 静态镜像** | `API_BASE` 跨源 | ✅ | ✅ | 只给「打开主站发布页」 | 只给「打开主站」（跨站 Cookie 是 `SameSite=Lax`，页内读不到登录态） |
-| **Pages 无后端** | 无 `API_BASE` | ✅ | ✅ | 只出说明，无按钮 | 本机态（赞/藏/关注） |
+| **Pages 无后端** | 无 `API_BASE` 且不在主站 | ✅ | ✅ | 只出说明，无按钮 | 本机态（赞/藏/关注） |
 | **lite embed** | `IS_LITE` | ✅ | ✅ | 不出现 | 不出现 |
 
 **首屏纪律（P0）**：场景 / 二级场景 / 栏目三排 chips 归「主题分类」tab，
@@ -302,6 +302,19 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 现在可做（M3.5） | localStorage | 前端按 owner/scene 从嵌入 `FEED` 过滤 |
 | M4 | 账号云同步 `follows` 表 | API `GET /api/following/feed`；登录多端一致 |
 
+#### 5.4.5 收藏跨设备一致性（D2：列表读云端）
+
+收藏（save）和点赞（useful）是两条独立流水，但「我的 → 查看收藏」的**计数与列表必须恒等**，且登录后跨设备一致。
+
+| 项 | 定义 |
+|---|---|
+| 数据源 | `events` 表按 `action='save'` / `action='useful'` 聚合；账号维度：`device_id IN (SELECT device_id FROM devices WHERE user_id=?)`，含已 `merged_into` 主设备的从设备（见 `server/db.py::user_saved_full_names`） |
+| `/auth/me` | 登录后返 `saved` / `liked` 两个 `item_key`（= 卡片 `full_name`）数组，去重、按最早动作时间倒序；未登录不返这俩字段 |
+| 前端列表 | `filtered()` 的 `saved` 模式 = `effectiveSavedSet()` = 云端 `ACCT.savedNames` ∪ 本机 `saved` Set；**只含收藏，不含点赞**（「查看收藏」只看收藏） |
+| 前端计数 | `mePanelHtml` 的「收藏」数 = `effectiveSavedSet().size`，与列表同源、长度恒等；「点赞」数同理取 `effectiveLikedSet()` |
+| 本机为辅 | 本机刚点、还没同步上云的收藏仍进列表（`effectiveSavedSet` 合并本机 Set），下次 `/auth/me` 刷新后对齐 |
+| 不一致即事故 | 计数读云端、列表读本机 = 旧 bug；现两者同源，跨设备也一致 |
+
 ---
 
 ## 6. 后端与数据管道需求（完整）
@@ -331,6 +344,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 默认门禁见 `config_defaults.json`：`gate_profile=standard` → `min_stars=20`、`min_rel=0.15`；`star_exempt_sources` 只豁免「星数未知」，**已知星数仍要比门槛**。
 
+**凭据不入库（铁律）：** 一切密钥 / token / secret 只从环境变量读（见 `.env.example`），绝不硬编码进代码或写进 git。`SKILLFEED_SESSION_SECRET`、`SKILLFEED_GITHUB_CLIENT_SECRET`、各 `*_API_KEY` 都属此列。飞书 `base_token` 出现在分享 URL 里是飞书的设计、不算密钥，但底表导出产物（`*.manifest.json` / `*.ndjson`）含全量行数据、不入库（`.gitignore` 已覆盖）。临时脚本用 `_tmp_` 前缀、不入库。外部 API 调用必须带 `timeout=`。详见 `AGENTS.md` 安全规范。
+
 ### 6.1 发现引擎（CLI，可本机 / CI）
 
 | 命令 | 职责 |
@@ -338,6 +353,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | `corpus` | HelloGitHub 等灌入本地知识库（只增不删） |
 | `refresh` | 多源 → 探测 SKILL.md → 门禁 → 场景 → 排序 → `feed.json` + HTML |
 | `xhs-crawl` | 本机 Chrome（媒讯助手扩展）采小红书 → `~/.skill-feed/xhs/mentions.json` |
+| `scripts/harvest_github_2k_skills.py` | 分片搜索 GitHub `stars>=2000` 的 skill 形仓 → 飞书底表 + Feed |
 | `build` | 不联网，用已有数据重生 Feed HTML |
 | `publish-site` | 导出 `site/index.html` + `feed.json`（Pages） |
 | `serve` | 本机预览 + `/api/feedback` |
@@ -373,13 +389,21 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 能力 | 接口/页 | 说明 |
 |---|---|---|
 | 健康检查 | `GET /health` | oauth / dev_auth 状态 |
-| GitHub 登录 | `GET /auth/github` → callback | OAuth；本地可 `SKILLFEED_DEV_AUTH=1` |
+| GitHub 登录 | `GET /auth/github` → 200 中转页 → callback | OAuth；**不要对 github.com 直接 302**（手机 WebView 会丢 state Cookie）。生产当前这是唯一可用登录。微信/小红书/抖音内置浏览器走不通，须系统浏览器。本地可 `SKILLFEED_DEV_AUTH=1` |
 | 当前用户 | `GET /auth/me` | |
 | 登出 | `POST /auth/logout` | |
 | 发布 UGC | `POST /api/posts`、表单 `/api/posts/form`、页 `/publish` | 只收 GitHub 链接 + 标题 + 文案；进审核后上架 |
-| 我的帖子 | `GET /api/posts/me` | |
+| 审核通知 | `SKILLFEED_REVIEW_WEBHOOK` 或后台「页面配置」里的 webhook | 进 pending 后推运营（飞书自定义机器人）；都不配则只落库，投稿人只看页内「审核中」 |
+| 官方管理后台 | `/op` 与 `/admin`（运营 login 白名单） | 四 tab：数据 KPI、**路径**（会话操作链 / 时间线 / CSV）、审批队列、页面配置（口号 / 搜索占位 / logo / 审核 webhook） |
+| 操作路径 | `POST /api/events`（**免登录**，限流）、`GET /api/op/journeys`（运营） | 首页记进入/开 tab/搜索/看卡/赞藏/GitHub/登录/发布/关注；曝光与停留不进路径视图；登录后 device 挂到 GitHub login。不记 IP / UA |
+| 第二钥匙 | 已登录再走 `/auth/wechat` `/auth/sms/verify` `/auth/github` | 绑到同一个 `users.id`；钥匙已被别人占用则 409 / `bind=taken`。不自建密码 |
+| 账本导出 | `GET /api/me/export` | 登录用户下载自己的帖/反应/绑定状态（手机号掩码）；仓仍在 GitHub |
+| 库备份 | `python skillfeed.py backup-db`、`POST /api/op/backup`、每日 timer | SQLite 一致副本轮转到 `SKILLFEED_BACKUP_DIR`（默认库旁 `backups/`） |
+| 卡片短链 | `/p/{仓库名}` | 免登录 302 到 `/?card=` 编码后的 public_id；聊天里不要贴带 `::` 的长链 |
+| 站点配置 | `GET /api/site-config`（公开）、`GET/POST /api/op/settings` | 首页拉公开文案与 logo；webhook 不对外 |
+| 我的帖子 | `GET /api/posts/me` | 点「我发布的」始终出卡片预览，不切发现流、不重刷首页；审核中/拒绝带状态条 |
 | 反应 | `POST /api/posts/{id}/react` | like/save/bad |
-| 混排 Feed | `GET /api/feed` | UGC + 官方 `feed.json` URL |
+| 混排 Feed | `GET /api/feed` | **免登录**；只混已过审 UGC + 官方 `feed.json` |
 
 **配置（环境变量，见 `.env.example`）**
 
@@ -387,12 +411,16 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 |---|---|
 | `SKILLFEED_PUBLIC_URL` | 对外 URL / 前端 api_base / OAuth 回调前缀 |
 | `SKILLFEED_GITHUB_CLIENT_ID/SECRET` | OAuth App |
+| `SKILLFEED_OPERATOR_LOGINS` | 运营 GitHub login 白名单（逗号分隔，小写比对）。必须先登录且 login 在名单里才能开 `/op`。后台不能加人，改 `.env` 后重启 API |
+| `SKILLFEED_REVIEW_WEBHOOK` | 投稿待审推运营；也可在 `/op` 页面配置写入 SQLite，不必改 `.env` |
 | `SKILLFEED_SESSION_SECRET` | 会话签名 |
 | `SKILLFEED_OFFICIAL_FEED_URL` | 官方 Pages feed.json |
 | `SKILLFEED_CORS_ORIGINS` | 跨域 |
 | `SKILLFEED_DB` | SQLite 路径（默认 `~/.skill-feed/server.db`） |
 | `SKILLFEED_DEV_AUTH` | 本地免 OAuth |
 | `SKILLFEED_HOME` | 发现引擎数据根目录 |
+
+> **登录页 URL 没有独立 `site_home` 配置项。** 前端 `loginUrl()` 直接用 `API_BASE + '/login'`，`API_BASE` 来自 `FEED.ui.api_base`，由 `publish-site` 从 `SKILLFEED_PUBLIC_URL` 写入静态页。所以「登录跳转地址」和「API 地址」同源、同变量，改 `SKILLFEED_PUBLIC_URL` 一处即可，不会再出现「登录链写死成站点首页、API 在另一域」的误报（Medium #7 已确认是误报）。
 
 **存储（MVP）**
 
@@ -413,7 +441,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 ### 7.2 创作者（UGC）
 
 1. 配置并启动 API，前端配置 `api_base`  
-2. 底栏「发布」或「我的」→ 登录（微信 / 手机号；认领仓库需要 GitHub 用户名等于 owner）  
+2. 底栏「发布」或「我的」→ 登录（**生产先走 GitHub**；微信/短信未配齐前没有别的入口。认领仓库需要 GitHub 用户名等于 owner。须用 Safari/Chrome，不要用微信/小红书/抖音内置页）  
 3. 交 GitHub 链接 + 标题 + 文案 → 进审核；通过后进发现流  
 4. `/api/feed` 混排出现 UGC 卡  
 
@@ -432,7 +460,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | **M0** | 本地发现引擎 MVP | CLI refresh/corpus/gates/scene/rank；本地 serve Feed |
 | **M1** | 消费体验产品化 | 竖滑信息流、动态圆环、意图搜、封面/亮点、发布者页、Demo |
 | **M2** | 公开可刷网站 | Actions 定时 refresh → GitHub Pages；`publish-site` |
-| **M3** | 登录 + UGC API | FastAPI OAuth、发帖、混排 Feed、发布页；前端底栏对接 |
+| **M3** | 登录 + UGC API | FastAPI；GitHub 登录认领仓库；发帖进审核；混排 Feed；发布页 |
 | **M3.5** | 动态圆环 = 关注动态 | 去掉筛选式动态圆环；关注 Builder/行业（localStorage）；入口 A–F；圆环看最新 |
 | **M3.6** | full/lite 双变体 + picker 嵌入 | `variant`；`publish-site`→`index.html`+`embed.html`；picker「去 GitHub 发现」子页 |
 | **M3.7** | 首访收敛 + 全量免费 | 废止每天 8 条；价值主张；卡片三区；可 Skip 的 5 步引导；发布 tab 重新露出 |
@@ -504,10 +532,10 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | **M0 本地发现引擎** | ✅ 完成 | refresh/corpus/gates/scene/rank/serve；单测覆盖 |
 | **M1 消费体验产品化** | ✅ 基本完成 | 竖滑 Feed、动态圆环、亮点卡、发布者页、Demo；个别文案/缓存体验可继续打磨 |
 | **M2 公开可刷网站** | ✅ 完成 | Actions → Pages 已上线并可定时刷新 |
-| **M3 登录 + UGC API** | 🟡 开发完成、未生产化 | `server/` + `/publish` + 混排 API + 前端底栏对接逻辑已有；缺：正式 OAuth 配置、API 常驻部署、公开站默认 `api_base` |
+| **M3 登录 + UGC API** | 🟡 上线中 | 代码齐；阿里云 Nginx 反代 `/publish` `/auth` `/api`；缺生产 GitHub OAuth Client 填进服务器 `.env` |
 | **M3.5 动态圆环=关注** | ✅ 前端已落地 | 动态圆环=关注 Builder/行业最新；入口：卡片关注/场景标签/引导环/发布者页/我的；提示「最新进顶部圆环」；pills 承担行业筛选 |
 | **M3.6 full/lite + picker** | ✅ 已落地 | `build_feed_html(variant=)`；本机 `feed.html`+`feed.lite.html`；站点 `index.html`+`embed.html`；skill-picker 第三 tab 嵌入 lite |
-| **M4 生产级云服务** | ⬜ 未开始 | Railway/Fly 部署、赞藏云同步、审核/举报 |
+| **M4 生产级云服务** | 🟡 起步 | skillfeeder.cn 同机 FastAPI（127.0.0.1:8787），不是 Railway；官方后台 `/op` |
 | **M5 增长与生态** | ⬜ 未开始 | 更强个性化、与 skill-picker 安装指引联动 |
 
 **综合阶段判断：处于 M2 已交付、M3「可本地跑通 / 待上线」、M3.5 关注动态圆环已落地的过渡期（约产品成熟度 70%–75%）。**
@@ -521,11 +549,11 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 ### 明确缺口（相对完整 PRD）
 
-1. API **未**作为公网常驻服务部署；未配 `api_base` 时「发布」/「我的」只给说明与本机态（不再是一个点了只弹 toast 的按钮），但也确实还发不出稿  
-2. 生产 GitHub OAuth App 未作为默认交付（需你在 GitHub 创建并填 Secret）  
-3. 赞/藏/关注仍主要在 **浏览器 localStorage**，未与账号云同步（关注上云属 M4）  
-4. UGC 审核流、举报、创作者数据看板未做  
-5. README 部分交互说明可能落后于 PRD——**以本 PRD 为准**并持续对齐  
+1. 审核通知代码已接通；运营须在 `/op`「页面配置」粘贴飞书自定义机器人 webhook（或写 `SKILLFEED_REVIEW_WEBHOOK`），否则新投稿不会推 IM  
+2. 赞/藏/关注仍主要在 **浏览器 localStorage**，未与账号云同步（关注上云属 M4）  
+3. 举报、创作者面向的数据看板未做；官方运营后台 `/op` 已覆盖数据 / **路径** / 审批 / 文案与 logo  
+3b. 微信服务号 / 短信通道生产未配齐前，登录页只露出 GitHub 主按钮，并提示内置浏览器走不通；第二钥匙绑定代码已支持同一 `users.id`  
+4. README 部分交互说明可能落后于 PRD——**以本 PRD 为准**并持续对齐  
 
 ---
 
@@ -535,7 +563,20 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-19 | 定时发布漏写 `api_base` 把主站发布 tab 冲成「静态镜像」：`--full` 默认写入 `https://skillfeeder.cn`；前端同源回退；Aliyun 部署缺 `api_base` 则拒绝覆盖 | §5.1、`feed_dashboard.py`、`skillfeed.py`、`.github/workflows/pages.yml` |
+| 2026-09-17 | 手机登不上：OAuth 改为 200 中转页再跳 GitHub/微信（避免 302 丢 Cookie）；登录页把 GitHub 当主按钮，点明微信/小红书/抖音内置浏览器走不通 | §6.2、§7.2、§12、`server/auth.py`、`server/app.py`、`login.html`、`publish.html`、`feed_dashboard.py` |
+| 2026-09-17 | 收藏跨设备一致性（D2：列表读云端）：`/auth/me` 返账号 `saved`/`liked` full_name 数组（跨设备聚合，`server/db.py::user_saved_full_names`）；前端 `effectiveSavedSet()` 让「查看收藏」列表与计数同源、长度恒等，saved 模式只列收藏不再混点赞 | §5.4.5、§6.2、`server/app.py`、`server/db.py`、`feed_dashboard.py`、`tests/test_server_api.py`、`tests/test_feed_dashboard.py` |
+| 2026-09-17 | 安全基础设施（轻量）：新增 `.github/dependabot.yml`（pip + github-actions 每周扫、不自动合）；`AGENTS.md` 补安全规范（凭据不入库 / 飞书 base_token 非密钥但导出产物不入库 / `_tmp_` 不入库 / 外部调用必带 timeout / Push Protection 建议）；`.gitignore` 扩到根级 `_tmp_*` | §6.0、`AGENTS.md`、`.github/dependabot.yml`、`.gitignore` |
+| 2026-09-17 | PRD 补「凭据不入库」铁律（§6.0）与登录页 URL 说明（§6.2：`loginUrl` 用 `API_BASE`，无独立 `site_home`，Medium #7 误报） | §6.0、§6.2 |
+| 2026-09-17 | 用户财产不绑死 GitHub：已登录可绑微信/手机到同一户口；「我的」导出账本；SQLite 每日备份 | §6.2、`server/db.py`、`server/backup.py`、`feed_dashboard.py` |
+| 2026-09-17 | 管理后台加「路径」：游客也可 `POST /api/events`；会话操作链 + 时间线 + CSV，给后续分析用 | §6.2、§12、`server/app.py`、`server/db.py`、`admin.html`、`feed_dashboard.py` |
+| 2026-09-17 | 「我发布的」第二次点击不再切发现流重刷：始终预览当前这条卡 | §6.2、`feed_dashboard.py` |
+| 2026-09-17 | 修 `/op` 反代：同时接 `/op` 与 `/op/`，并加 `/admin`、卡片短链 `/p/{仓库名}`，避免聊天里 `::` 截断和斜杠互踢 | §6.2、`scripts/nginx-skillfeeder.conf`、`server/app.py` |
+| 2026-09-17 | 官方管理后台 `/op`：数据 / 审批 / 页面配置（口号·搜索占位·logo·审核 webhook）；「我发布的」点开看卡片（已上架跳发现流，审核中出预览）；个人页去掉「发现站」说明行 | §5.1、§6.2、§12、`server/templates/admin.html`、`feed_dashboard.py` |
+| 2026-09-17 | 补投稿待审通知：`SKILLFEED_REVIEW_WEBHOOK` 或后台保存的 webhook 推飞书/通用 webhook；不配则只落库 | §6.2、§12、`server/notify.py` |
 | 2026-09-16 | 获客定案：发现流全量免费，废止「非会员每天 8 条」；价值主张改为「每刷一下，就快人一步」；卡片拆成图 / 只读总结 / 可点互动三区；full 首次进入出 5 步可 Skip 引导（关注落点、下滑、互动、GitHub、发布）；发布 tab 重新露出 | §1、§2.3、§5.1、§5.2、§7.1、§8、`entitlement.py`、`feed_dashboard.py`、`login.html` |
+| 2026-09-17 | 动手上线 UGC：游客可拉 `/api/feed`（只含已过审）；投稿必须 GitHub 登录且 login=owner；阿里云 Nginx 反代 `/publish` `/auth` `/api` `/op` | §6.2、§7.2、§12、`server/app.py`、`docs/deploy-api.md` |
+| 2026-09-17 | 新增 GitHub 分片搜索：捞 `stars>=2000` 且探测为 skill 形的仓，写入飞书底表并灌主 Feed（补上仅靠 Wiki/榜单会漏的仓） | §6.1、`scripts/harvest_github_2k_skills.py` |
 | 2026-09-16 | 信息流不再只收 skill：底表里可判定的 MCP（仓名含 mcp / 描述含 MCP Server·Model Context Protocol，星≥20）也进主 Feed，`kind=mcp`；不假装有 SKILL.md | §6.0、`gate_waytoagi_feed.py`、`ingest_waytoagi_candidates.py`、`feed_pack.py` |
 | 2026-09-14 | 修复肥嘚 logo 脸部丢失：团子头部为浅紫渐变（S 0.1-0.35）与磁贴背景同色系，颜色阈值不可用——改为「裁剪团子主体区域 + AI 语义抠图 + 连通域」，闭眼线条/嘴/腮红完整保留；logo 源图提至 512px 保证小尺寸清晰 | §5.1 顶栏/页脚 logo、`feed_dashboard.py`、`docs/brand/assets/logo-feide-transparent.png` |
 | 2026-09-14 | 修复肥嘚 logo 右脚截断：改用「饱和度软阈值 + 连通域」从用户原图重新抠团子本体（排除磁贴底/星星/终端卡片），顶栏/页脚 logo 换为完整透明异形团子（160×125，非圆形裁切） | §5.1 顶栏/页脚 logo、`feed_dashboard.py` |
