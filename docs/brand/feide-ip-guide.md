@@ -74,6 +74,7 @@
 
 | 资产 | 文件 | 用途 |
 |---|---|---|
-| 主形象（定稿） | `assets/logo-main.png` | App 图标、Logo |
+| 主形象（定稿） | `assets/logo-main.png` | App 图标、小程序头像 |
+| 慵懒躺沙发 | `assets/logo-feide-transparent.png` / `logo-sofa.png` | 页头、浏览器 tab、添加到主屏 |
 | 四视图 | `assets/ip-four-views.png` | 多角度参考 |
 | 表情系统 | `assets/expressions.png` | UI 空态/加载/引导 |

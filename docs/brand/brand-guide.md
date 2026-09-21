@@ -11,6 +11,11 @@ docs/brand/
 ├── feide-ip-guide.md       ← 肥嘚 IP 设计语言详细规范
 └── assets/
     ├── logo-main.png       ← 主 Logo / 小程序头像定稿
+    ├── logo-feide-transparent.png ← 慵懒躺沙发（页头/页脚）
+    ├── logo-sofa.png       ← 躺沙发方标（favicon 源）
+    ├── favicon.ico         ← 浏览器 tab（16/32/48px）
+    ├── favicon.png         ← 浏览器 tab（48px）
+    ├── apple-touch-icon.png ← iOS 添加到主屏（180px）
     ├── ip-four-views.png   ← 肥嘚四视图（正/侧/背/顶）
     ├── expressions.png     ← 表情系统总览
     └── brand-style-guide.png ← 品牌色板规范页
@@ -53,6 +58,9 @@ docs/brand/
 | 资产 | 文件 | 用途 |
 |---|---|---|
 | 主 Logo | `assets/logo-main.png` | 小程序头像、App 图标 |
+| 躺沙发 | `assets/logo-feide-transparent.png` / `logo-sofa.png` | 页头/页脚与浏览器小标 |
+| Favicon | `assets/favicon.ico` / `favicon.png` | 浏览器 tab（躺沙发造型） |
+| 主屏图标 | `assets/apple-touch-icon.png` | iOS 添加到主屏 |
 | 四视图 | `assets/ip-four-views.png` | 建模/周边/多角度参考 |
 | 表情系统 | `assets/expressions.png` | UI 空态/加载/引导 |
 | 色板规范 | `assets/brand-style-guide.png` | 设计参考 |

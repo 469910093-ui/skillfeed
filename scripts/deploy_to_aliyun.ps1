@@ -10,7 +10,8 @@ $hostName = "8.133.208.149"
 $user = "admin"
 $geoFiles = @(
     "llms.txt", "llms-full.txt", "robots.txt", "sitemap.xml",
-    "about.md", "faq.md", "compare.md", "catalog.json", "og.png"
+    "about.md", "faq.md", "compare.md", "catalog.json", "og.png",
+    "favicon.ico", "favicon.png", "apple-touch-icon.png"
 )
 
 if (-not (Test-Path $html)) { throw "missing $html — run: python skillfeed.py publish-site --out site --full" }

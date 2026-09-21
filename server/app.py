@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from fastapi import Body, FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -103,7 +103,10 @@ class PayDevNotifyBody(BaseModel):
 GATE_PUBLIC_EXACT = frozenset({
     "/health",      # 外部 uptime 探针，不可能带登录态
     "/login",       # 登录页自己。它要是被拦，就是无限重定向
-    "/favicon.ico",  # 浏览器自动请求，拦了也只是产生一条 302 噪音
+    "/favicon.ico",  # 浏览器自动请求；现在真有文件，不再只是挡 302
+    "/favicon.png",
+    "/apple-touch-icon.png",
+    "/og.png",
     # 发现流全量免费：hydrateLiveFeed 用它把已过审 UGC 混进静态首页。
     # 只出 published/approved，pending 不会从这里漏出去。
     "/api/feed",
@@ -463,6 +466,30 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def catalog_json() -> dict[str, Any]:
         items = _geo_items()
         return geo.catalog_payload(items, full=True)
+
+    def _public_image(name: str) -> FileResponse:
+        site = settings.site_dir / name
+        src = site if site.is_file() else geo.public_asset_src(name)
+        if src is None or not src.is_file():
+            raise HTTPException(404, "not found")
+        media = "image/x-icon" if name.endswith(".ico") else "image/png"
+        return FileResponse(src, media_type=media)
+
+    @app.get("/favicon.ico")
+    def favicon_ico() -> FileResponse:
+        return _public_image("favicon.ico")
+
+    @app.get("/favicon.png")
+    def favicon_png() -> FileResponse:
+        return _public_image("favicon.png")
+
+    @app.get("/apple-touch-icon.png")
+    def apple_touch_icon() -> FileResponse:
+        return _public_image("apple-touch-icon.png")
+
+    @app.get("/og.png")
+    def og_png() -> FileResponse:
+        return _public_image("og.png")
 
     def _geo_guard(request: Request) -> Optional[JSONResponse]:
         ip = _client_ip(request, settings.trusted_proxy_hops, settings.trusted_proxy_ips)

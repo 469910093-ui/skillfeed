@@ -89,6 +89,8 @@ PUBLISH_DESCRIPTION = (
     "可靠的流量推荐渠道，帮你的产品更好地找到用户。"
 )
 OG_IMAGE_SRC = Path(__file__).resolve().parent / "docs" / "pitch" / "assets" / "ui-card.png"
+ICON_SRC_DIR = Path(__file__).resolve().parent / "docs" / "brand" / "assets"
+ICON_FILENAMES = ("favicon.ico", "favicon.png", "apple-touch-icon.png")
 
 
 def utc_now_iso() -> str:
@@ -815,7 +817,30 @@ def seo_meta_tags(*, title: str, description: str, path: str = "/") -> str:
         f'<meta name="twitter:title" content="{t}">\n'
         f'<meta name="twitter:description" content="{d}">\n'
         f'<meta name="twitter:image" content="{image}">\n'
+        + icon_link_tags()
     )
+
+
+def icon_link_tags() -> str:
+    """浏览器 tab / 添加到主屏。相对路径，GitHub Pages 的 /skillfeed/ 子路径也能命中。"""
+    return (
+        '<link rel="icon" href="favicon.ico" sizes="any">\n'
+        '<link rel="icon" type="image/png" href="favicon.png">\n'
+        '<link rel="apple-touch-icon" href="apple-touch-icon.png">\n'
+    )
+
+
+def public_asset_src(name: str) -> Path | None:
+    """publish-site 落盘文件的源图。站点目录没有时，API 也按这个回退。"""
+    if name == "og.png":
+        if OG_IMAGE_SRC.exists():
+            return OG_IMAGE_SRC
+        fallback = ICON_SRC_DIR / "logo-sofa.png"
+        return fallback if fallback.exists() else None
+    if name in ICON_FILENAMES:
+        src = ICON_SRC_DIR / name
+        return src if src.exists() else None
+    return None
 
 
 def html_head_tags() -> str:
@@ -865,6 +890,19 @@ def copy_og_image(out: Path) -> Path | None:
     return dest
 
 
+def copy_brand_icons(out: Path) -> list[Path]:
+    dest_dir = Path(out)
+    written: list[Path] = []
+    for name in ICON_FILENAMES:
+        src = public_asset_src(name)
+        if src is None:
+            continue
+        dest = dest_dir / name
+        dest.write_bytes(src.read_bytes())
+        written.append(dest)
+    return written
+
+
 def write_geo_site(out: Path, feed: dict[str, Any], *, full: bool = False) -> list[Path]:
     """把 Agent Surface 写进 publish-site 产物目录。"""
     dest = Path(out)
@@ -893,6 +931,7 @@ def write_geo_site(out: Path, feed: dict[str, Any], *, full: bool = False) -> li
     og = copy_og_image(dest)
     if og is not None:
         written.append(og)
+    written.extend(copy_brand_icons(dest))
     return written
 
 

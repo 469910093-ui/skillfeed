@@ -105,6 +105,9 @@ class TestWriteGeoSite(unittest.TestCase):
             self.assertIn("/login", sitemap)
             self.assertIn("/publish", sitemap)
             self.assertTrue((out / "og.png").exists())
+            self.assertTrue((out / "favicon.ico").exists())
+            self.assertTrue((out / "favicon.png").exists())
+            self.assertTrue((out / "apple-touch-icon.png").exists())
 
     def test_full_catalog_is_sanitized(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -162,6 +165,10 @@ class TestPublishSiteWritesGeo(unittest.TestCase):
         self.assertIn("已过滤的高星", html)
         self.assertIn("可靠流量渠道", html)
         self.assertIn("/og.png", html)
+        self.assertIn('rel="icon"', html)
+        self.assertIn("favicon.png", html)
+        self.assertIn("apple-touch-icon.png", html)
+        self.assertTrue((out / "favicon.ico").exists())
         self.assertNotIn("secret ranking", html)
 
     def test_full_publish_keeps_geo_sanitized(self):

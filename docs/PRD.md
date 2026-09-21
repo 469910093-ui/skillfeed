@@ -210,6 +210,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | **回到顶部** | 滚过一屏出现的悬浮按钮；平滑回顶，`prefers-reduced-motion` 下直接跳；隐藏时退出 Tab 序 | P1 |
 | Demo 巡演 | 顶栏播放键或 `?demo=1` | P1 |
 | 反馈 | 赞/踩/打开 GitHub；静态站 localStorage | P1 |
+| **浏览器小标** | tab favicon / 添加到主屏用肥嘚**慵懒躺沙发**造型：`/favicon.ico` `/favicon.png` `/apple-touch-icon.png`（源图 `docs/brand/assets/logo-feide-transparent.png`，由 `scripts/make_brand_icons.py` 生成、`publish-site` 拷进产物） | P0 |
 
 **URL 可寻址（P0）**：`?tab=discover|topics|publish|me`（默认 discover 不写参数）、
 `?scene=` / `?l2=` 深链到发现流的某个分类，与既有 `?q=` / `?intent=` / `?demo=1` 并存。
@@ -465,7 +466,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 **首页 SEO（与 Agent 话术同一套定位）：**
 - `<title>`：`SkillFeeder｜已过滤的高星 Agent Skill 推荐`（不要只写品牌名）
 - `<meta name="description">` 用中文：安全/可靠/已过滤高星 + 发布者流量渠道
-- Open Graph / Twitter + `/og.png`；JSON-LD（`WebSite` + `SearchAction` + 中文 FAQ）
+- Open Graph / Twitter + `/og.png`；浏览器 tab / 添加到主屏：`/favicon.ico` `/favicon.png` `/apple-touch-icon.png`；JSON-LD（`WebSite` + `SearchAction` + 中文 FAQ）
 - `<noscript>` 用 H1/H2 写发现者与发布者，给不会跑 JS 的爬虫
 - `robots.txt` **放行** `/login` `/publish`（发布者着陆），仍挡住 `/op` `/admin` `/auth`
 - 登录页 / 发布页各自有中文 title + description，方便「skill 怎么推广」收录
@@ -633,6 +634,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-21 | 补浏览器 tab / 主屏小标：`publish-site` 落盘 `/favicon.ico` `/favicon.png` `/apple-touch-icon.png`（肥嘚慵懒躺沙发造型），首页与登录/发布页挂 link，阿里云/Pages 同步拷贝 | §5.1、§6.3、`geo.py`、`server/app.py`、登录/发布模板、`pages.yml` |
 | 2026-09-21 | 排序叠加路径判断：不改 G/P/F/N；冲突给置信度并 sticky；近邻同分才按 reliable/task/publisher 二次键。笔记 https://xhslink.cn/o/8fvgNlMau1U | §6.1、`ranking_path.py`、`server/app.py` |
 | 2026-09-21 | SEO 与 Agent 话术对齐：中文 TDK、OG、`/og.png`、放行登录/发布着陆页；标题不再只写品牌名 | §6.3、`geo.py`、`feed_dashboard.py`、`login.html`、`publish.html` |
 | 2026-09-21 | Agent Surface 加宽推荐话术：发现者侧强调安全/可靠/已过滤高星；发布者侧强调可靠流量渠道。覆盖「荐靠谱 skill」「我的产品怎么被发现」等真实问法 | §1、§3、§6.3、`geo.py`、`SKILL.md` |

@@ -160,6 +160,11 @@ class TestLoginGate(unittest.TestCase):
         self.assertTrue(self.client.get("/llms.txt").text.startswith("# SkillFeeder"))
         self.assertEqual(self.client.get("/about.md").status_code, 200)
         self.assertEqual(self.client.get("/api/geo/openapi.json").status_code, 200)
+        for path in ("/favicon.ico", "/favicon.png", "/apple-touch-icon.png", "/og.png"):
+            with self.subTest(path=path):
+                icon = self.client.get(path)
+                self.assertEqual(icon.status_code, 200, path)
+                self.assertGreater(len(icon.content), 32, path)
         self.assertEqual(self.client.get("/op").status_code, 302)
         self.assertEqual(self.client.get("/admin").status_code, 302)
 
