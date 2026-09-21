@@ -240,7 +240,7 @@ jobs:
         run: |
           mkdir -p nginx-site
           cp site-full/index.html nginx-site/
-          for f in llms.txt llms-full.txt robots.txt sitemap.xml about.md faq.md compare.md catalog.json; do
+          for f in llms.txt llms-full.txt robots.txt sitemap.xml about.md faq.md compare.md catalog.json og.png; do
             test -s "site-full/$f"
             cp "site-full/$f" nginx-site/
           done
@@ -308,7 +308,7 @@ jobs:
             nginx-index/llms.txt nginx-index/llms-full.txt \
             nginx-index/robots.txt nginx-index/sitemap.xml \
             nginx-index/about.md nginx-index/faq.md nginx-index/compare.md \
-            nginx-index/catalog.json \
+            nginx-index/catalog.json nginx-index/og.png \
             "$ALIYUN_USER@$ALIYUN_HOST:/tmp/skillfeed-nginx/"
           ssh -o ConnectTimeout=15 "$ALIYUN_USER@$ALIYUN_HOST" \
             'sudo mv /tmp/skillfeed-nginx/index.html /var/www/html/index.html &&
@@ -320,9 +320,10 @@ jobs:
              sudo mv /tmp/skillfeed-nginx/faq.md /var/www/html/faq.md &&
              sudo mv /tmp/skillfeed-nginx/compare.md /var/www/html/compare.md &&
              sudo mv /tmp/skillfeed-nginx/catalog.json /var/www/html/catalog.json &&
-             sudo chown admin:admin /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/faq.md /var/www/html/compare.md /var/www/html/catalog.json &&
-             sudo chmod 644 /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/faq.md /var/www/html/compare.md /var/www/html/catalog.json &&
-             test -s /var/www/html/index.html && grep -q "<title>SkillFeeder</title>" /var/www/html/index.html &&
+             sudo mv /tmp/skillfeed-nginx/og.png /var/www/html/og.png &&
+             sudo chown admin:admin /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/faq.md /var/www/html/compare.md /var/www/html/catalog.json /var/www/html/og.png &&
+             sudo chmod 644 /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/faq.md /var/www/html/compare.md /var/www/html/catalog.json /var/www/html/og.png &&
+             test -s /var/www/html/index.html && grep -q "<title>SkillFeeder" /var/www/html/index.html &&
              grep -q "# SkillFeeder" /var/www/html/llms.txt'
 
   # 门禁拦下发布时，说清「站点没坏，只是没更新」。

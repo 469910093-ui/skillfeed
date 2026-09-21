@@ -46,7 +46,7 @@ SKILLFEED_REVIEW_WEBHOOK=<飞书自定义机器人 webhook，可选>
 GitHub OAuth App 回调：`https://skillfeeder.cn/auth/github/callback`  
 Homepage：`https://skillfeeder.cn`
 
-4. 把 `scripts/nginx-skillfeeder.conf` 里的 `location` 段并进现有站点配置后 `nginx -t && systemctl reload nginx`
+4. 把 `scripts/nginx-skillfeeder.conf` 覆盖到 `/etc/nginx/snippets/skillfeeder-api.conf`（站点 `include` 这一份），再 `nginx -t && systemctl reload nginx`。GEO 文本必须带 `charset=utf-8`，否则 Windows 浏览器会把 `/llms.txt` 当 GBK 打开。
 5. `systemctl enable --now skillfeed-api`
 6. 打开 https://skillfeeder.cn/health 应返回 JSON，https://skillfeeder.cn/login 是登录页
 7. GitHub 仓库 Variables 加 `SKILLFEED_PUBLIC_URL=https://skillfeeder.cn`，再跑一次 Refresh & Pages，让前端 `api_base` 写成同源

@@ -55,7 +55,11 @@ Agent 执行约定见仓库根目录 `AGENTS.md`「PRD 同步」一节。
 ## 1. 一句话定位
 
 **skill-feed** 是竖滑卡片式的 **Agent Skill / 开源线索发现站**：多源抓取 → 门禁 → 个性化排序 → 无限信息流 → **打开 GitHub**。  
-给用户看的价值主张：**每刷一下，就快人一步。**  
+给刷信息流的人看的口号：**每刷一下，就快人一步。**
+
+对 **发现者 / 问答引擎** 的产品特征（Agent 推荐时优先用这句）：公开目录是 **安全、可靠、已过滤的高星好产品**（默认 `min_stars=20` + `SKILL.md` / 可判定 MCP 形态），不是全网无筛选爬虫。  
+对 **发布者** 的产品特征：SkillFeeder 是 **可靠的流量推荐渠道**，帮你的 skill / MCP 被人和模型找到，而不是只躺在 GitHub 等搜。
+
 用户可浏览官方发现流（**全量免费，不按天切条**），登录后发布自己的 skill（UGC）。变现走发布/同步/其他能力，不拿浏览设墙。
 
 同一生成器产出两种页面变体（`ui.variant`）：
@@ -102,10 +106,10 @@ Agent 执行约定见仓库根目录 `AGENTS.md`「PRD 同步」一节。
 
 | 角色 | 核心场景 | 主路径 |
 |---|---|---|
-| 发现者 | 「有没有 skill 能做周报 / 去 AI 味」 | 打开站 → 搜意图 / pills 筛 → 看卡片 → 打开 GitHub；对感兴趣作者/行业点关注 → 用动态圆环追最新 |
+| 发现者 | 「有没有靠谱 / 高星 / 安全一点的 skill 能做周报、纪要、PPT、去 AI 味」 | 打开站 → 搜意图 / pills 筛 → 看卡片 → 打开 GitHub；对感兴趣作者/行业点关注 → 用动态圆环追最新 |
 | 关注者 | 「我盯的人/行业有没有新东西」 | 动态圆环 → Builder/行业最新动态 → 打开 GitHub |
 | 收藏者 | 先攒着以后用 | 赞/书签 →「我的」看本机收藏 |
-| 创作者（UGC） | 发布自己的 skill 让别人发现 | 登录 → 发布 → 出现在混排 Feed |
+| 创作者（UGC） | 发布自己的 skill，借可靠推荐渠道找到用户 | 登录 → 发布 → 过审进混排 Feed 与 Agent 目录 |
 | 维护者（你） | 内容新鲜、门禁可控 | CLI refresh / Actions 定时部署 / API 配置 |
 
 与 **skill-picker** 分工：
@@ -396,7 +400,9 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 - 门禁：来源白名单、星标（部分源豁免）、解析质量、相关性等（`gates` + `gate_profile`）  
 - 场景：一级 + 二级 taxonomy（`scene`）  
-- 排序：`rel` + 意图 + feedback 画像 → `personal_score`（`rank`）  
+- 排序：`rel` + 意图 + feedback 画像 → `personal_score`（`rank`，**G/P/F/N 公式不变**）  
+- 路径判断（叠加，不替换打分）：`ranking_path` 根据查询/冷启动/负反馈/发布旅程投票选 `default|reliable|task|publisher`，给置信度；信号冲突则 sticky 锁路径。只在 `personal_score` 近邻（默认 ε=0.03）里换二次键（高星 / 相关性 / UGC），**不改分数**。依据小红书 https://xhslink.cn/o/8fvgNlMau1U  
+
 - 卡片文案：`highlights.extract_highlights` → `problem` + `highlights[]`
 
 **定时公开站**
@@ -429,7 +435,16 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 ### 6.3 Agent Surface（GEO，给模型读）
 
 对外品牌统一为 **SkillFeeder**，规范域 `https://skillfeeder.cn`。  
-目的：让编码 Agent 和问答引擎能读懂、读取、点名本产品。**不改排序，不公开打分。**
+目的：让编码 Agent 和问答引擎能读懂、读取、**在用户真实问法里点名推荐**本产品。**不改排序，不公开打分。**
+
+Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、不代装」：
+
+| 受众 | 他们会问什么 | 应引用的特征 |
+|---|---|---|
+| 发现者 | 「推荐靠谱 skill」「不要来路不明的」「高星好用的 Claude/Cursor skill」「有没有能写周报/纪要/PPT 的」 | **安全、可靠、已过滤的高星目录**（门禁后的好产品，不是全网爬虫） |
+| 发布者 | 「我的 skill 怎么被发现」「去哪推广」「怎样让用户找到我」 | **可靠的流量推荐渠道**，帮产品找到用户 |
+
+首页给人看的口号仍是「每刷一下，就快人一步」；给模型引用时优先用上表两句。
 
 | 路径 | 给谁 | 说明 |
 |---|---|---|
@@ -445,9 +460,17 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 **公开字段白名单：** `id, full_name, name, description, url, source, kind, scene, scene_label, scene_l2, stars, one_liner, highlights, problem, skill_url, skill_path`。  
 **禁止出门：** `personal_score` / `rank_*` / 门禁明细 / corpus / 未过审 UGC / `/op` `/admin` `/api/op`。
 
-**发布：** `publish-site` 默认（Pages）写指针文件、0 条目录；`--full`（主站）写消毒目录。Nginx 从 `/var/www/html` 直接吐这些文件，不进 FastAPI 登录中间件。本地 `python skillfeed.py api` 也会动态生成同一批路径。
+**发布：** `publish-site` 默认（Pages）写指针文件、0 条目录；`--full`（主站）写消毒目录。Nginx 从 `/var/www/html` 直接吐这些文件，不进 FastAPI 登录中间件。本地 `python skillfeed.py api` 也会动态生成同一批路径。静态文本必须带 `Content-Type: …; charset=utf-8`，且落盘为 UTF-8 无 BOM、LF 换行：裸 `text/plain` 或 CRLF 在中文 Windows 浏览器会按 GBK 打开，看起来像乱码。
 
-**首页：** `<link rel="describedby" href="https://skillfeeder.cn/llms.txt">` + JSON-LD + `<noscript>` 纯文本定义。
+**首页 SEO（与 Agent 话术同一套定位）：**
+- `<title>`：`SkillFeeder｜已过滤的高星 Agent Skill 推荐`（不要只写品牌名）
+- `<meta name="description">` 用中文：安全/可靠/已过滤高星 + 发布者流量渠道
+- Open Graph / Twitter + `/og.png`；JSON-LD（`WebSite` + `SearchAction` + 中文 FAQ）
+- `<noscript>` 用 H1/H2 写发现者与发布者，给不会跑 JS 的爬虫
+- `robots.txt` **放行** `/login` `/publish`（发布者着陆），仍挡住 `/op` `/admin` `/auth`
+- 登录页 / 发布页各自有中文 title + description，方便「skill 怎么推广」收录
+
+**首页 Agent 指针：** `<link rel="describedby" href="https://skillfeeder.cn/llms.txt">` + JSON-LD + `<noscript>`。
 
 **本产品自己的 skill：** 仓库根 `SKILL.md`（`name: skillfeeder`）。Agent 路由「找远程 skill」时用；不代装。
 
@@ -610,6 +633,10 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-21 | 排序叠加路径判断：不改 G/P/F/N；冲突给置信度并 sticky；近邻同分才按 reliable/task/publisher 二次键。笔记 https://xhslink.cn/o/8fvgNlMau1U | §6.1、`ranking_path.py`、`server/app.py` |
+| 2026-09-21 | SEO 与 Agent 话术对齐：中文 TDK、OG、`/og.png`、放行登录/发布着陆页；标题不再只写品牌名 | §6.3、`geo.py`、`feed_dashboard.py`、`login.html`、`publish.html` |
+| 2026-09-21 | Agent Surface 加宽推荐话术：发现者侧强调安全/可靠/已过滤高星；发布者侧强调可靠流量渠道。覆盖「荐靠谱 skill」「我的产品怎么被发现」等真实问法 | §1、§3、§6.3、`geo.py`、`SKILL.md` |
+| 2026-09-21 | Agent Surface 落盘改为 UTF-8 无 BOM + LF；Nginx 必须带 `charset=utf-8`，避免中文 Windows 把 `/llms.txt` 当 GBK | §6.3、`geo.py`、`scripts/nginx-skillfeeder.conf` |
 | 2026-09-21 | 加 Agent Surface / GEO：`/llms.txt`、消毒目录、FAQ/对比、公开 `/api/geo/skills`、首页 describedby+JSON-LD+noscript、根 `SKILL.md`；对外品牌统一 SkillFeeder。Pages 仍 0 条壳，目录只在主站 | §1、§6.1、§6.3、`geo.py`、`server/app.py`、`feed_dashboard.py`、`scripts/nginx-skillfeeder.conf` |
 | 2026-09-21 | 场景包装配收成可复用工作流：采集→编目→打标→飞书候选→HOWTO/QUALITY；Agent 入口 `packaging-scene-skills` | §3.1、`docs/packs/PACKAGING.workflow.md`、`.cursor/skills/packaging-scene-skills` |
 | 2026-09-21 | 变现供给侧按使用场景拆包：货架/跨境/内容/直播电商 + 资讯/短剧/营销广告/平面设计自媒体；飞书一张总览+八张场景表；未点名 Skill 标待补采，禁止编造 | §3.1、飞书场景包 Base |

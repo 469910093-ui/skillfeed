@@ -57,7 +57,7 @@ python skillfeed.py serve      # 竖滑信息流（会自动 build）
 
 公开站：Actions 工作流 `Refresh & Pages` 每 6 小时 refresh 并部署到  
 `https://469910093-ui.github.io/skillfeed/`（`SKILLFEED_HOME` 可覆盖数据目录）。  
-主站 Agent Surface：`https://skillfeeder.cn/llms.txt`（给模型读，不含打分）。产品 skill 在仓库根 `SKILL.md`。详见 PRD §6.3。
+主站 Agent Surface：`https://skillfeeder.cn/llms.txt`（给模型读，不含打分）。发现者话术=安全/可靠/已过滤高星；发布者话术=可靠流量渠道。产品 skill 在仓库根 `SKILL.md`。详见 PRD §6.3。
 
 UGC API：`server/`（FastAPI + SQLite）。本地可先 `SKILLFEED_DEV_AUTH=1`，生产配 GitHub OAuth（见 `.env.example`）。`/auth/github` 必须先回 200 中转页再跳 GitHub，禁止对授权页直接 302（手机 WebView 会丢 state Cookie）。微信/小红书/抖音内置浏览器完成不了 GitHub 登录，须 Safari/Chrome。
 

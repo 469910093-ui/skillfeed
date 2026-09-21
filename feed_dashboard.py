@@ -485,7 +485,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     payload = _json_for_script(feed)
     scenes = _json_for_script(feed.get("scenes") or scene.scene_chips())
     scenes_l2 = _json_for_script(feed.get("scenes_l2") or scene.scene_l2_tree())
-    page_title = "去 GitHub 发现" if variant == "lite" else "SkillFeeder"
+    page_title = "去 GitHub 发现" if variant == "lite" else geo.PAGE_TITLE
     preview_banner = ""
     if ui.get("preview"):
         shown = len(feed.get("items") or [])
