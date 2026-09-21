@@ -612,13 +612,13 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     color: var(--ink);
   }}
   .logo-mark {{
-    width: 36px;
-    height: 28px;
+    width: 52px;
+    height: 40px;
     flex-shrink: 0;
     object-fit: contain;
     display: inline-block;
   }}
-  .foot-logo .logo-mark {{ width: 28px; height: 22px; }}
+  .foot-logo .logo-mark {{ width: 40px; height: 32px; }}
   .logo .feeder {{
     color: var(--brand-purple);
     background-image: var(--brand-grad);

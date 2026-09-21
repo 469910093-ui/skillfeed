@@ -14,7 +14,7 @@ docs/brand/
     ├── logo-feide-transparent.png ← 慵懒躺沙发（页头/页脚）
     ├── logo-sofa.png       ← 躺沙发方标（favicon 源）
     ├── favicon.ico         ← 浏览器 tab（16/32/48px）
-    ├── favicon.png         ← 浏览器 tab（48px）
+    ├── favicon.png         ← 浏览器 tab（192px，视网膜）
     ├── apple-touch-icon.png ← iOS 添加到主屏（180px）
     ├── ip-four-views.png   ← 肥嘚四视图（正/侧/背/顶）
     ├── expressions.png     ← 表情系统总览

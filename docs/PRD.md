@@ -210,7 +210,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | **回到顶部** | 滚过一屏出现的悬浮按钮；平滑回顶，`prefers-reduced-motion` 下直接跳；隐藏时退出 Tab 序 | P1 |
 | Demo 巡演 | 顶栏播放键或 `?demo=1` | P1 |
 | 反馈 | 赞/踩/打开 GitHub；静态站 localStorage | P1 |
-| **浏览器小标** | tab favicon / 添加到主屏用肥嘚**慵懒躺沙发**造型：`/favicon.ico` `/favicon.png` `/apple-touch-icon.png`（源图 `docs/brand/assets/logo-feide-transparent.png`，由 `scripts/make_brand_icons.py` 生成、`publish-site` 拷进产物） | P0 |
+| **浏览器小标** | tab favicon / 添加到主屏用肥嘚**慵懒躺沙发**造型：`/favicon.ico`（16/32/48）`/favicon.png`（192，视网膜）`/apple-touch-icon.png`（180）。源图 `docs/brand/assets/logo-feide-transparent.png`，由 `scripts/make_brand_icons.py` 高分辨率缩小，禁止平滑发糊 | P0 |
 
 **URL 可寻址（P0）**：`?tab=discover|topics|publish|me`（默认 discover 不写参数）、
 `?scene=` / `?l2=` 深链到发现流的某个分类，与既有 `?q=` / `?intent=` / `?demo=1` 并存。
@@ -634,6 +634,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-21 | 浏览器小标改高分辨率缩小（192 PNG + 多尺寸 ICO），去掉平滑发糊；页头肥嘚加大到 52×40 | §5.1、`scripts/make_brand_icons.py`、`feed_dashboard.py` |
 | 2026-09-21 | 补浏览器 tab / 主屏小标：`publish-site` 落盘 `/favicon.ico` `/favicon.png` `/apple-touch-icon.png`（肥嘚慵懒躺沙发造型），首页与登录/发布页挂 link，阿里云/Pages 同步拷贝 | §5.1、§6.3、`geo.py`、`server/app.py`、登录/发布模板、`pages.yml` |
 | 2026-09-21 | 排序叠加路径判断：不改 G/P/F/N；冲突给置信度并 sticky；近邻同分才按 reliable/task/publisher 二次键。笔记 https://xhslink.cn/o/8fvgNlMau1U | §6.1、`ranking_path.py`、`server/app.py` |
 | 2026-09-21 | SEO 与 Agent 话术对齐：中文 TDK、OG、`/og.png`、放行登录/发布着陆页；标题不再只写品牌名 | §6.3、`geo.py`、`feed_dashboard.py`、`login.html`、`publish.html` |
