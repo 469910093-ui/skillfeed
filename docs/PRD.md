@@ -2,13 +2,13 @@
 
 | 字段 | 内容 |
 |---|---|
-| 产品名 | skill-feed |
-| 版本 | v0.4.1（相对本仓库当前实现） |
+| 产品名 | skill-feed（对外品牌 **SkillFeeder**） |
+| 版本 | v0.4.2（相对本仓库当前实现） |
 | 文档状态 | **唯一产品真相源（Source of Truth）** |
 | 仓库 | https://github.com/469910093-ui/skillfeed |
 | 公开发现站 | https://469910093-ui.github.io/skillfeed/ |
 | 关联产品 | [skill-picker](https://github.com/469910093-ui/Skill-picker)（本机已装 skill 的扫描/匹配） |
-| 更新日期 | 2026-09-17 |
+| 更新日期 | 2026-09-21 |
 
 ---
 
@@ -118,6 +118,25 @@ skill-picker 找技能（本机）──匹配为空──► 看板「去 GitHu
 
 skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）──► 打开 GitHub
 ```
+
+### 3.1 变现场景包（供给侧，先飞书后产品）
+
+卖的不是「一堆 skill 名」，是**某个具体人群、某条可跑通工作流**的打包方案。一级先分电商 / 自媒体，二级按下表拆，一张表一个场景：
+
+| 大类 | 场景包 | 卖给谁 | 工作流主线 | 材料纪律 |
+|---|---|---|---|---|
+| 电商 | 货架电商 | 淘宝/京东/拼多多店主 | 主图→详情→文案→上架→店铺复盘 | 须正文点名或标「仅流程」 |
+| 电商 | 跨境电商 | 亚马逊/多平台卖家 | 选品→供应链→Listing→广告→利润 | 须能串成 SOP，禁止散装清单 |
+| 电商 | 内容电商 | TK/小红书带货 | 调研→拆对标→Hook→内容→案例库 | 须能复用到种草/带货 |
+| 电商 | 直播电商 | 主播/中控 | 货盘→话术→开播→场控复盘 | 缺材料就立骨架，禁止编造 Skill 名 |
+| 自媒体 | 资讯类自媒体 | 公众号/博客/独立站 | 选题→长文→SEO/GEO→日历 | 长内容可搜索才算齐 |
+| 自媒体 | 短剧 | 编导/切片分发 | 选题→分镜→成片→分发 | 本批未采到则标「待补采」 |
+| 自媒体 | 营销广告自媒体 | 投放/品牌/增长 | 地基→文案→广告→SEO/AEO→CRO | 模块要分工，禁止一个万能提示词 |
+| 自媒体 | 平面设计自媒体 | 美工/封面设计 | 风格→主图→详情→封面海报 | 须能批量出图 |
+
+策展底稿在飞书 Base（`包-总览` + 8 张场景表）。**未点名的 Skill 不得写成已验证能力**；直播/短剧允许先出骨架再补采。Feed pills / 主题分类要对齐这套二级场景时，再改前端，不得另起一套口语分类。
+
+每次再打包：走 `docs/packs/PACKAGING.workflow.md`（Agent 入口 `.cursor/skills/packaging-scene-skills`）。采集 → 编目 → 打标 → 飞书候选 →（要卖再）`HOWTO` + `QUALITY`。禁止跳过打标把原文笔记当产品。
 
 ---
 
@@ -355,7 +374,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | `xhs-crawl` | 本机 Chrome（媒讯助手扩展）采小红书 → `~/.skill-feed/xhs/mentions.json` |
 | `scripts/harvest_github_2k_skills.py` | 分片搜索 GitHub `stars>=2000` 的 skill 形仓 → 飞书底表 + Feed |
 | `build` | 不联网，用已有数据重生 Feed HTML |
-| `publish-site` | 导出 `site/index.html` + `feed.json`（Pages） |
+| `publish-site` | 导出 `site/index.html` + `feed.json` + Agent Surface（`llms.txt` 等） |
+| `publish-geo` | 只重生 `/llms.txt` `/catalog.json` 等，不改首页 |
 | `serve` | 本机预览 + `/api/feedback` |
 | `api` | 启动云端 FastAPI |
 | `check` / `feedback` | 门禁检查与反馈汇总 |
@@ -404,6 +424,32 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 我的帖子 | `GET /api/posts/me` | 点「我发布的」始终出卡片预览，不切发现流、不重刷首页；审核中/拒绝带状态条 |
 | 反应 | `POST /api/posts/{id}/react` | like/save/bad |
 | 混排 Feed | `GET /api/feed` | **免登录**；只混已过审 UGC + 官方 `feed.json` |
+| Agent Surface | `GET /llms.txt` 等、`GET /api/geo/skills` | **免登录**；给模型读的目录与 FAQ。见 §6.3 |
+
+### 6.3 Agent Surface（GEO，给模型读）
+
+对外品牌统一为 **SkillFeeder**，规范域 `https://skillfeeder.cn`。  
+目的：让编码 Agent 和问答引擎能读懂、读取、点名本产品。**不改排序，不公开打分。**
+
+| 路径 | 给谁 | 说明 |
+|---|---|---|
+| `/llms.txt` | 所有 Agent | llmstxt.org v2：H1 + 一句话 + 链接。GitHub Pages 壳只指向规范域 |
+| `/llms-full.txt` | 需要目录的 Agent | 消毒后的 Top 200（星数降序）。Pages 壳不带条目 |
+| `/about.md` `/faq.md` `/compare.md` | 引用 / How-to / X vs Y | 纯 Markdown，不依赖 JS |
+| `/catalog.json` | 程序读取 | 字段白名单，与预览卡对齐 |
+| `/robots.txt` `/sitemap.xml` | 检索爬虫 | 放行 GPTBot / ClaudeBot / PerplexityBot；挡住 `/op` `/admin` `/auth` |
+| `GET /api/geo/skills?q=` | 按意图检索 | 免登录、限流、无 `rank_debug` |
+| `GET /api/geo/skills/{owner}/{repo}` | 单条 | 不在目录则 404 |
+| `GET /api/geo/openapi.json` | Agent | 只含 geo 路径。完整 `/docs` 仍登录后才开 |
+
+**公开字段白名单：** `id, full_name, name, description, url, source, kind, scene, scene_label, scene_l2, stars, one_liner, highlights, problem, skill_url, skill_path`。  
+**禁止出门：** `personal_score` / `rank_*` / 门禁明细 / corpus / 未过审 UGC / `/op` `/admin` `/api/op`。
+
+**发布：** `publish-site` 默认（Pages）写指针文件、0 条目录；`--full`（主站）写消毒目录。Nginx 从 `/var/www/html` 直接吐这些文件，不进 FastAPI 登录中间件。本地 `python skillfeed.py api` 也会动态生成同一批路径。
+
+**首页：** `<link rel="describedby" href="https://skillfeeder.cn/llms.txt">` + JSON-LD + `<noscript>` 纯文本定义。
+
+**本产品自己的 skill：** 仓库根 `SKILL.md`（`name: skillfeeder`）。Agent 路由「找远程 skill」时用；不代装。
 
 **配置（环境变量，见 `.env.example`）**
 
@@ -518,6 +564,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 后端代码 | `server/` |
 | 前端生成 | `feed_dashboard.py` |
 | 引擎入口 | `skillfeed.py` |
+| Agent Surface / GEO | `geo.py` · 仓库根 `SKILL.md` |
 | 亮点提炼 | `highlights.py` |
 | 环境变量示例 | `.env.example` |
 | Pages 工作流 | `.github/workflows/pages.yml` |
@@ -536,7 +583,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | **M3.5 动态圆环=关注** | ✅ 前端已落地 | 动态圆环=关注 Builder/行业最新；入口：卡片关注/场景标签/引导环/发布者页/我的；提示「最新进顶部圆环」；pills 承担行业筛选 |
 | **M3.6 full/lite + picker** | ✅ 已落地 | `build_feed_html(variant=)`；本机 `feed.html`+`feed.lite.html`；站点 `index.html`+`embed.html`；skill-picker 第三 tab 嵌入 lite |
 | **M4 生产级云服务** | 🟡 起步 | skillfeeder.cn 同机 FastAPI（127.0.0.1:8787），不是 Railway；官方后台 `/op` |
-| **M5 增长与生态** | ⬜ 未开始 | 更强个性化、与 skill-picker 安装指引联动 |
+| **M5 增长与生态** | 🟡 起步 | Agent Surface（llms.txt / geo API / 根 SKILL.md）已落地；第三方目录提交仍是人工 |
 
 **综合阶段判断：处于 M2 已交付、M3「可本地跑通 / 待上线」、M3.5 关注动态圆环已落地的过渡期（约产品成熟度 70%–75%）。**
 
@@ -563,6 +610,10 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-21 | 加 Agent Surface / GEO：`/llms.txt`、消毒目录、FAQ/对比、公开 `/api/geo/skills`、首页 describedby+JSON-LD+noscript、根 `SKILL.md`；对外品牌统一 SkillFeeder。Pages 仍 0 条壳，目录只在主站 | §1、§6.1、§6.3、`geo.py`、`server/app.py`、`feed_dashboard.py`、`scripts/nginx-skillfeeder.conf` |
+| 2026-09-21 | 场景包装配收成可复用工作流：采集→编目→打标→飞书候选→HOWTO/QUALITY；Agent 入口 `packaging-scene-skills` | §3.1、`docs/packs/PACKAGING.workflow.md`、`.cursor/skills/packaging-scene-skills` |
+| 2026-09-21 | 变现供给侧按使用场景拆包：货架/跨境/内容/直播电商 + 资讯/短剧/营销广告/平面设计自媒体；飞书一张总览+八张场景表；未点名 Skill 标待补采，禁止编造 | §3.1、飞书场景包 Base |
+| 2026-09-19 | 演示稿封面用「把 GitHub 做成小红书一样有趣」作开场钩子；产品首页价值主张仍是「每刷一下，就快人一步」 | `docs/pitch/index.html`、§1 |
 | 2026-09-19 | 定时发布漏写 `api_base` 把主站发布 tab 冲成「静态镜像」：`--full` 默认写入 `https://skillfeeder.cn`；前端同源回退；Aliyun 部署缺 `api_base` 则拒绝覆盖 | §5.1、`feed_dashboard.py`、`skillfeed.py`、`.github/workflows/pages.yml` |
 | 2026-09-17 | 手机登不上：OAuth 改为 200 中转页再跳 GitHub/微信（避免 302 丢 Cookie）；登录页把 GitHub 当主按钮，点明微信/小红书/抖音内置浏览器走不通 | §6.2、§7.2、§12、`server/auth.py`、`server/app.py`、`login.html`、`publish.html`、`feed_dashboard.py` |
 | 2026-09-17 | 收藏跨设备一致性（D2：列表读云端）：`/auth/me` 返账号 `saved`/`liked` full_name 数组（跨设备聚合，`server/db.py::user_saved_full_names`）；前端 `effectiveSavedSet()` 让「查看收藏」列表与计数同源、长度恒等，saved 模式只列收藏不再混点赞 | §5.4.5、§6.2、`server/app.py`、`server/db.py`、`feed_dashboard.py`、`tests/test_server_api.py`、`tests/test_feed_dashboard.py` |

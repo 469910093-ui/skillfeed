@@ -25,9 +25,13 @@ on:
       - "catalog_sources.py"
       - "xiaohongshu.py"
       - "config_defaults.json"
+      - "geo.py"
+      - "SKILL.md"
       - ".github/workflows/pages.yml"
       - ".github/workflows/ci.yml"
       - "site-root/**"
+      - "scripts/nginx-skillfeeder.conf"
+      - "scripts/deploy_to_aliyun.ps1"
 # 这里刻意不挂 pull_request：PR 的 lint/单测由 ci.yml 全量覆盖，
 # 在本文件再挂一次只会在 checks 列表里多出一组完全重复的作业。
 
@@ -232,11 +236,20 @@ jobs:
         with:
           path: site
 
+      - name: Pack Aliyun Nginx files
+        run: |
+          mkdir -p nginx-site
+          cp site-full/index.html nginx-site/
+          for f in llms.txt llms-full.txt robots.txt sitemap.xml about.md faq.md compare.md catalog.json; do
+            test -s "site-full/$f"
+            cp "site-full/$f" nginx-site/
+          done
+
       - name: Keep a copy for the Aliyun Nginx job
         uses: actions/upload-artifact@v4
         with:
           name: nginx-index
-          path: site-full/index.html
+          path: nginx-site
           if-no-files-found: error
 
   deploy:
@@ -265,7 +278,7 @@ jobs:
           name: nginx-index
           path: nginx-index
 
-      - name: scp index.html onto the box
+      - name: scp index.html and Agent Surface onto the box
         env:
           ALIYUN_SSH_KEY: ${{ secrets.ALIYUN_SSH_KEY }}
           ALIYUN_HOST: ${{ secrets.ALIYUN_HOST }}
@@ -285,10 +298,32 @@ jobs:
             echo "::error title=全量站缺少 api_base::发布 tab 会变成「静态镜像」。检查 SKILLFEED_PUBLIC_URL。"
             exit 1
           fi
-          scp -o ConnectTimeout=15 nginx-index/index.html \
-            "$ALIYUN_USER@$ALIYUN_HOST:/var/www/html/index.html"
+          if ! grep -q '# SkillFeeder' nginx-index/llms.txt; then
+            echo "::error title=缺少 Agent Surface::site-full 没有合格的 llms.txt。"
+            exit 1
+          fi
           ssh -o ConnectTimeout=15 "$ALIYUN_USER@$ALIYUN_HOST" \
-            'test -s /var/www/html/index.html && grep -q "<title>SkillFeeder</title>" /var/www/html/index.html'
+            'mkdir -p /tmp/skillfeed-nginx'
+          scp -o ConnectTimeout=15 nginx-index/index.html \
+            nginx-index/llms.txt nginx-index/llms-full.txt \
+            nginx-index/robots.txt nginx-index/sitemap.xml \
+            nginx-index/about.md nginx-index/faq.md nginx-index/compare.md \
+            nginx-index/catalog.json \
+            "$ALIYUN_USER@$ALIYUN_HOST:/tmp/skillfeed-nginx/"
+          ssh -o ConnectTimeout=15 "$ALIYUN_USER@$ALIYUN_HOST" \
+            'sudo mv /tmp/skillfeed-nginx/index.html /var/www/html/index.html &&
+             sudo mv /tmp/skillfeed-nginx/llms.txt /var/www/html/llms.txt &&
+             sudo mv /tmp/skillfeed-nginx/llms-full.txt /var/www/html/llms-full.txt &&
+             sudo mv /tmp/skillfeed-nginx/robots.txt /var/www/html/robots.txt &&
+             sudo mv /tmp/skillfeed-nginx/sitemap.xml /var/www/html/sitemap.xml &&
+             sudo mv /tmp/skillfeed-nginx/about.md /var/www/html/about.md &&
+             sudo mv /tmp/skillfeed-nginx/faq.md /var/www/html/faq.md &&
+             sudo mv /tmp/skillfeed-nginx/compare.md /var/www/html/compare.md &&
+             sudo mv /tmp/skillfeed-nginx/catalog.json /var/www/html/catalog.json &&
+             sudo chown admin:admin /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/faq.md /var/www/html/compare.md /var/www/html/catalog.json &&
+             sudo chmod 644 /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/faq.md /var/www/html/compare.md /var/www/html/catalog.json &&
+             test -s /var/www/html/index.html && grep -q "<title>SkillFeeder</title>" /var/www/html/index.html &&
+             grep -q "# SkillFeeder" /var/www/html/llms.txt'
 
   # 门禁拦下发布时，说清「站点没坏，只是没更新」。
   #

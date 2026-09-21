@@ -1,6 +1,6 @@
 # 把全量站推到 skillfeeder.cn（Nginx）
 
-公开页仍由 GitHub Pages 出包。阿里云轻量只托管 `https://skillfeeder.cn/` 的 `index.html`。
+公开页仍由 GitHub Pages 出包。阿里云轻量托管 `https://skillfeeder.cn/` 的 `index.html` 以及 Agent Surface（`llms.txt` / `about.md` / `catalog.json` 等）。
 配好密钥后：**push `main` 或重跑 Refresh & Pages，就会自动覆盖 Nginx**，不必再开 Workbench。
 
 登录 / 发布 / 换设备同步要另挂 FastAPI，见 `docs/deploy-api.md`。没挂时「我的」会显示游客，并引导去主站登录页。
@@ -28,8 +28,8 @@ ls -l ~/.ssh/authorized_keys /var/www/html
 ## 之后怎么发
 
 1. 改 `feed_dashboard.py` 等页面源码并 push `main`
-2. Actions 里 `Refresh & Pages` 过门禁 → 发 Pages → **Nginx · skillfeeder.cn** 把 `index.html` scp 上去
-3. 打开 https://skillfeeder.cn/ 强制刷新
+2. Actions 里 `Refresh & Pages` 过门禁 → 发 Pages → **Nginx · skillfeeder.cn** 把 `index.html` 和 GEO 文件 scp 上去
+3. 打开 https://skillfeeder.cn/ 与 https://skillfeeder.cn/llms.txt 强制刷新
 
 本机临时发一版（密钥在 `~/.ssh/skillfeed-aliyun`）：
 

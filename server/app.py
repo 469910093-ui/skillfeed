@@ -14,14 +14,15 @@ from urllib.parse import quote
 
 from fastapi import Body, FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import geo
 import ranking
 from server import auth, backup, db, entitlement, metrics, notify, pay, ranking_service, sms, ugc
 from server.config import Settings, get_settings
-from server.ratelimit import EventLimiter, SmsLimiter
+from server.ratelimit import EventLimiter, GeoLimiter, SmsLimiter
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATES = ROOT / "templates"
@@ -113,6 +114,17 @@ GATE_PUBLIC_EXACT = frozenset({
     # 微信支付回调没有会话 Cookie。开通只信验签后的 out_trade_no，
     # 未配置 / 验签未接时这个端点只会 503，不会发权益。
     "/api/pay/wechat/notify",
+    # Agent Surface：给模型读的公开文件与查询口。不含打分、不含运营面。
+    "/llms.txt",
+    "/llms-full.txt",
+    "/robots.txt",
+    "/sitemap.xml",
+    "/about.md",
+    "/faq.md",
+    "/compare.md",
+    "/catalog.json",
+    "/api/geo/skills",
+    "/api/geo/openapi.json",
 })
 GATE_PUBLIC_PREFIXES = (
     # 所有登录相关端点：发起跳转、各家回调、短信收发、退出、/auth/me。
@@ -122,6 +134,8 @@ GATE_PUBLIC_PREFIXES = (
     "/static/",
     # 卡片短链 /p/zhangleme，聊天软件不会在冒号处截断
     "/p/",
+    # 公开目录检索与单条详情。完整 /docs 仍在门禁后。
+    "/api/geo/",
 )
 
 
@@ -301,6 +315,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         max_per_ip=settings.sms_max_per_ip,
         max_verify_per_ip=settings.sms_max_verify_per_ip,
     )
+    app.state.geo_limiter = GeoLimiter()
 
     def require_ops(request: Request) -> None:
         """运维端点的门禁：登录态或运维令牌，二者取其一。
@@ -398,6 +413,105 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "last_event_age_s": round(age, 1) if age is not None else None,
             "ingest_stale": bool(age is not None and age > stale_after),
         }
+
+    def _geo_items() -> list[dict[str, Any]]:
+        official: list[dict] = []
+        if settings.official_feed_file.exists():
+            official = ugc.load_official_items_from_file(settings.official_feed_file)
+        ugc_items: list[dict] = []
+        with db.db_session(settings.db_path) as conn:
+            posts = db.list_published_posts(conn, limit=200, offset=0)
+            ugc_items = [ugc.post_to_feed_item(p) for p in posts]
+        return geo.sanitize_items(list(ugc_items) + list(official))
+
+    def _geo_markdown(name: str, body: str, *, ext: str = "md") -> PlainTextResponse:
+        media = "text/markdown; charset=utf-8" if ext == "md" else "text/plain; charset=utf-8"
+        if name == "xml":
+            media = "application/xml; charset=utf-8"
+        return PlainTextResponse(body, media_type=media)
+
+    @app.get("/llms.txt")
+    def llms_txt() -> PlainTextResponse:
+        items = _geo_items()
+        return _geo_markdown("txt", geo.render_llms_txt(full=True, item_count=len(items)), ext="txt")
+
+    @app.get("/llms-full.txt")
+    def llms_full_txt() -> PlainTextResponse:
+        return _geo_markdown("txt", geo.render_llms_full_txt(_geo_items(), full=True), ext="txt")
+
+    @app.get("/robots.txt")
+    def robots_txt() -> PlainTextResponse:
+        return _geo_markdown("txt", geo.render_robots_txt(), ext="txt")
+
+    @app.get("/sitemap.xml")
+    def sitemap_xml() -> PlainTextResponse:
+        return _geo_markdown("xml", geo.render_sitemap_xml())
+
+    @app.get("/about.md")
+    def about_md() -> PlainTextResponse:
+        return _geo_markdown("md", geo.render_about_md())
+
+    @app.get("/faq.md")
+    def faq_md() -> PlainTextResponse:
+        return _geo_markdown("md", geo.render_faq_md())
+
+    @app.get("/compare.md")
+    def compare_md() -> PlainTextResponse:
+        return _geo_markdown("md", geo.render_compare_md())
+
+    @app.get("/catalog.json")
+    def catalog_json() -> dict[str, Any]:
+        items = _geo_items()
+        return geo.catalog_payload(items, full=True)
+
+    def _geo_guard(request: Request) -> Optional[JSONResponse]:
+        ip = _client_ip(request, settings.trusted_proxy_hops, settings.trusted_proxy_ips)
+        if not app.state.geo_limiter.allow(ip):
+            return JSONResponse(
+                {"error": "rate_limited", "retry_after_s": 60},
+                status_code=429,
+                headers={"Retry-After": "60"},
+            )
+        return None
+
+    @app.get("/api/geo/openapi.json")
+    def api_geo_openapi() -> dict[str, Any]:
+        return geo.render_geo_openapi()
+
+    @app.get("/api/geo/skills")
+    def api_geo_skills(
+        request: Request,
+        q: str = Query(""),
+        scene: str = Query(""),
+        limit: int = Query(20, ge=1, le=50),
+        offset: int = Query(0, ge=0),
+    ) -> dict[str, Any]:
+        blocked = _geo_guard(request)
+        if blocked is not None:
+            return blocked
+        page, total = geo.search_items(
+            _geo_items(), query=q, scene=scene, limit=limit, offset=offset,
+        )
+        return {
+            "brand": geo.BRAND,
+            "canonical": geo.CANONICAL,
+            "items": page,
+            "total": total,
+            "limit": min(limit, geo.API_MAX_LIMIT),
+            "offset": offset,
+            "q": q,
+            "scene": scene,
+        }
+
+    @app.get("/api/geo/skills/{owner}/{repo}")
+    def api_geo_skill(request: Request, owner: str, repo: str) -> dict[str, Any]:
+        blocked = _geo_guard(request)
+        if blocked is not None:
+            return blocked
+        item = geo.find_item(_geo_items(), owner, repo)
+        if item is None:
+            raise HTTPException(404, "skill not in the public catalog")
+        return {"item": item}
 
     @app.get("/", response_class=HTMLResponse)
     def home() -> HTMLResponse:

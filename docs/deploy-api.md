@@ -2,7 +2,7 @@
 
 「未接云端」不是用户坏了，是这份静态页还没挂上 FastAPI。
 
-现在的 skillfeeder.cn 只托管 `index.html`。`/login`、`/health`、`/api/*` 都是 404。
+现在的 skillfeeder.cn 托管 `index.html` 和 Agent Surface（`/llms.txt` 等）。`/login`、`/health`、`/api/*` 必须反代到 FastAPI。
 收藏 / 关注先记在浏览器里；登录、我的发布、换设备同步必须有 API。
 
 ## 用户侧看到什么

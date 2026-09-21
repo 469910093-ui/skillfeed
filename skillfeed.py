@@ -11,7 +11,8 @@ skill-picker 继续只做 100% 本地扫描/匹配。
   python skillfeed.py bitable init|pull|push|sync|dedupe         # 译稿库（飞书多维表格）
   python skillfeed.py corpus [--max-issues N]
   python skillfeed.py xhs-crawl [--keyword TEXT] [--max N]  # 媒讯助手/Chrome 采小红书
-  python skillfeed.py publish-site [--out DIR]  # 导出静态站（GitHub Pages）
+  python skillfeed.py publish-site [--out DIR]  # 导出静态站（GitHub Pages）+ Agent Surface
+  python skillfeed.py publish-geo [--out DIR] [--full]  # 只重生 /llms.txt 等 GEO 文件
   python skillfeed.py api [--host HOST] [--port N]  # 云端 API：登录 + UGC
   python skillfeed.py backup-db  # 备份用户库 SQLite（户口/帖子账本）
   python skillfeed.py serve [--port N]
@@ -45,6 +46,7 @@ import feedback
 import feed_dashboard
 import feed_pack
 import gates
+import geo
 import github_search
 import hellogithub
 import i18n
@@ -810,10 +812,41 @@ def cmd_publish_site(argv: list[str]) -> int:
         "demo assets are not licensed for commercial resale.\n",
         encoding="utf-8",
     )
+    geo_paths = geo.write_geo_site(out, feed, full=not preview)
     print(f"[publish-site] wrote {out.resolve()}/index.html (full web, {mode})")
     print(f"[publish-site] wrote {out.resolve()}/embed.html (lite embed, {mode})")
     print(f"[publish-site] items={len(published.get('items') or [])} "
           f"corpus={len(published.get('corpus') or [])} mode={mode}")
+    print(f"[publish-site] geo={', '.join(p.name for p in geo_paths)}")
+    return 0
+
+
+def cmd_publish_geo(argv: list[str]) -> int:
+    """只重生 Agent Surface 文件，不改 index.html。"""
+    refresh_paths()
+    out = Path("site")
+    full = False
+    i = 0
+    while i < len(argv):
+        if argv[i] in ("--out", "-o") and i + 1 < len(argv):
+            out = Path(argv[i + 1])
+            i += 2
+            continue
+        if argv[i] == "--full":
+            full = True
+            i += 1
+            continue
+        print(f"unknown arg: {argv[i]}", file=sys.stderr)
+        return 2
+    feed: dict = {"items": [], "generated_at": datetime.now(timezone.utc).isoformat()}
+    if FEED_JSON.exists():
+        try:
+            feed = json.loads(FEED_JSON.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"bad feed.json: {e}", file=sys.stderr)
+            return 1
+    written = geo.write_geo_site(out, feed, full=full)
+    print(f"[publish-geo] wrote {len(written)} files in {out.resolve()} full={full}")
     return 0
 
 
@@ -1167,6 +1200,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_feedback(rest)
     if cmd == "publish-site":
         return cmd_publish_site(rest)
+    if cmd == "publish-geo":
+        return cmd_publish_geo(rest)
     if cmd == "api":
         return cmd_api(rest)
     if cmd == "backup-db":

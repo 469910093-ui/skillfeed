@@ -154,6 +154,15 @@ class TestLoginGate(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, 302)
 
+    def test_geo_surface_is_public_and_ops_is_not(self):
+        """Agent Surface 免登录；运营面仍必须挡着。"""
+        self.assertEqual(self.client.get("/llms.txt").status_code, 200)
+        self.assertTrue(self.client.get("/llms.txt").text.startswith("# SkillFeeder"))
+        self.assertEqual(self.client.get("/about.md").status_code, 200)
+        self.assertEqual(self.client.get("/api/geo/openapi.json").status_code, 200)
+        self.assertEqual(self.client.get("/op").status_code, 302)
+        self.assertEqual(self.client.get("/admin").status_code, 302)
+
     def test_gate_off_lets_anonymous_through(self):
         """REQUIRE_LOGIN=0 时不拦 —— 也就是说上面那些 302 真的来自门禁。"""
         app = server_app.create_app(_settings(self.tmp.name, require_login=False))
@@ -1197,6 +1206,7 @@ class TestAdminSite(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         cfg = r.json()["config"]
         self.assertIn("slogan", cfg)
+        self.assertEqual(cfg["slogan"], "每刷一下，就快人一步")
         self.assertNotIn("review_webhook", cfg)
 
     def test_operator_can_save_copy_and_webhook(self):
@@ -1343,6 +1353,64 @@ class TestIdentityBind(unittest.TestCase):
         self.assertGreaterEqual(r.json()["count"], 1)
         stats = self.client.get("/api/op/stats").json()
         self.assertGreaterEqual(stats["backup"]["count"], 1)
+
+
+@unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")
+class TestGeoCatalogApi(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        feed_path = Path(self.tmp.name) / "feed.json"
+        feed_path.write_text(json.dumps({
+            "items": [{
+                "full_name": "acme/weekly-skill",
+                "name": "weekly-skill",
+                "description": "make a weekly report",
+                "url": "https://github.com/acme/weekly-skill",
+                "stars": 42,
+                "personal_score": 0.99,
+                "rank_why": "secret ranking",
+            }],
+        }), encoding="utf-8")
+        self.settings = _settings(self.tmp.name, official_feed_file=feed_path)
+        self.client = TestClient(
+            server_app.create_app(self.settings), follow_redirects=False,
+        )
+
+    def tearDown(self):
+        try:
+            self.tmp.cleanup()
+        except PermissionError:
+            pass
+
+    def test_search_returns_whitelist_only(self):
+        r = self.client.get("/api/geo/skills?q=weekly%20report")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertGreaterEqual(data["total"], 1)
+        item = data["items"][0]
+        self.assertEqual(item["full_name"], "acme/weekly-skill")
+        self.assertNotIn("personal_score", item)
+        self.assertNotIn("rank_why", json.dumps(data))
+        catalog = self.client.get("/catalog.json").json()
+        self.assertEqual(catalog["items"][0]["full_name"], "acme/weekly-skill")
+        self.assertNotIn("secret ranking", json.dumps(catalog))
+
+    def test_detail_and_miss(self):
+        ok = self.client.get("/api/geo/skills/acme/weekly-skill")
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.json()["item"]["full_name"], "acme/weekly-skill")
+        miss = self.client.get("/api/geo/skills/nope/missing")
+        self.assertEqual(miss.status_code, 404)
+
+    def test_rate_limit_is_explicit(self):
+        app = self.client.app
+        app.state.geo_limiter.max_per_ip = 2
+        app.state.geo_limiter.reset()
+        self.assertEqual(self.client.get("/api/geo/skills").status_code, 200)
+        self.assertEqual(self.client.get("/api/geo/skills").status_code, 200)
+        limited = self.client.get("/api/geo/skills")
+        self.assertEqual(limited.status_code, 429)
+        self.assertEqual(limited.json()["error"], "rate_limited")
 
 
 if __name__ == "__main__":

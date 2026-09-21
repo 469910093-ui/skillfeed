@@ -143,3 +143,18 @@ class EventLimiter:
 
     def reset(self) -> None:
         self._window.reset()
+
+
+class GeoLimiter:
+    """公开目录查询限流。超限明确 429：Agent 需要知道该停，不是静默空结果。"""
+
+    def __init__(self, *, window_s: float = 60.0, max_per_ip: int = 60) -> None:
+        self.window_s = float(window_s)
+        self.max_per_ip = int(max_per_ip)
+        self._window = SlidingWindow(self.window_s)
+
+    def allow(self, ip: str) -> bool:
+        return self._window.check(f"geo:{ip or 'unknown'}", self.max_per_ip) > 0
+
+    def reset(self) -> None:
+        self._window.reset()

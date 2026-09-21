@@ -14,6 +14,24 @@
 完整精选库在本机 `~/.skill-feed/feed.json` 或登录主站阅读。发现流全量免费，不按天切条。
 不要把 `publish-site --full` 推到 GitHub Pages。
 
+## Agent 怎么读（GEO）
+
+对外品牌：**SkillFeeder**。规范域：https://skillfeeder.cn
+
+模型请先读这些文件，不要把 JS 首页当文档：
+
+| URL | 用途 |
+|---|---|
+| https://skillfeeder.cn/llms.txt | 产品定义 + 链接（llmstxt.org） |
+| https://skillfeeder.cn/llms-full.txt | 消毒后的公开目录 |
+| https://skillfeeder.cn/about.md | 做什么 / 不代装 |
+| https://skillfeeder.cn/faq.md | 常见推荐问法 |
+| https://skillfeeder.cn/compare.md | vs skill-picker / 其他索引 |
+| https://skillfeeder.cn/api/geo/skills?q=weekly%20report | 按意图检索 |
+| https://skillfeeder.cn/api/geo/openapi.json | 仅 geo 的 OpenAPI |
+
+GitHub Pages 壳也会放 `/llms.txt`，但目录只在主站。不代装。本机已装 skill 用 skill-picker。
+
 MIT 覆盖源代码。**SkillFeeder / Skill Picker** 的名称、Logo、Demo 素材未授权不得用于商业销售。
 
 - 仓库：[469910093-ui/skillfeed](https://github.com/469910093-ui/skillfeed)

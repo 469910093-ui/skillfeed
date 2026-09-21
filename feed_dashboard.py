@@ -20,6 +20,7 @@ import json
 import re
 from pathlib import Path
 
+import geo
 import scene
 
 
@@ -505,6 +506,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{page_title}</title>
+{geo.html_head_tags()}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -591,12 +593,10 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     font-family: var(--logo);
     font-size: .8rem;
     font-weight: 650;
-    line-height: 1.2;
-    letter-spacing: .08em;
+    line-height: 1.25;
+    letter-spacing: .03em;
     color: var(--ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: 22rem;
   }}
   /* Skill 实心海军蓝；Feeder 才是 logo 那道紫→薄荷。clip 只挂在 .feeder 上，
      .logo 本身仍是实心字，安卓 WebView 把 clip 弄丢时至少 Skill 还在。 */
@@ -1576,6 +1576,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 </style>
 </head>
 <body class="variant-{variant}">
+  {geo.noscript_html()}
   <div class="shell">
     <header class="topbar">
       <div class="top-row">

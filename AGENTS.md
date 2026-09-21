@@ -48,14 +48,16 @@ python skillfeed.py serve      # 竖滑信息流（会自动 build）
 - `python skillfeed.py bitable sync` — pull → 重跑 i18n → push，一条命令走完
 - `python skillfeed.py bitable dedupe` — 清掉唯一键重复的行
 - `python skillfeed.py corpus [--max-issues N]`
-- `python skillfeed.py publish-site [--out site]` — 导出 GitHub Pages 静态站
-- `python skillfeed.py api [--port 8787]` — 云端 API（登录 + UGC，需 `requirements-server.txt`）
+- `python skillfeed.py publish-site [--out site]` — 导出静态站 + Agent Surface（`llms.txt` 等）
+- `python skillfeed.py publish-geo [--out site] [--full]` — 只重生 GEO 文件
+- `python skillfeed.py api [--port 8787]` — 云端 API（登录 + UGC + `/api/geo`，需 `requirements-server.txt`）
 - `python skillfeed.py serve [--port 8473]`
 - `python skillfeed.py check`
 - `python skillfeed.py feedback`
 
 公开站：Actions 工作流 `Refresh & Pages` 每 6 小时 refresh 并部署到  
-`https://469910093-ui.github.io/skillfeed/`（`SKILLFEED_HOME` 可覆盖数据目录）。
+`https://469910093-ui.github.io/skillfeed/`（`SKILLFEED_HOME` 可覆盖数据目录）。  
+主站 Agent Surface：`https://skillfeeder.cn/llms.txt`（给模型读，不含打分）。产品 skill 在仓库根 `SKILL.md`。详见 PRD §6.3。
 
 UGC API：`server/`（FastAPI + SQLite）。本地可先 `SKILLFEED_DEV_AUTH=1`，生产配 GitHub OAuth（见 `.env.example`）。`/auth/github` 必须先回 200 中转页再跳 GitHub，禁止对授权页直接 302（手机 WebView 会丢 state Cookie）。微信/小红书/抖音内置浏览器完成不了 GitHub 登录，须 Safari/Chrome。
 
@@ -106,6 +108,12 @@ python scripts/xhs_bitable_loop.py audit-stars
 4. skill-feed 再按 `min_stars`（默认 20）+ `SKILL.md` 等门槛从底表筛进 Feed
 
 底表全量导出可用 `export_to_bitable.py --scope full`（这是底表使命）。公开 Feed 漏斗仍看 `--scope feed`，勿把两者当成同一份清单。
+
+## 场景包装配（打包 Skill）
+
+用户说「打包 skill / 场景包 / 按使用场景拆」时，走 `docs/packs/PACKAGING.workflow.md`，Agent 先读 `.cursor/skills/packaging-scene-skills`。  
+采集 → 本地编目 → 打标（点名/仅流程/待补采）→ 飞书 `包-*` 表 → 要卖再写 HOWTO。  
+这与资源清单底表不是同一张表；未点名不得编造 Skill 名。
 
 ## 注意
 
