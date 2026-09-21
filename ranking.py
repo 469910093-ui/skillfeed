@@ -153,6 +153,12 @@ DEFAULTS: dict[str, Any] = {
         "relevance_bucket": 0.1,
         "min_relevance": 0.02,
     },
+    # 路径判断：不改 G/P/F/N。只在近邻同分里换二次键，冲突则 sticky。
+    "path_judgment": {
+        "enabled": True,
+        "tie_epsilon": 0.03,
+        "min_confidence": 0.55,
+    },
     "ratelimit": {
         "window_s": 300,
         "max_events_per_ip": 600,

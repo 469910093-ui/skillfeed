@@ -204,7 +204,12 @@ def extract_repos(text: str) -> list[str]:
 
 
 def gh_api_repo(full_name: str) -> dict | None:
-    p = subprocess.run(["gh", "api", f"repos/{full_name}"], capture_output=True)
+    try:
+        from gh_validate import validate_github_full_name
+        full_name = validate_github_full_name(full_name)
+    except Exception:  # noqa: BLE001
+        return None
+    p = subprocess.run(["gh", "api", f"repos/{full_name}"], capture_output=True, timeout=30)
     if p.returncode != 0:
         return None
     return json.loads(p.stdout.decode("utf-8", errors="replace"))

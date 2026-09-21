@@ -143,10 +143,11 @@ def soft_skills_from_corpus(
         seen.add(key)
         sec = c.get("hg_section") or ""
         kind = c.get("kind") or ""
-        if sec != "Skills" and kind != "skill":
+        if sec != "Skills" and kind not in ("skill", "mcp"):
             continue
         row = dict(c)
-        row["kind"] = "skill"
+        if kind != "mcp":
+            row["kind"] = "skill"
         row["from_corpus"] = True
         row["soft"] = True
         row.setdefault("id", key)

@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkillFeeder · 连接两端的人</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* ===========================================
+           THEME — SkillFeeder 品牌令牌
+           紫→青→薄荷只涂 .feeder 字标
+           =========================================== */
+        :root {
+            --chassis: #0c1020;
+            --slide-bg: #f4f7ff;
+            --stage-bg: #0c1020;
+            --ink: #0a1848;
+            --muted: #717171;
+            --line: #cfd6ea;
+            --accent: #0d7377;
+            --accent-strong: #115e59;
+            --brand-purple: #9860e7;
+            --brand-cyan: #49aaeb;
+            --brand-mint: #64e2d4;
+            --brand-grad: linear-gradient(90deg, #9860e7, #49aaeb, #64e2d4);
+            --b: #075985;
+            --b-mid: #0369a1;
+            --c: #854d0e;
+            --c-mid: #a16207;
+            --paper: #ffffff;
+            --font-display: "Outfit", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+            --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --duration-normal: 0.6s;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* ===========================================
+           FIXED 16:9 STAGE (viewport-base.css 全文)
+           =========================================== */
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: var(--stage-bg, #000);
+        }
+
+        .deck-viewport {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            background: var(--stage-bg, #000);
+        }
+
+        .deck-stage {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 1920px;
+            height: 1080px;
+            overflow: hidden;
+            transform-origin: 0 0;
+            background: var(--slide-bg, #fff);
+        }
+
+        .slide {
+            position: absolute;
+            inset: 0;
+            width: 1920px;
+            height: 1080px;
+            overflow: hidden;
+            display: block;
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
+            background: var(--slide-bg, #fff);
+        }
+
+        .slide.active,
+        .slide.visible {
+            visibility: visible;
+            opacity: 1;
+            pointer-events: auto;
+            z-index: 1;
+        }
+
+        img,
+        video,
+        canvas,
+        svg {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .deck-controls {
+            position: fixed;
+            left: 50%;
+            bottom: 22px;
+            transform: translateX(-50%);
+            z-index: 1000;
+        }
+
+        @media print {
+            html,
+            body {
+                width: 1920px;
+                height: auto;
+                overflow: visible;
+                background: #fff;
+            }
+
+            .deck-viewport {
+                position: static;
+                overflow: visible;
+                background: #fff;
+            }
+
+            .deck-stage {
+                position: static;
+                width: auto;
+                height: auto;
+                transform: none !important;
+                background: none;
+            }
+
+            .slide {
+                position: relative;
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+                width: 1920px;
+                height: 1080px;
+                break-after: page;
+                page-break-after: always;
+            }
+
+            .slide:last-child {
+                break-after: auto;
+                page-break-after: auto;
+            }
+
+            .deck-controls {
+                display: none !important;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.2s !important;
+            }
+        }
+
+        /* ===========================================
+           SLIDE SURFACE
+           =========================================== */
+        .slide {
+            color: var(--ink);
+            font-family: var(--font-body);
+            background:
+                radial-gradient(ellipse 900px 520px at 8% 110%, rgba(13, 115, 119, 0.10), transparent 60%),
+                radial-gradient(ellipse 720px 480px at 96% -8%, rgba(152, 96, 231, 0.12), transparent 58%),
+                var(--slide-bg);
+        }
+
+        .slide::after {
+            content: "";
+            position: absolute;
+            left: 80px;
+            right: 80px;
+            bottom: 0;
+            height: 6px;
+            background: linear-gradient(90deg, var(--c-mid), var(--accent), var(--b-mid));
+        }
+
+        .pad {
+            position: absolute;
+            inset: 64px 80px 64px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .kicker {
+            font-family: var(--font-display);
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 22px;
+        }
+
+        .kicker.b { color: var(--b-mid); }
+        .kicker.c { color: var(--c-mid); }
+
+        h1, h2 {
+            font-family: var(--font-display);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.08;
+        }
+
+        h1 { font-size: 88px; line-height: 1.12; }
+        h2 { font-size: 58px; max-width: 1600px; line-height: 1.18; }
+
+        .lead {
+            margin-top: 28px;
+            font-size: 32px;
+            line-height: 1.45;
+            color: var(--ink);
+            max-width: 1480px;
+        }
+
+        .muted { color: var(--muted); }
+
+        .wordmark {
+            font-family: var(--font-display);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+        }
+
+        .feeder {
+            background-image: var(--brand-grad);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+        }
+
+        /* ===========================================
+           REVEAL
+           =========================================== */
+        .reveal {
+            opacity: 0;
+            transform: translateY(28px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .slide.visible .reveal {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .slide.visible .reveal:nth-child(1) { transition-delay: 0.05s; }
+        .slide.visible .reveal:nth-child(2) { transition-delay: 0.14s; }
+        .slide.visible .reveal:nth-child(3) { transition-delay: 0.23s; }
+        .slide.visible .reveal:nth-child(4) { transition-delay: 0.32s; }
+        .slide.visible .reveal:nth-child(5) { transition-delay: 0.41s; }
+        .slide.visible .d1 { transition-delay: 0.12s; }
+        .slide.visible .d2 { transition-delay: 0.22s; }
+        .slide.visible .d3 { transition-delay: 0.32s; }
+        .slide.visible .d4 { transition-delay: 0.42s; }
+
+        /* ===========================================
+           CARDS / GRIDS
+           =========================================== */
+        .pair {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 36px;
+            margin-top: 28px;
+            flex: 1;
+        }
+
+        .trio {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+            gap: 28px;
+            margin-top: 28px;
+            flex: 1;
+        }
+
+        .card {
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 28px;
+            padding: 40px 42px;
+            box-shadow: 0 18px 40px rgba(10, 24, 72, 0.04);
+        }
+
+        .card h3 {
+            font-family: var(--font-display);
+            font-size: 34px;
+            font-weight: 800;
+            margin-bottom: 18px;
+        }
+
+        .card p, .card li {
+            font-size: 26px;
+            line-height: 1.5;
+        }
+
+        .card ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .card.shore-c { border-top: 8px solid var(--c-mid); }
+        .card.shore-b { border-top: 8px solid var(--b-mid); }
+        .card.shore-mid { border-top: 8px solid var(--accent); }
+
+        .tag {
+            display: inline-block;
+            font-family: var(--font-display);
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 6px 12px;
+            border-radius: 999px;
+            margin-bottom: 16px;
+        }
+
+        .tag.c { background: #fef3c7; color: var(--c); }
+        .tag.b { background: #e0f2fe; color: var(--b); }
+        .tag.m { background: #d1fae5; color: var(--accent-strong); }
+
+        .pain-list {
+            margin-top: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+        }
+
+        .pain-list li {
+            list-style: none;
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: 28px;
+            align-items: baseline;
+            font-size: 32px;
+            line-height: 1.35;
+        }
+
+        .pain-list strong {
+            font-family: var(--font-display);
+            font-size: 28px;
+            color: var(--accent);
+        }
+
+        .solve-list {
+            margin-top: 32px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 22px 36px;
+        }
+
+        .solve-list li {
+            list-style: none;
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 22px;
+            padding: 26px 30px;
+            font-size: 26px;
+            line-height: 1.45;
+            overflow-wrap: break-word;
+        }
+
+        .solve-list b {
+            display: block;
+            font-family: var(--font-display);
+            font-size: 22px;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        /* ===========================================
+           BRIDGE DIAGRAM
+           =========================================== */
+        .bridge {
+            margin-top: 28px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 400px minmax(0, 1fr);
+            gap: 24px;
+            align-items: stretch;
+            flex: 1;
+        }
+
+        .bridge .span {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+        }
+
+        .bridge .span::before,
+        .bridge .span::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            width: 36px;
+            height: 4px;
+            background: var(--accent);
+        }
+
+        .bridge .span::before { left: -8px; }
+        .bridge .span::after { right: -8px; }
+
+        .pill-logo {
+            width: 132px;
+            height: 132px;
+            object-fit: contain;
+            margin-bottom: 12px;
+        }
+
+        /* ===========================================
+           COVER / CLOSE
+           =========================================== */
+        .cover-grid {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 40px;
+            height: 100%;
+            align-items: center;
+        }
+
+        .cover-copy h1 { font-size: 96px; }
+        .cover-copy .lead { font-size: 36px; max-width: 860px; }
+        .cover-copy .foot {
+            margin-top: 48px;
+            font-size: 26px;
+            color: var(--muted);
+        }
+
+        .mascot-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mascot {
+            width: 480px;
+            height: 480px;
+            object-fit: contain;
+            filter: drop-shadow(0 28px 50px rgba(10, 24, 72, 0.12));
+        }
+
+        .quote {
+            margin-top: 40px;
+            font-size: 48px;
+            line-height: 1.35;
+            font-weight: 700;
+            max-width: 1500px;
+        }
+
+        /* ===========================================
+           PRODUCT SHOTS — 真站截图
+           =========================================== */
+        .product-hero,
+        .split-ui {
+            display: grid;
+            gap: 40px;
+            align-items: center;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .product-hero {
+            grid-template-columns: 460px minmax(0, 1fr);
+        }
+
+        .split-ui {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 800px);
+        }
+
+        .product-hero h2,
+        .split-ui h2 {
+            font-size: 48px;
+        }
+
+        .stack {
+            list-style: none;
+            margin-top: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .stack li {
+            font-size: 26px;
+            line-height: 1.4;
+        }
+
+        .stack b {
+            display: block;
+            font-family: var(--font-display);
+            color: var(--accent);
+            font-size: 20px;
+            margin-bottom: 4px;
+        }
+
+        .frame {
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 22px 50px rgba(10, 24, 72, 0.10);
+        }
+
+        .frame img {
+            width: 100%;
+            height: 780px;
+            object-fit: cover;
+            object-position: top center;
+            display: block;
+            background: #f4f7ff;
+        }
+
+        .frame.card-shot img {
+            height: 760px;
+            object-fit: contain;
+            object-position: top center;
+            background: #fff;
+        }
+
+        .frame figcaption {
+            padding: 12px 18px 16px;
+            font-size: 18px;
+            color: var(--muted);
+            border-top: 1px solid var(--line);
+        }
+
+        /* ===========================================
+           CHROME (outside stage)
+           =========================================== */
+        .deck-progress {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.08);
+            z-index: 1002;
+        }
+
+        .deck-progress > i {
+            display: block;
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, #9860e7, #49aaeb, #64e2d4);
+        }
+
+        .deck-pager {
+            position: fixed;
+            right: 24px;
+            bottom: 22px;
+            z-index: 1002;
+            color: #d7deea;
+            font-family: var(--font-display);
+            font-size: 13px;
+            letter-spacing: 0.08em;
+        }
+
+        .notes-drawer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            max-height: 38vh;
+            background: #0c1020;
+            color: #eef2fb;
+            padding: 22px 32px 36px;
+            z-index: 2000;
+            transform: translateY(110%);
+            transition: transform 0.28s var(--ease-out-expo);
+            font-size: 16px;
+            line-height: 1.55;
+        }
+
+        .notes-drawer.open { transform: translateY(0); }
+        .notes-drawer h4 {
+            font-family: var(--font-display);
+            font-size: 13px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #64e2d4;
+            margin-bottom: 8px;
+        }
+
+        .edit-hotzone {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 80px;
+            height: 80px;
+            z-index: 10000;
+            cursor: pointer;
+        }
+
+        .edit-toggle {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 10001;
+            border: 0;
+            border-radius: 999px;
+            padding: 8px 14px;
+            background: #0a1848;
+            color: #fff;
+            font-family: var(--font-display);
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .edit-toggle.show,
+        .edit-toggle.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        body.editing [contenteditable="true"] {
+            outline: 1px dashed var(--accent);
+            outline-offset: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="edit-hotzone" aria-hidden="true"></div>
+    <button class="edit-toggle" id="editToggle" type="button" title="编辑模式 (E)">编辑</button>
+
+    <div class="deck-viewport">
+        <main class="deck-stage" id="deckStage">
+
+            <!-- 1 封面 -->
+            <section class="slide visible active" data-notes="封面钩子先让人一秒听懂：我们把 GitHub 做成小红书一样有趣。桥的定义放到下一页再展开。">
+                <div class="pad cover-grid">
+                    <div class="cover-copy">
+                        <p class="kicker reveal">2026</p>
+                        <h1 class="wordmark reveal">Skill<span class="feeder">Feeder</span></h1>
+                        <p class="lead reveal">把 GitHub 做成小红书一样有趣</p>
+                        <p class="foot reveal">把<strong>做 Skill 的人</strong>，和<strong>需要被解决的人</strong>，连在一起。<br>每刷一下，就快人一步 · 不代装 · 浏览不设墙</p>
+                    </div>
+                    <div class="mascot-wrap reveal d3">
+                        <img class="mascot" src="assets/feide.png" alt="肥嘚">
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2 一座桥 -->
+            <section class="slide" data-notes="这一页只立定义。目录站堆仓库；我们堆的是两端的人。后面所有问题和解法，都按 C 端用户、B 端开发者来拆，最后收回到桥。">
+                <div class="pad">
+                    <p class="kicker reveal">定位</p>
+                    <h2 class="reveal">我们不是目录。<br>我们是一座桥。</h2>
+                    <p class="quote reveal">一边是岗位上的真问题，一边是散落在 GitHub 上的 Skill。<br>SkillFeeder 站在中间，把人接到一起。</p>
+                </div>
+            </section>
+
+            <!-- 3 真站 -->
+            <section class="slide" data-notes="停一下，让听众看清：这不是示意稿。刷一刷，最新 skills 手到擒来。左边导航、顶上搜索、中间卡片、底下打开 GitHub，就是现在的 skillfeeder.cn。">
+                <div class="pad product-hero">
+                    <div>
+                        <p class="kicker reveal">刷一刷</p>
+                        <h2 class="reveal">最新 skills 手到擒来</h2>
+                        <p class="lead reveal" style="font-size:28px">skillfeeder.cn 线上站。搜索意图，下滑卡片，主按钮只有「打开 GitHub」。</p>
+                    </div>
+                    <figure class="frame reveal d2">
+                        <img src="assets/ui-discover.png" alt="SkillFeeder 发现流真站截图">
+                        <figcaption>发现 · 2026-09-19 截自 skillfeeder.cn</figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- 4 两端是谁 -->
+            <section class="slide" data-notes="先让听众看见两端。C 不是『所有网民』，是已经在用 AI 编辑器、卡在下一件事先装哪条的人。B 不是大厂市场部，是做好了仓库、缺分发的 Builder。">
+                <div class="pad">
+                    <p class="kicker reveal">两端是谁</p>
+                    <h2 class="reveal">一边要被解决，一边要被看见。</h2>
+                    <div class="pair">
+                        <article class="card shore-c reveal d1">
+                            <span class="tag c">C 端 · 需求</span>
+                            <h3>需要被解决的用户</h3>
+                            <p>刚装上 Cursor / Claude Code 的知识工作者、创作者、独立开发者。他们要的不是再多一个仓库，是「这件事有没有现成 Skill」。 </p>
+                        </article>
+                        <article class="card shore-b reveal d2">
+                            <span class="tag b">B 端 · 供给</span>
+                            <h3>需要宣发的开发者</h3>
+                            <p>做出了 Skill / MCP 的 Builder。仓库在 GitHub，用户在小红书和编辑器里。他们缺的是被看见、被理解、被关注的入口。</p>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4 C 问题 -->
+            <section class="slide" data-notes="C 端四记：散、选、懂、用。用用户原话，不要讲架构。装了不会用，是后面知识付费的伏笔。">
+                <div class="pad">
+                    <p class="kicker c reveal">C 端问题</p>
+                    <h2 class="reveal">用户不是缺仓库，是不知道怎么选、缺哪些</h2>
+                    <ul class="pain-list">
+                        <li class="reveal d1"><strong>找不到</strong><span>Skill 散在 GitHub、HelloGitHub、小红书和各知识库，不会写搜索式。</span></li>
+                        <li class="reveal d2"><strong>选不准</strong><span>星星多不等于能用；awesome 列表太长，当下意图对不上。</span></li>
+                        <li class="reveal d3"><strong>看不懂</strong><span>英文 README 太长，三秒里答不出「解决什么、适不适合我」。</span></li>
+                        <li class="reveal d4"><strong>不会用</strong><span>收藏了三十个，岗位上的一件事还是没做成。</span></li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- 6 C 解法 -->
+            <section class="slide" data-notes="指右边这张真卡：封面、解决、亮点、适合谁、打开 GitHub。三秒决策不是口号，是页面结构。本机匹配和场景包是过桥之后的事。">
+                <div class="pad split-ui">
+                    <div>
+                        <p class="kicker c reveal">C 端解法</p>
+                        <h2 class="reveal">先了解能解决什么问题，<br>再决定用不用</h2>
+                        <ul class="stack">
+                            <li class="reveal d1"><b>发现</b>竖滑卡片，3 秒看清解决 / 亮点 / 适合谁</li>
+                            <li class="reveal d2"><b>对准</b>意图搜索 + 主题分类 + 关注行业</li>
+                            <li class="reveal d3"><b>行动</b>主按钮只有「打开 GitHub」，自己装，不代装</li>
+                            <li class="reveal d4"><b>做成</b>本机用 skill-picker；岗位事用场景包带练</li>
+                        </ul>
+                    </div>
+                    <figure class="frame card-shot reveal d2">
+                        <img src="assets/ui-card.png" alt="真实卡片：解决、亮点、打开 GitHub">
+                        <figcaption>发现流卡片 · 浅色区只读，底下才是 CTA</figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- 6 B 问题 -->
+            <section class="slide" data-notes="B 端痛点对准『宣发』。他们不是不会写代码，是作品沉在搜索结果里，中文用户看不到，也没有关注关系。">
+                <div class="pad">
+                    <p class="kicker b reveal">B 端问题</p>
+                    <h2 class="reveal">开发者不是缺作品，是缺被看见。</h2>
+                    <ul class="pain-list">
+                        <li class="reveal d1"><strong>没入口</strong><span>做好了只能等 GitHub 搜索，或求人转帖。没有面向使用者的货架。</span></li>
+                        <li class="reveal d2"><strong>没翻译</strong><span>仓库说明写给同行，C 端看不懂「这能解决我什么问题」。</span></li>
+                        <li class="reveal d3"><strong>隔着河</strong><span>中文热议在小红书，仓在 GitHub，两边对不上号。</span></li>
+                        <li class="reveal d4"><strong>没关系</strong><span>没有人关注 Builder，出了新版本也喂不到老用户嘴里。</span></li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- 8 B 解法 -->
+            <section class="slide" data-notes="指右边发布页：只填 GitHub 链接、标题、文案。不传 zip，不代装。这就是 B 端走上桥的入口。">
+                <div class="pad split-ui">
+                    <div>
+                        <p class="kicker b reveal">B 端解法</p>
+                        <h2 class="reveal">给他一条通往使用者的路。</h2>
+                        <ul class="stack">
+                            <li class="reveal d1"><b>上架</b>登录后贴 GitHub 链接，过审进入混排 Feed</li>
+                            <li class="reveal d2"><b>被读懂</b>卡片替他把仓译成「解决什么、有何亮点」</li>
+                            <li class="reveal d3"><b>被关注</b>发布者主页 + Builder 环，更新喂到关注者</li>
+                            <li class="reveal d4"><b>被核验</b>小红书热议校验回真实仓库，不是空安利</li>
+                        </ul>
+                    </div>
+                    <figure class="frame reveal d2">
+                        <img src="assets/ui-publish.png" alt="SkillFeeder 发布页真站截图">
+                        <figcaption>发布 · 只填链接 / 标题 / 文案，提交进审核</figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- 8 轻量交付 -->
+            <section class="slide" data-notes="轻量交付：把需求和供给端快速对齐。用手指从左指到右：用户刷到卡，打开 GitHub；开发者从右边走进来被看见。中间是门禁，不是大杂烩。不碰安装目录。">
+                <div class="pad">
+                    <p class="kicker reveal">轻量交付</p>
+                    <h2 class="reveal">把需求和供给端快速对齐</h2>
+                    <div class="bridge">
+                        <article class="card shore-c reveal d1">
+                            <span class="tag c">C 走上桥</span>
+                            <h3>刷 · 搜 · 关注</h3>
+                            <p>带着「周报 / 去 AI 味」进来，3 秒决定要不要打开 GitHub。</p>
+                        </article>
+                        <div class="span card shore-mid reveal d2">
+                            <img class="pill-logo" src="assets/feide.png" alt="">
+                            <h3>SkillFeeder</h3>
+                            <p>多源 → 底表 → 门禁 → Feed<br>只连接，不代装</p>
+                        </div>
+                        <article class="card shore-b reveal d3">
+                            <span class="tag b">B 走上桥</span>
+                            <h3>发布 / 被关注</h3>
+                            <p>把仓交进来，过审上架，被需要的人看见。</p>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 9 壁垒 -->
+            <section class="slide" data-notes="诚实：竖滑能被抄。难抄的是管道、标准和闭环。场景包契约是以后卖结果的墙。关注和 UGC 现在还薄，别吹成已经厚了。">
+                <div class="pad">
+                    <p class="kicker reveal">壁垒</p>
+                    <h2 class="reveal">UI 能抄。桥的路基抄不走。</h2>
+                    <ul class="solve-list">
+                        <li class="reveal d1"><b>管道</b>多源采集 + 飞书底表 + 假刷新禁止，先求准再上架</li>
+                        <li class="reveal d2"><b>标准</b>门禁、场景、卡片抽取；场景包还有冷用户十分钟第一胜</li>
+                        <li class="reveal d3"><b>闭环</b>发现在桥上，安装回本机 picker，职责不混</li>
+                        <li class="reveal d4"><b>关系</b>关注 Builder / 行业，让下一次供给自己走过来</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- 11 变现 -->
+            <section class="slide" data-notes="钱出在桥上，不砍免费通行。广告卖注意力，场景包卖做成一件事。浏览设墙已经试过并废止，不要再讲成订阅才能刷。">
+                <div class="pad">
+                    <p class="kicker reveal">长期 · 变现</p>
+                    <h2 class="reveal">桥免费通行。<br>钱出在注意力，和过桥之后的结果。</h2>
+                    <div class="pair">
+                        <article class="card shore-mid reveal d1">
+                            <span class="tag m">广告 · 桥上</span>
+                            <h3>卖注意力</h3>
+                            <p>原生推广卡、场景栏目冠名、创作者加速位。用户本来就在挑工具，这是高意图库存。标明推广，不买断排序，不裁剪免费 Feed。</p>
+                        </article>
+                        <article class="card shore-c reveal d2">
+                            <span class="tag c">知识付费 · 过桥后</span>
+                            <h3>卖解决方案</h3>
+                            <p>场景包不是 Skill 清单，是「装上就能做成一件岗位上的事」。生活工作提效：纪要 → 待办 → 周报。过不了冷用户十分钟第一胜，不上付款页。</p>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 12 收束 -->
+            <section class="slide" data-notes="收回到人：请 C 来刷，请 B 来发布，请一条场景包去找冷用户。如果这场要合作或资源，把 ask 换成你今天真正要的那一句。">
+                <div class="pad cover-grid">
+                    <div class="cover-copy">
+                        <p class="kicker reveal">下一步</p>
+                        <h2 class="reveal">让两端的人，在桥上相遇</h2>
+                        <p class="lead reveal">C 端来刷、来收藏、来做成一件事。<br>B 端来发布、来被关注、来被读懂。</p>
+                        <p class="foot reveal">Skill<span class="feeder">Feeder</span> · 每刷一下，就快人一步</p>
+                    </div>
+                    <div class="mascot-wrap reveal d3">
+                        <img class="mascot" src="assets/feide.png" alt="肥嘚">
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="deck-progress" aria-hidden="true"><i id="progressBar"></i></div>
+    <div class="deck-pager" id="pager"></div>
+    <aside class="notes-drawer" id="notesDrawer" hidden>
+        <h4>口播提示 · N 开关</h4>
+        <p id="notesText"></p>
+    </aside>
+
+    <script>
+        /* ===========================================
+           SLIDE PRESENTATION CONTROLLER
+           =========================================== */
+        class SlidePresentation {
+            constructor() {
+                this.slides = Array.from(document.querySelectorAll(".slide"));
+                this.currentSlide = 0;
+                this.stage = document.getElementById("deckStage");
+                this.progress = document.getElementById("progressBar");
+                this.pager = document.getElementById("pager");
+                this.notesDrawer = document.getElementById("notesDrawer");
+                this.notesText = document.getElementById("notesText");
+                this.notesOpen = false;
+                this.setupStageScale();
+                this.setupKeyboardNav();
+                this.setupSwipeNav();
+                this.setupWheelNav();
+                this.restoreHash();
+                this.showSlide(this.currentSlide);
+            }
+
+            setupStageScale() {
+                const scale = () => {
+                    const factor = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+                    const x = (window.innerWidth - 1920 * factor) / 2;
+                    const y = (window.innerHeight - 1080 * factor) / 2;
+                    this.stage.style.transform = `translate(${x}px, ${y}px) scale(${factor})`;
+                };
+                scale();
+                window.addEventListener("resize", scale);
+            }
+
+            step(delta) {
+                this.showSlide(this.currentSlide + delta);
+            }
+
+            setupKeyboardNav() {
+                document.addEventListener("keydown", (e) => {
+                    if (e.target && e.target.getAttribute("contenteditable") === "true") return;
+                    if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === " " || e.key === "PageDown") {
+                        e.preventDefault();
+                        this.step(1);
+                    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
+                        e.preventDefault();
+                        this.step(-1);
+                    } else if (e.key === "Home") {
+                        this.showSlide(0);
+                    } else if (e.key === "End") {
+                        this.showSlide(this.slides.length - 1);
+                    } else if (e.key === "f" || e.key === "F") {
+                        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+                        else document.exitFullscreen();
+                    } else if (e.key === "n" || e.key === "N") {
+                        this.toggleNotes();
+                    }
+                });
+            }
+
+            setupSwipeNav() {
+                const threshold = 60;
+                let startX = 0;
+                let startY = 0;
+                let tracking = false;
+
+                const point = (e) => {
+                    if (e.changedTouches && e.changedTouches[0]) {
+                        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+                    }
+                    return { x: e.clientX, y: e.clientY };
+                };
+
+                const begin = (e) => {
+                    if (e.target && e.target.closest && e.target.closest("[contenteditable='true']")) return;
+                    const p = point(e);
+                    startX = p.x;
+                    startY = p.y;
+                    tracking = true;
+                };
+
+                const finish = (e) => {
+                    if (!tracking) return;
+                    tracking = false;
+                    const p = point(e);
+                    const dx = p.x - startX;
+                    const dy = p.y - startY;
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) < threshold) return;
+                    if (Math.abs(dx) >= Math.abs(dy)) {
+                        this.step(dx < 0 ? 1 : -1);
+                    } else {
+                        this.step(dy < 0 ? 1 : -1);
+                    }
+                };
+
+                this.stage.addEventListener("touchstart", begin, { passive: true });
+                this.stage.addEventListener("touchend", finish, { passive: true });
+                this.stage.addEventListener("pointerdown", (e) => {
+                    if (e.pointerType === "mouse" && e.button !== 0) return;
+                    begin(e);
+                });
+                window.addEventListener("pointerup", finish);
+            }
+
+            setupWheelNav() {
+                let locked = false;
+                window.addEventListener("wheel", (e) => {
+                    if (this.notesOpen) return;
+                    if (locked) return;
+                    const dx = e.deltaX;
+                    const dy = e.deltaY;
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+                    locked = true;
+                    if (Math.abs(dx) >= Math.abs(dy)) {
+                        this.step(dx > 0 ? 1 : -1);
+                    } else {
+                        this.step(dy > 0 ? 1 : -1);
+                    }
+                    setTimeout(() => { locked = false; }, 520);
+                }, { passive: true });
+            }
+
+            restoreHash() {
+                const n = parseInt((location.hash || "").replace("#/", ""), 10);
+                if (n >= 1 && n <= this.slides.length) this.currentSlide = n - 1;
+            }
+
+            toggleNotes() {
+                this.notesOpen = !this.notesOpen;
+                this.notesDrawer.hidden = !this.notesOpen;
+                this.notesDrawer.classList.toggle("open", this.notesOpen);
+            }
+
+            showSlide(index) {
+                this.currentSlide = Math.max(0, Math.min(index, this.slides.length - 1));
+                this.slides.forEach((slide, i) => {
+                    slide.classList.toggle("active", i === this.currentSlide);
+                    slide.classList.toggle("visible", i === this.currentSlide);
+                });
+                const n = this.currentSlide + 1;
+                this.progress.style.width = `${(n / this.slides.length) * 100}%`;
+                this.pager.textContent = `${String(n).padStart(2, "0")} / ${String(this.slides.length).padStart(2, "0")}`;
+                this.notesText.textContent = this.slides[this.currentSlide].dataset.notes || "";
+                history.replaceState(null, "", `#/${n}`);
+            }
+        }
+
+        const deck = new SlidePresentation();
+
+        /* ===========================================
+           INLINE EDITING
+           =========================================== */
+        const editor = {
+            isActive: false,
+            key: "sf-pitch-draft-v1",
+            toggleEditMode() {
+                this.isActive = !this.isActive;
+                document.body.classList.toggle("editing", this.isActive);
+                document.getElementById("editToggle").classList.toggle("active", this.isActive);
+                document.querySelectorAll("h1, h2, h3, p, li, .kicker, .foot").forEach((el) => {
+                    el.setAttribute("contenteditable", this.isActive ? "true" : "false");
+                });
+                if (this.isActive) this.restore();
+            },
+            save() {
+                localStorage.setItem(this.key, document.getElementById("deckStage").innerHTML);
+            },
+            restore() {
+                const html = localStorage.getItem(this.key);
+                if (!html) return;
+            }
+        };
+
+        document.getElementById("editToggle").addEventListener("click", () => editor.toggleEditMode());
+        const hotzone = document.querySelector(".edit-hotzone");
+        const editToggle = document.getElementById("editToggle");
+        let hideTimeout = null;
+        const showEdit = () => { clearTimeout(hideTimeout); editToggle.classList.add("show"); };
+        const hideEdit = () => {
+            hideTimeout = setTimeout(() => {
+                if (!editor.isActive) editToggle.classList.remove("show");
+            }, 400);
+        };
+        hotzone.addEventListener("mouseenter", showEdit);
+        hotzone.addEventListener("mouseleave", hideEdit);
+        editToggle.addEventListener("mouseenter", showEdit);
+        editToggle.addEventListener("mouseleave", hideEdit);
+        hotzone.addEventListener("click", () => editor.toggleEditMode());
+        document.addEventListener("keydown", (e) => {
+            if ((e.key === "e" || e.key === "E") && !e.target.getAttribute("contenteditable")) {
+                editor.toggleEditMode();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === "s" && editor.isActive) {
+                e.preventDefault();
+                editor.save();
+            }
+        });
+    </script>
+</body>
+</html>

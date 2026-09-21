@@ -1418,7 +1418,8 @@ def list_site_settings(conn: sqlite3.Connection, *, public_only: bool = False) -
         keys,
     ).fetchall()
     for row in rows:
-        out[row["key"]] = str(row["value"] or "")
+        key = str(row["key"])
+        out[key] = str(row["value"] or "")
     return out
 
 

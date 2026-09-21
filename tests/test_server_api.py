@@ -159,6 +159,10 @@ class TestLoginGate(unittest.TestCase):
         self.assertEqual(self.client.get("/llms.txt").status_code, 200)
         self.assertTrue(self.client.get("/llms.txt").text.startswith("# SkillFeeder"))
         self.assertEqual(self.client.get("/about.md").status_code, 200)
+        about_html = self.client.get("/about.html")
+        self.assertEqual(about_html.status_code, 200)
+        self.assertIn("给发现者", about_html.text)
+        self.assertEqual(self.client.get("/faq.html").status_code, 200)
         self.assertEqual(self.client.get("/api/geo/openapi.json").status_code, 200)
         for path in ("/favicon.ico", "/favicon.png", "/apple-touch-icon.png", "/og.png"):
             with self.subTest(path=path):

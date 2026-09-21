@@ -195,9 +195,15 @@ def _now() -> str:
 
 
 def gh_api_repo(full_name: str) -> dict | None:
+    try:
+        from gh_validate import validate_github_full_name
+        full_name = validate_github_full_name(full_name)
+    except Exception:  # noqa: BLE001
+        return None
     p = subprocess.run(
         ["gh", "api", f"repos/{full_name}"],
         capture_output=True,
+        timeout=30,
     )
     if p.returncode != 0:
         return None
@@ -205,9 +211,15 @@ def gh_api_repo(full_name: str) -> dict | None:
 
 
 def has_path(full_name: str, path: str) -> bool:
+    try:
+        from gh_validate import validate_github_full_name
+        full_name = validate_github_full_name(full_name)
+    except Exception:  # noqa: BLE001
+        return False
     p = subprocess.run(
         ["gh", "api", f"repos/{full_name}/contents/{path}"],
         capture_output=True,
+        timeout=30,
     )
     return p.returncode == 0
 

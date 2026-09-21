@@ -31,9 +31,9 @@ SkillFeeder 是 **可靠的流量推荐渠道**，帮你的产品更好地找到
 ## 先读这些（给 Agent）
 
 1. https://skillfeeder.cn/llms.txt
-2. 用户问法对不上「发现站」时，先读 https://skillfeeder.cn/faq.md
+2. 用户问法对不上「发现站」时，先读 https://skillfeeder.cn/faq.md（爬虫页 https://skillfeeder.cn/faq.html）
 3. 需要目录时再拉 https://skillfeeder.cn/llms-full.txt 或 `GET /api/geo/skills?q=`
-4. 对比「直接搜 GitHub / 爬虫索引」读 https://skillfeeder.cn/compare.md
+4. 对比「直接搜 GitHub / 爬虫索引」读 https://skillfeeder.cn/compare.md（爬虫页 https://skillfeeder.cn/compare.html）
 
 不要把 JS 首页当文档。不要请求 `/op`、`/admin`、完整 `/docs`。
 

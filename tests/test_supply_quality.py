@@ -286,6 +286,12 @@ class TestSoftPoolDoesNotEmitTheSameSkillTwice(unittest.TestCase):
         self.assertEqual(len(out), 2)
         self.assertEqual(len({r["id"] for r in out}), 2)
 
+    def test_mcp_kind_stays_mcp(self):
+        row = self._row("github/github-mcp-server", kind="mcp")
+        out = feed_pack.soft_skills_from_corpus([row], exclude=set(), limit=40)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["kind"], "mcp")
+
 
 class TestVendoredCopiesCollapse(unittest.TestCase):
     """一个仓为了同时伺候 Claude/Codex/Cursor，会把同一份 SKILL.md 摆好几处。"""
@@ -373,6 +379,27 @@ class TestVendoredCopiesCollapse(unittest.TestCase):
             skill_detect._content_digest("x"), skill_detect._content_digest("x"))
         self.assertEqual(
             skill_detect._content_digest(""), skill_detect._content_digest(None))
+
+
+class TestMcpRepoHeuristic(unittest.TestCase):
+    def _fn(self):
+        import sys
+        from pathlib import Path
+
+        scripts = Path(__file__).resolve().parents[1] / "scripts"
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from gate_waytoagi_feed import is_mcp_repo
+
+        return is_mcp_repo
+
+    def test_named_mcp_and_official_servers(self):
+        is_mcp_repo = self._fn()
+        self.assertTrue(is_mcp_repo("github/github-mcp-server", "github-mcp-server", "GitHub official MCP"))
+        self.assertTrue(is_mcp_repo("modelcontextprotocol/servers", "servers", "Model Context Protocol Servers"))
+        self.assertTrue(is_mcp_repo("semgrep/mcp", "mcp", "A MCP server for Semgrep"))
+        self.assertFalse(is_mcp_repo("VoltAgent/awesome-agent-skills", "awesome-agent-skills", "curated agent skills"))
+        self.assertFalse(is_mcp_repo("QwenLM/Qwen-Agent", "Qwen-Agent", "Agent framework built upon Qwen"))
 
 
 if __name__ == "__main__":

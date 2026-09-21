@@ -240,7 +240,7 @@ jobs:
         run: |
           mkdir -p nginx-site
           cp site-full/index.html nginx-site/
-          for f in llms.txt llms-full.txt robots.txt sitemap.xml about.md faq.md compare.md catalog.json og.png favicon.ico favicon.png apple-touch-icon.png; do
+          for f in llms.txt llms-full.txt robots.txt sitemap.xml about.md about.html faq.md faq.html compare.md compare.html catalog.json og.png favicon.ico favicon.png apple-touch-icon.png; do
             test -s "site-full/$f"
             cp "site-full/$f" nginx-site/
           done
@@ -307,7 +307,9 @@ jobs:
           scp -o ConnectTimeout=15 nginx-index/index.html \
             nginx-index/llms.txt nginx-index/llms-full.txt \
             nginx-index/robots.txt nginx-index/sitemap.xml \
-            nginx-index/about.md nginx-index/faq.md nginx-index/compare.md \
+            nginx-index/about.md nginx-index/about.html \
+            nginx-index/faq.md nginx-index/faq.html \
+            nginx-index/compare.md nginx-index/compare.html \
             nginx-index/catalog.json nginx-index/og.png \
             nginx-index/favicon.ico nginx-index/favicon.png \
             nginx-index/apple-touch-icon.png \
@@ -319,15 +321,18 @@ jobs:
              sudo mv /tmp/skillfeed-nginx/robots.txt /var/www/html/robots.txt &&
              sudo mv /tmp/skillfeed-nginx/sitemap.xml /var/www/html/sitemap.xml &&
              sudo mv /tmp/skillfeed-nginx/about.md /var/www/html/about.md &&
+             sudo mv /tmp/skillfeed-nginx/about.html /var/www/html/about.html &&
              sudo mv /tmp/skillfeed-nginx/faq.md /var/www/html/faq.md &&
+             sudo mv /tmp/skillfeed-nginx/faq.html /var/www/html/faq.html &&
              sudo mv /tmp/skillfeed-nginx/compare.md /var/www/html/compare.md &&
+             sudo mv /tmp/skillfeed-nginx/compare.html /var/www/html/compare.html &&
              sudo mv /tmp/skillfeed-nginx/catalog.json /var/www/html/catalog.json &&
              sudo mv /tmp/skillfeed-nginx/og.png /var/www/html/og.png &&
              sudo mv /tmp/skillfeed-nginx/favicon.ico /var/www/html/favicon.ico &&
              sudo mv /tmp/skillfeed-nginx/favicon.png /var/www/html/favicon.png &&
              sudo mv /tmp/skillfeed-nginx/apple-touch-icon.png /var/www/html/apple-touch-icon.png &&
-             sudo chown admin:admin /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/faq.md /var/www/html/compare.md /var/www/html/catalog.json /var/www/html/og.png /var/www/html/favicon.ico /var/www/html/favicon.png /var/www/html/apple-touch-icon.png &&
-             sudo chmod 644 /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/faq.md /var/www/html/compare.md /var/www/html/catalog.json /var/www/html/og.png /var/www/html/favicon.ico /var/www/html/favicon.png /var/www/html/apple-touch-icon.png &&
+             sudo chown admin:admin /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/about.html /var/www/html/faq.md /var/www/html/faq.html /var/www/html/compare.md /var/www/html/compare.html /var/www/html/catalog.json /var/www/html/og.png /var/www/html/favicon.ico /var/www/html/favicon.png /var/www/html/apple-touch-icon.png &&
+             sudo chmod 644 /var/www/html/index.html /var/www/html/llms.txt /var/www/html/llms-full.txt /var/www/html/robots.txt /var/www/html/sitemap.xml /var/www/html/about.md /var/www/html/about.html /var/www/html/faq.md /var/www/html/faq.html /var/www/html/compare.md /var/www/html/compare.html /var/www/html/catalog.json /var/www/html/og.png /var/www/html/favicon.ico /var/www/html/favicon.png /var/www/html/apple-touch-icon.png &&
              test -s /var/www/html/index.html && grep -q "<title>SkillFeeder" /var/www/html/index.html &&
              grep -q "# SkillFeeder" /var/www/html/llms.txt'
 

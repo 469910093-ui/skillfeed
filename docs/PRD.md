@@ -452,6 +452,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 | `/llms.txt` | 所有 Agent | llmstxt.org v2：H1 + 一句话 + 链接。GitHub Pages 壳只指向规范域 |
 | `/llms-full.txt` | 需要目录的 Agent | 消毒后的 Top 200（星数降序）。Pages 壳不带条目 |
 | `/about.md` `/faq.md` `/compare.md` | 引用 / How-to / X vs Y | 纯 Markdown，不依赖 JS |
+| `/about.html` `/faq.html` `/compare.html` | 搜索引擎 / 不会跑 JS 的爬虫 | 与对应 `.md` 同文事实，独立 HTML，不进 Feed JS |
 | `/catalog.json` | 程序读取 | 字段白名单，与预览卡对齐 |
 | `/robots.txt` `/sitemap.xml` | 检索爬虫 | 放行 GPTBot / ClaudeBot / PerplexityBot；挡住 `/op` `/admin` `/auth` |
 | `GET /api/geo/skills?q=` | 按意图检索 | 免登录、限流、无 `rank_debug` |
@@ -466,12 +467,14 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 **首页 SEO（与 Agent 话术同一套定位）：**
 - `<title>`：`SkillFeeder｜已过滤的高星 Agent Skill 推荐`（不要只写品牌名）
 - `<meta name="description">` 用中文：安全/可靠/已过滤高星 + 发布者流量渠道
-- Open Graph / Twitter + `/og.png`；浏览器 tab / 添加到主屏：`/favicon.ico` `/favicon.png` `/apple-touch-icon.png`；JSON-LD（`WebSite` + `SearchAction` + 中文 FAQ）
-- `<noscript>` 用 H1/H2 写发现者与发布者，给不会跑 JS 的爬虫
-- `robots.txt` **放行** `/login` `/publish`（发布者着陆），仍挡住 `/op` `/admin` `/auth`
-- 登录页 / 发布页各自有中文 title + description，方便「skill 怎么推广」收录
+- Open Graph / Twitter + `/og.png`；浏览器 tab / 添加到主屏：`/favicon.ico` `/favicon.png` `/apple-touch-icon.png`
+- JSON-LD：`Organization`（含 `logo` / `sameAs` / `knowsAbout`）+ `SoftwareApplication` + `WebSite`/`SearchAction` + 中文优先 FAQ
+- `<noscript>` 用 H1/H2 写发现者与发布者，并链到 `/about.html` `/faq.html`
+- `robots.txt` **放行** `/login` `/publish` 与 HTML 说明页；显式允许 GPTBot / OAI-SearchBot / ClaudeBot / PerplexityBot / Bytespider 等；仍挡住 `/op` `/admin` `/auth`
+- 登录页 / 发布页各自有中文 title + description + Twitter/JSON-LD，方便「skill 怎么推广」收录
+- `/llms.txt` 的 `>` 一句话保持 <200 字符，并含 `## Key Facts`
 
-**首页 Agent 指针：** `<link rel="describedby" href="https://skillfeeder.cn/llms.txt">` + JSON-LD + `<noscript>`。
+**首页 Agent 指针：** `<link rel="describedby" href="https://skillfeeder.cn/llms.txt">` + `hreflang` + JSON-LD + `<noscript>`。
 
 **本产品自己的 skill：** 仓库根 `SKILL.md`（`name: skillfeeder`）。Agent 路由「找远程 skill」时用；不代装。
 
@@ -634,6 +637,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-21 | GEO 二次优化：独立 `/about.html` `/faq.html` `/compare.html` 给爬虫；JSON-LD 补 Organization；llms blockquote<200 + Key Facts；robots 补 OAI-SearchBot 等 AI 爬虫；登录/发布页补 Twitter 与 WebPage | §6.3、`geo.py`、`server/app.py`、登录/发布模板、Nginx/Pages 部署清单 |
 | 2026-09-21 | 浏览器小标改高分辨率缩小（192 PNG + 多尺寸 ICO），去掉平滑发糊；页头肥嘚加大到 52×40 | §5.1、`scripts/make_brand_icons.py`、`feed_dashboard.py` |
 | 2026-09-21 | 补浏览器 tab / 主屏小标：`publish-site` 落盘 `/favicon.ico` `/favicon.png` `/apple-touch-icon.png`（肥嘚慵懒躺沙发造型），首页与登录/发布页挂 link，阿里云/Pages 同步拷贝 | §5.1、§6.3、`geo.py`、`server/app.py`、登录/发布模板、`pages.yml` |
 | 2026-09-21 | 排序叠加路径判断：不改 G/P/F/N；冲突给置信度并 sticky；近邻同分才按 reliable/task/publisher 二次键。笔记 https://xhslink.cn/o/8fvgNlMau1U | §6.1、`ranking_path.py`、`server/app.py` |

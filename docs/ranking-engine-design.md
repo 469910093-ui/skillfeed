@@ -650,6 +650,21 @@ POST /api/profile/claim   { device_id }      # 需登录
 
 ---
 
+## 11.1 路径判断（叠加层，2026-09-21）
+
+来源：https://xhslink.cn/o/8fvgNlMau1U （「Jev让我觉得千人千面的网站要来了」）
+
+帖子把「百万物料召回」和「从少数版式/转化路径里选一条」分开。SkillFeeder 已有召回+打分（G/P/F/N），**本层不替换它**。学到的判断能力是：
+
+1. 用手写信号投票，不建 LTR  
+2. 信号冲突时给 **path + confidence**，不手写优先级树  
+3. **sticky**：同 device 冲突时锁 `default`/`reliable`，不来回跳  
+4. 只动近邻同分的二次键（高星 / 相关 / UGC），不动品牌壳、导航、分数本身  
+
+实现：`ranking_path.py`，在 `rank_feed` 之后由 `/api/feed` 调用；响应带 `path_decision`。`rank_feed` 签名与公式保持原样。
+
+---
+
 ## 12. 服务端安全
 
 ### 12.1 限流不能被一行请求头绕过

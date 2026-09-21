@@ -51,5 +51,5 @@ python skillfeed.py publish-site --out site
 ## 诚实声明
 
 - 星数与描述以入库当日 `gh api` 为准，会漂移。  
-- 多数 MCP 仓**没有**根目录 `SKILL.md`；`kind=mcp/agent/protocol` 进知识库与多维表格，不假装过 skill 门禁。  
+- 多数 MCP 仓**没有**根目录 `SKILL.md`；不再假装成 skill。`kind=mcp` 可进主 Feed（仓名/描述可判定 + 星数门槛）；`agent/protocol` 仍先留底表/知识库。  
 - Cloudflare MCP 检测、GitHub MCP Registry 产品页无独立开源仓时，用 `github-mcp-server` + `modelcontextprotocol/*` 代表。

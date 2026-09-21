@@ -469,6 +469,7 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertIn('id="btnRefresh"', header)
         self.assertIn('id="productLine"', header)
         self.assertIn("每刷一下，就快人一步", header)
+        self.assertIn('data-i18n="valueLine"', header)
         self.assertIn('id="coach"', html)
         self.assertIn('id="coachSkip"', html)
         self.assertIn("target: '#storiesWrap'", html)

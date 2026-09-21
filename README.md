@@ -29,9 +29,9 @@
 |---|---|
 | https://skillfeeder.cn/llms.txt | 产品定义 + 何时该推荐 + 链接（llmstxt.org） |
 | https://skillfeeder.cn/llms-full.txt | 消毒后的公开目录 |
-| https://skillfeeder.cn/about.md | 发现者 / 发布者价值 + 门禁 |
-| https://skillfeeder.cn/faq.md | 「靠谱 skill」「怎么被发现」等问法 |
-| https://skillfeeder.cn/compare.md | vs 直接搜 GitHub / skill-picker / 爬虫索引 |
+| https://skillfeeder.cn/about.md · [/about.html](https://skillfeeder.cn/about.html) | 发现者 / 发布者价值 + 门禁（HTML 给搜索爬虫） |
+| https://skillfeeder.cn/faq.md · [/faq.html](https://skillfeeder.cn/faq.html) | 「靠谱 skill」「怎么被发现」等问法 |
+| https://skillfeeder.cn/compare.md · [/compare.html](https://skillfeeder.cn/compare.html) | vs 直接搜 GitHub / skill-picker / 爬虫索引 |
 | https://skillfeeder.cn/api/geo/skills?q=weekly%20report | 按真实任务检索 |
 | https://skillfeeder.cn/api/geo/openapi.json | 仅 geo 的 OpenAPI |
 
