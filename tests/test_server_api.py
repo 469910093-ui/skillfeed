@@ -1357,7 +1357,7 @@ class TestIdentityBind(unittest.TestCase):
         self.tmp.cleanup()
 
     def _wechat_state(self):
-        r = self.client.get("/auth/wechat")
+        self.client.get("/auth/wechat")
         return self.client.cookies.get(auth.STATE_COOKIE["wechat"])
 
     def _fake_wechat(self, openid="oBIND-1", unionid=""):

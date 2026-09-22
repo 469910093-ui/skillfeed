@@ -50,6 +50,9 @@ select = [
 # 不一起豁免会自相矛盾。E402 清干净时这两条一起删。
 "scripts/xhs_bitable_loop.py" = ["E402", "BLE001", "B007", "RUF100"]
 "ranking.py" = ["F401", "B007"]
+"scripts/gh_validate.py" = ["N818"]
+"server/db.py" = ["N818"]
+"server/notify.py" = ["BLE001"]
 "server/app.py" = ["F401"]
 "server/ranking_service.py" = ["B905"]
 # 两处 `# noqa: N802`（do_GET / do_POST）在 ruff 下不成立：ruff 的 N802 不判这种

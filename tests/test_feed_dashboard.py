@@ -169,8 +169,10 @@ class JsHarness:
             _grab(js, r"^const ACCT = \{[^\n]*\};"),
             _grab(js, r"^const LOGIN_PATH = '[^']*';"),
             _grab(js, r"^const TAB_QUERY = \{[^\n]*\};"),
-            _grab(js, r"^const PACK_SHELF = \[.*?\n\];"),
-            _grab(js, r"^const PACK_HOWTO_LOCKED = \[.*?\n\];"),
+            # 空货架是 `[];` 单行；有内容才是多行。必须先匹配 `[];`，否则
+            # `[\s\S]*?\n]` 会从空数组的 `[` 一路吞到后面的 PACK_HOWTO_LOCKED。
+            _grab(js, r"^const PACK_SHELF = (?:\[\];|\[[\s\S]*?\n\];)"),
+            _grab(js, r"^const PACK_HOWTO_LOCKED = \[[\s\S]*?\n\];"),
             _top_level_functions(js),
         ])
 
@@ -1178,6 +1180,14 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
             {"items": [cls.ITEM_NAMING_A_THIRD_PARTY_PRODUCT], "corpus": []})
         # 剔掉 <script>：那里面是内容数据和模板，不是我们的品牌外观
         cls.chrome = re.sub(r"<script>.*?</script>", "", cls.html, flags=re.S).lower()
+        # Twitter Card 的 <meta name="twitter:*"> 是行业标准分享标签，不是自称 Twitter。
+        # 从「第三方名字」扫描面里剔掉，避免把 og/twitter meta 误判成仿版意图。
+        cls.chrome_for_names = re.sub(
+            r'<meta\s+name="twitter:[^"]*"\s+content="[^"]*"\s*/?>',
+            "",
+            cls.chrome,
+            flags=re.I,
+        )
         # 再剔掉 CSS 注释，得到「真正会被画出来的东西」。
         #
         # 两个范围是有意分开的，判定标准不同：
@@ -1297,10 +1307,11 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
         """外壳里不许出现自称某第三方产品同款的字样。
 
         挡的是往后有人把这类描述写进 title / meta description / tagline。
+        Twitter Card meta（name="twitter:*"）不算自称，已从扫描面剔除。
         """
         for app in self.THIRD_PARTY_APPS:
             with self.subTest(app=app):
-                self.assertNotIn(app, self.chrome)
+                self.assertNotIn(app, self.chrome_for_names)
 
     def test_wordmark_keeps_skill_solid_and_paints_feeder_with_logo_grad(self):
         """Skill 实心海军蓝；Feeder 才走 logo 的紫→薄荷。clip 不许挂到整个 .logo。"""
