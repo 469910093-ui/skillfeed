@@ -736,7 +736,11 @@ class TestCspStillCoversTheNewCode(unittest.TestCase):
     def test_script_src_is_a_hash_and_nothing_else(self):
         pol = self.policy(_lite_html())
         script = re.search(r"script-src ([^;]*)", pol).group(1)
-        self.assertRegex(script, r"^'sha256-[A-Za-z0-9+/=]+'$")
+        # 主脚本 + GEO JSON-LD，每块一个 sha256；不许 'unsafe-inline' / CDN
+        parts = script.split()
+        self.assertGreaterEqual(len(parts), 1)
+        for part in parts:
+            self.assertRegex(part, r"^'sha256-[A-Za-z0-9+/=]+'$")
 
     def test_the_hash_matches_the_script_with_the_install_code_in_it(self):
         html = _lite_html()
@@ -745,7 +749,12 @@ class TestCspStillCoversTheNewCode(unittest.TestCase):
         self.assertIn(feed_dashboard._sha256_source(js), self.policy(html))
 
     def test_still_one_script_tag(self):
-        self.assertEqual(_lite_html().count("<script"), 1)
+        # 主脚本一块 + head 里 JSON-LD 一块；再多就是注入劈开
+        html = _lite_html()
+        tags = re.findall(r"<script\b([^>]*)>", html, flags=re.I)
+        self.assertEqual(2, len(tags), tags)
+        self.assertEqual(1, sum(1 for a in tags if "ld+json" in a.lower()))
+        self.assertEqual(1, sum(1 for a in tags if "ld+json" not in a.lower()))
 
     def test_same_origin_fetch_is_allowed(self):
         # /api/install/* 是同源，靠 connect-src 'self'
