@@ -1067,8 +1067,9 @@ class TestContrastTokens(unittest.TestCase):
     def test_the_panel_background_is_still_only_used_where_we_think(self):
         """TEXT_TOKENS 里的背景清单是照着当时的用法列的，用法一变它就静默变松。
 
-        PANEL 现在只铺在 highlights 上。哪天有人拿它去铺别的块，那块里的
-        --muted（在它上面只有 4.45，掉出 AA）就会悄悄不合格。
+        PANEL 现在铺在 highlights、货架流水线 pill、商详 HOWTO 骨架上。
+        哪天有人拿它去铺别的块，那块里的 --muted（在它上面只有 4.45，掉出 AA）
+        就会悄悄不合格。
         """
         # 只扫 <style>：整页 HTML 里 JS 花括号太多，[^{}]* 会扫成超线性。
         # 先剥 CSS 注释：这个色板的注释里写满了实测色值
@@ -1078,7 +1079,8 @@ class TestContrastTokens(unittest.TestCase):
         rules = [m.group(1).strip() for m in re.finditer(
             r"([^{}]+)\{[^{}]*" + re.escape(self.PANEL) + r"[^{}]*\}", css)]
         self.assertEqual(
-            [".pitch .highlights li"], rules,
+            [".pitch .highlights li", ".pack-flow li", ".pack-detail .howto-skel li"],
+            rules,
             f"{self.PANEL} 的用处变了（现在铺在 {rules}）；"
             f"回去核对 TEXT_TOKENS 里各令牌的背景清单")
 
