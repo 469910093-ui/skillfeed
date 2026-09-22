@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS {name} (
   wechat_openid TEXT,
   unionid TEXT,
   phone TEXT,
+  email TEXT,
+  email_opt_in INTEGER NOT NULL DEFAULT 0,
   login TEXT NOT NULL,
   nickname TEXT,
   avatar_url TEXT,
@@ -41,6 +43,8 @@ USERS_COLUMNS: tuple[tuple[str, str], ...] = (
     ("wechat_openid", "TEXT"),
     ("unionid", "TEXT"),
     ("phone", "TEXT"),
+    ("email", "TEXT"),
+    ("email_opt_in", "INTEGER NOT NULL DEFAULT 0"),
     ("login", "TEXT"),
     ("nickname", "TEXT"),
     ("avatar_url", "TEXT"),
@@ -338,6 +342,8 @@ _USER_GOV_COLS: tuple[tuple[str, str], ...] = (
     ("status", "TEXT NOT NULL DEFAULT 'active'"),
     ("trust_level", "TEXT NOT NULL DEFAULT 'new'"),
     ("approved_count", "INTEGER NOT NULL DEFAULT 0"),
+    ("email", "TEXT"),
+    ("email_opt_in", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 _EVENT_ATTR_COLS: tuple[tuple[str, str], ...] = (
@@ -855,7 +861,7 @@ def list_op_users(conn: sqlite3.Connection, *, limit: int = 200) -> list[dict[st
         "id", "login", "nickname", "name", "plan", "plan_until", "created_at",
         "github_id", "wechat_openid", "phone",
     ]
-    for optional in ("trust_level", "status", "approved_count", "role"):
+    for optional in ("trust_level", "status", "approved_count", "role", "email", "email_opt_in"):
         if optional in cols:
             select_cols.append(optional)
     rows = conn.execute(
@@ -879,6 +885,8 @@ def list_op_users(conn: sqlite3.Connection, *, limit: int = 200) -> list[dict[st
             "has_github": bool(d.get("github_id")),
             "has_wechat": bool(d.get("wechat_openid")),
             "phone_masked": _mask_phone(str(d.get("phone") or "")),
+            "email_opt_in": bool(int(d.get("email_opt_in") or 0)) if "email_opt_in" in d else False,
+            "email_masked": mask_email(str(d.get("email") or "")) if d.get("email") else "",
         })
     return out
 
@@ -982,6 +990,36 @@ def mask_phone(phone: str) -> str:
     return f"{p[:3]}****{p[-4:]}"
 
 
+def mask_email(email: str) -> str:
+    """`a@example.com` → `a***@example.com`。只给前端展示。"""
+    e = (email or "").strip()
+    if "@" not in e:
+        return "*" * min(len(e), 8)
+    local, _, domain = e.partition("@")
+    if not local:
+        return "***@" + domain
+    keep = local[0]
+    return f"{keep}***@{domain}"
+
+
+def set_user_email(
+    conn: sqlite3.Connection,
+    user_id: int,
+    *,
+    email: str,
+    opt_in: bool,
+) -> dict[str, Any]:
+    """用户主动留下邮箱并勾选同意后才写入；opt_in=False 则清空同意位。"""
+    email = (email or "").strip().lower()
+    if email and ("@" not in email or len(email) > 200):
+        raise ValueError("invalid email")
+    conn.execute(
+        "UPDATE users SET email=?, email_opt_in=? WHERE id=?",
+        (email or None, 1 if (opt_in and email) else 0, user_id),
+    )
+    return get_user(conn, user_id) or {}
+
+
 def user_public(u: dict[str, Any]) -> dict[str, Any]:
     """能安全交给前端的用户字段。
 
@@ -990,6 +1028,7 @@ def user_public(u: dict[str, Any]) -> dict[str, Any]:
     """
     nickname = (u.get("nickname") or "").strip()
     name = (u.get("name") or "").strip()
+    email = (u.get("email") or "").strip()
     return {
         "id": u["id"],
         "login": u["login"],
@@ -999,6 +1038,8 @@ def user_public(u: dict[str, Any]) -> dict[str, Any]:
         # 前端拿这个直接渲染，不用自己排优先级
         "display_name": nickname or name or u["login"],
         "phone_masked": mask_phone(u.get("phone") or ""),
+        "email_masked": mask_email(email) if email else "",
+        "email_opt_in": bool(int(u.get("email_opt_in") or 0)),
         # 「用什么登进来的」：给「我的账户」tab 显示绑定状态用
         "providers": [
             k for k, v in (

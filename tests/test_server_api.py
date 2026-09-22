@@ -1394,6 +1394,23 @@ class TestIdentityBind(unittest.TestCase):
         self.assertNotIn("13900139000", exported.text)
         self.assertIn("skillfeeder-account.json", exported.headers.get("content-disposition", ""))
 
+    def test_logged_in_user_can_opt_in_email_for_recall(self):
+        self.client.get("/auth/dev-login")
+        bad = self.client.post("/api/me/email", json={"email": "not-an-email", "opt_in": True})
+        self.assertEqual(bad.status_code, 400)
+        r = self.client.post(
+            "/api/me/email",
+            json={"email": "Owner@Example.com", "opt_in": True},
+        )
+        self.assertEqual(r.status_code, 200, r.text)
+        me = self.client.get("/auth/me").json()["user"]
+        self.assertTrue(me["email_opt_in"])
+        self.assertEqual(me["email_masked"], "o***@example.com")
+        self.assertNotIn("owner@example.com", r.text.lower())
+        exported = self.client.get("/api/me/export").json()
+        self.assertTrue(exported["user"]["email_opt_in"])
+        self.assertNotIn("owner@example.com", str(exported).lower())
+
     def test_cannot_steal_another_users_wechat(self):
         state = self._wechat_state()
         p1, p2 = self._fake_wechat(openid="oTAKEN")
