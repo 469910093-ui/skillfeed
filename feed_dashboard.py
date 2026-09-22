@@ -75,7 +75,7 @@ def brand_png_data_uri(name: str = _FEIDE_LOGO) -> str:
 
 
 def load_pack_shelf() -> list:
-    """飞书「包-*」表策展后的货架目录；商详只卖「为什么成套」，不倾倒全文。"""
+    """飞书「包-*」表策展后的货架目录；商详卖统一亮点 + 工作流芯片，不倾倒全文。"""
     if not _PACKS_CATALOG.is_file():
         return []
     try:
@@ -99,10 +99,11 @@ def _with_csp(html: str, *, api_base: str = "") -> str:
     每次响应给的是同一份字节，写死的 nonce 对攻击者和对我们一样可见，
     等价于 'unsafe-inline'。哈希在静态托管下才是唯一有效的写法。
 
-    `script-src` 是这条策略真正的价值所在：全站只有一块内联 script、没有外链
-    脚本、没有 eval / new Function / 字符串式 setTimeout（改动前核查过），
-    所以能收到「只允许这一段字节执行」，注入进来的 <script> 与 onX= 处理器
-    一律不执行。为此把封面图的 onerror 改成了捕获阶段的委托监听。
+    `script-src` 是这条策略真正的价值所在：全站内联 script 只有主逻辑块 +
+    GEO 的 application/ld+json，没有外链脚本、没有 eval / new Function /
+    字符串式 setTimeout（改动前核查过），所以能收到「只允许这些字节执行」，
+    注入进来的 <script> 与 onX= 处理器一律不执行。为此把封面图的 onerror
+    改成了捕获阶段的委托监听。
 
     style 那边刻意留了退路。`style-src-elem` 用哈希、`style-src-attr` 放行
     inline，是想要的效果；但这两个指令是 Chrome 75 / Firefox 111 / Safari 15.4
@@ -1273,21 +1274,12 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .pack-meta {{
     margin: -4px 0 12px; font-size: .72rem; font-weight: 650; color: var(--accent);
   }}
-  .pack-why-list, .pack-flow-why {{
+  .pack-why-list {{
     list-style: none; margin: 0; padding: 0; display: grid; gap: 8px;
   }}
-  .pack-why-list li, .pack-flow-why li {{
+  .pack-why-list li {{
     font-size: .82rem; line-height: 1.45; color: var(--ink);
     padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px;
-  }}
-  .pack-flow-why li, .pack-why-list.core li {{
-    display: grid; gap: 4px;
-  }}
-  .pack-flow-why li b, .pack-why-list.core li b {{
-    font-size: .78rem; font-weight: 800;
-  }}
-  .pack-flow-why li span, .pack-why-list.core li span {{
-    font-size: .78rem; color: var(--muted); line-height: 1.4;
   }}
   .pack-buy-bar {{
     position: sticky; bottom: calc(64px + env(safe-area-inset-bottom));
@@ -2032,13 +2024,16 @@ const I18N = {{
     packsBuyLocked: '登录后购买', packsBuySoon: '收银台即将开通，先收藏场景包方案',
     packsBuyNeedSite: '请到 skillfeeder.cn 主站购买场景包',
     packsBack: '← 返回货架',
-    packsSecFlow: '工作流怎么串', packsSecWhy: '为什么选成套，而不是自己散装下',
-    packsSecPains: '成套先解这些卡点', packsSecLocked: '购买后解锁',
-    packsSecSkills: '核心能力（只讲卡点，不含用法全文）',
+    packsSecFlow: '工作流怎么串',
+    packsSecWhy: '亮点',
+    packsSecLocked: '购买后解锁',
     packsSecHowto: '操作手册目录（锁）',
-    packsSkillsStub: '默认安装清单与八节带练手册购买后解锁。这里只展示「解什么卡点」，避免你直接单下散装。',
     packsLockedHint: '付款后才开放手册全文、默认清单与三份练习。',
     packsMetaNamed: '已点名 {{n}}',
+    packsHighlightSafe: '安全性：只推荐已验证过的技能',
+    packsHighlightFlow: '全流程：节省你零散搜寻的时间',
+    packsHighlightSpace: '省空间：避免累赘装载增加系统负担',
+    packsHighlightTeach: '包教会：每个环节用什么一清二楚',
     packsHowto1: '这个包帮你完成什么',
     packsHowto2: '今天先做哪一件',
     packsHowto3: '怎么对 Agent 说话',
@@ -2301,13 +2296,15 @@ const I18N = {{
     packsBuyLocked: 'Sign in to buy', packsBuySoon: 'Checkout coming soon — pack plan saved',
     packsBuyNeedSite: 'Buy packs on skillfeeder.cn',
     packsBack: '← Back to shelf',
-    packsSecFlow: 'How the workflow connects', packsSecWhy: 'Why buy the set, not cherry-pick',
-    packsSecPains: 'Pains this set clears first', packsSecLocked: 'Unlocked after purchase',
-    packsSecSkills: 'Core capabilities (pain only — not full how-tos)',
+    packsSecFlow: 'How the workflow connects', packsSecWhy: 'Highlights',
+    packsSecLocked: 'Unlocked after purchase',
     packsSecHowto: 'HOWTO outline (locked)',
-    packsSkillsStub: 'Default install list and eight-section drills unlock after purchase. Here we only show which pains get solved.',
     packsLockedHint: 'Full HOWTO, default skill list, and three drills open after payment.',
     packsMetaNamed: '{{n}} named',
+    packsHighlightSafe: 'Safety: only verified skills',
+    packsHighlightFlow: 'Full flow: stop hunting pieces one by one',
+    packsHighlightSpace: 'Lean install: skip clutter that weighs the system down',
+    packsHighlightTeach: 'Taught end-to-end: clear which skill for which step',
     packsHowto1: 'What this pack finishes',
     packsHowto2: 'First win today',
     packsHowto3: 'How to talk to the agent',
@@ -4343,15 +4340,11 @@ function packsShelfHtml() {{
 
 function packDetailHtml(p) {{
   if (!p) return packsShelfHtml();
-  const why = (p.whyChooseZh || []).map(s =>
-    `<li>${{escapeHtml(s)}}</li>`).join('');
-  const flowWhy = (p.flowWhyZh || []).map(row =>
-    `<li><b>${{escapeHtml(row.step || '')}}</b><span>${{escapeHtml(row.why || '')}}</span></li>`
-  ).join('') || packFlow(p).map(s =>
-    `<li><b>${{escapeHtml(s)}}</b><span></span></li>`).join('');
-  const cores = (p.coreSkills || []).map(s =>
-    `<li><b>${{escapeHtml(s.name || '')}}</b><span>${{escapeHtml(s.why || s.sub || '')}}</span></li>`
-  ).join('');
+  const highlights = [
+    'packsHighlightSafe', 'packsHighlightFlow',
+    'packsHighlightSpace', 'packsHighlightTeach',
+  ].map(key => `<li>${{escapeHtml(tr(key))}}</li>`).join('');
+  const flow = packFlow(p).map(s => `<li>${{escapeHtml(s)}}</li>`).join('');
   const locked = PACK_HOWTO_LOCKED.map((key, i) =>
     `<li><em>${{i + 1}}.</em>${{escapeHtml(tr(key))}}<i>🔒</i></li>`).join('');
   const buyLabel = ACCT.user ? tr('packsBuy') : tr('packsBuyLocked');
@@ -4360,21 +4353,15 @@ function packDetailHtml(p) {{
   if (p.completeness) metaBits.push(String(p.completeness));
   const meta = metaBits.length
     ? `<p class="pack-meta">${{escapeHtml(metaBits.join(' · '))}}</p>` : '';
-  const coresBlock = cores
-    ? `<ul class="pack-why-list core">${{cores}}</ul>`
-    : `<p class="lead">${{escapeHtml(tr('packsSkillsStub'))}}</p>`;
   return `<div class="pack-detail" data-pack="${{escapeHtml(p.id)}}">
     <button type="button" class="back js-pack-back">${{escapeHtml(tr('packsBack'))}}</button>
     <h2>${{escapeHtml(packTitle(p))}}</h2>
     <p class="lead">${{escapeHtml(packAudience(p))}} · ${{escapeHtml(packBlurb(p))}}</p>
     ${{meta}}
     <div class="sec">${{escapeHtml(tr('packsSecWhy'))}}</div>
-    <ul class="pack-why-list">${{why || `<li>${{escapeHtml(packBlurb(p))}}</li>`}}</ul>
+    <ul class="pack-why-list">${{highlights}}</ul>
     <div class="sec">${{escapeHtml(tr('packsSecFlow'))}}</div>
-    <ul class="pack-flow-why">${{flowWhy}}</ul>
-    <div class="sec">${{escapeHtml(tr('packsSecSkills'))}}</div>
-    ${{coresBlock}}
-    <p class="lead">${{escapeHtml(tr('packsSkillsStub'))}}</p>
+    <ul class="pack-flow">${{flow}}</ul>
     <div class="sec">${{escapeHtml(tr('packsSecLocked'))}}</div>
     <p class="lead">${{escapeHtml(tr('packsLockedHint'))}}</p>
     <ul class="howto-skel locked">${{locked}}</ul>

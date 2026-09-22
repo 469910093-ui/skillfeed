@@ -862,11 +862,20 @@ class TestScriptInjection(unittest.TestCase):
         for variant in ("full", "lite"):
             with self.subTest(variant=variant):
                 html = feed_dashboard.build_feed_html(_malicious_feed(), variant=variant)
-                # 模板本来只有一个内联脚本块；多出来的就是被恶意数据劈开的
-                self.assertEqual(1, len(re.findall(r"<script\b", html, flags=re.I)))
-                self.assertEqual(1, len(re.findall(r"</script\s*>", html, flags=re.I)))
-                self.assertEqual(1, len(_script_blocks(html)))
-                body = _script_blocks(html)[0].lower()
+                # 允许两块：GEO 的 application/ld+json + 页面主脚本。
+                # 多出来的裸 <script> 才是被恶意数据劈开的。
+                tags = re.findall(r"<script\b([^>]*)>", html, flags=re.I)
+                self.assertEqual(2, len(tags), tags)
+                self.assertEqual(
+                    1, sum(1 for a in tags if "ld+json" in a.lower()),
+                    "缺 JSON-LD 或被劈成多块")
+                self.assertEqual(
+                    1, sum(1 for a in tags if "ld+json" not in a.lower()),
+                    "主脚本被劈开或消失：" + str(tags))
+                self.assertEqual(2, len(re.findall(r"</script\s*>", html, flags=re.I)))
+                bodies = _script_blocks(html)
+                self.assertEqual(1, len(bodies), "主脚本（无 type）应恰好一块")
+                body = bodies[0].lower()
                 for seq in SCRIPT_BREAKOUTS:
                     self.assertNotIn(seq.lower(), body,
                                      "脚本块里出现可提前闭合/注释的序列：" + repr(seq))
@@ -2304,8 +2313,10 @@ NEW_I18N_KEYS = (
     "packsGroupMedia", "packsGroupOps", "packsBadgeShelf", "packsBadgeSoon",
     "packsPriceTbd", "packsOpen", "packsBuy", "packsBuyLocked", "packsBuySoon",
     "packsBuyNeedSite", "packsBack", "packsSecFlow", "packsSecHowto",
-    "packsSecWhy", "packsSecPains", "packsSecLocked", "packsSecSkills",
-    "packsSkillsStub", "packsLockedHint", "packsMetaNamed", "packsEmpty",
+    "packsSecWhy", "packsSecLocked",
+    "packsLockedHint", "packsMetaNamed", "packsEmpty",
+    "packsHighlightSafe", "packsHighlightFlow", "packsHighlightSpace",
+    "packsHighlightTeach",
     "packsHowto1", "packsHowto2", "packsHowto3", "packsHowto4",
     "packsHowto5", "packsHowto6", "packsHowto7", "packsHowto8",
     "publishTitle", "publishLead", "publishFieldTitle", "publishFieldUrl",
@@ -2392,10 +2403,14 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertIn("data-analytics", js)
         self.assertIn("一站式配齐", self.full)
         self.assertIn("packs: 'packs'", js)
-        # 商详卖为什么成套，不全文展开手册
+        # 商详卖成套亮点，不全文展开手册 / 核心能力
         self.assertIn("packsSecWhy", js)
+        self.assertIn("packsHighlightSafe", js)
         self.assertIn("PACK_HOWTO_LOCKED", js)
-        self.assertIn("whyChooseZh", js)
+        self.assertNotIn("whyChooseZh", js)
+        self.assertNotIn("coreSkills", js)
+        self.assertIn("竞品分析", js)
+        self.assertIn("竞品追踪", js)
         self.assertIn("选品到利润复盘的SOP", js)
 
     def test_only_one_tab_starts_selected_and_the_rest_leave_the_tab_order(self):
