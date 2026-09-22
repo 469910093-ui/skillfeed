@@ -431,7 +431,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | KPI 下钻 | `GET /api/op/users`、`/api/op/devices`、`/api/op/backups`、`/api/op/events/today`；帖子进 `#review?status=` | 数据页八张卡均可点：用户卡含**登录用户 + 游客设备抓手**（首触渠道）；今日事件/会话/备份就地明细；帖子跳审批筛选 |
 | 游客身份 | 本机 `sf_device_id` + 服务端 `device_token`；进站 `session_start` 写首触渠道到 `devices`；登录后 `POST /api/profile/claim` 并档 | 游客可召回的抓手是 device；登录后画像/赞藏/渠道挂到 `users.id`。不记 IP / UA |
 | 第二钥匙 | 已登录再走 `/auth/wechat` `/auth/sms/verify` `/auth/github` | 绑到同一个 `users.id`；钥匙已被别人占用则 409 / `bind=taken`。不自建密码 |
-| 召回抓手 | 发现流/「我的」绑定条；收藏召回条；`POST /api/me/email` | **只登 GitHub 不能外发消息**。主路径：引导绑微信/手机。站内：有收藏时提示「查看收藏」。补充：用户主动填邮箱并勾选同意后入库（掩码对外，暂不发信） |
+| 召回抓手 | 发现流/「我的」绑定条；收藏召回条；`POST /api/me/email` | **只登 GitHub 不能外发消息**。主路径：引导绑微信/手机。**微信·短信未开时**：绑定条改引导「留下邮箱」→「我的」同意入库。站内：有收藏时提示「查看收藏」。补充：用户主动填邮箱并勾选同意后入库（掩码对外，暂不发信） |
 | 账本导出 | `GET /api/me/export` | 登录用户下载自己的帖/反应/绑定状态（手机号/邮箱掩码）；仓仍在 GitHub |
 | 库备份 | `python skillfeed.py backup-db`、`POST /api/op/backup`、每日 timer | SQLite 一致副本轮转到 `SKILLFEED_BACKUP_DIR`（默认库旁 `backups/`） |
 | 卡片短链 | `/p/{仓库名}` | 免登录 302 到 `/?card=` 编码后的 public_id；聊天里不要贴带 `::` 的长链 |
@@ -645,6 +645,8 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-22 | 召回条：生产未开微信/短信时，GitHub-only 用户改引导「留下邮箱」进「我的」填同意 | §6.2、`feed_dashboard.py` |
+| 2026-09-22 | 公开货架只注入用户可见字段（去 completeness 等运营键）；跨境包 blurb 改为「从选品做到利润复盘…」 | §5.1、`feed_dashboard.py`、`docs/packs/shelf_catalog.json` |
 | 2026-09-22 | 召回落地：只登 GitHub 不能外发；发现流/我的出绑定微信·手机条；有收藏出站内召回条；`POST /api/me/email` 同意后存邮箱（掩码，暂不发信） | §6.2、`feed_dashboard.py`、`server/db.py`、`server/app.py`、`login.html` |
 | 2026-09-22 | 底栏加「一站式配齐」付费场景包货架框架：首波货架/跨境/短剧/营销/数据分析；详情 HOWTO 八节壳 + 购买登录门禁；§3.1 补效率·数据分析；lite 隐藏该 tab | §3.1、§4、§5.1、`feed_dashboard.py`、`publish.html` |
 | 2026-09-22 | 游客身份接登录态：进站发/存 `device_token`，登录后自动 `claim` 并档；`devices` 落首触渠道；`/op` 用户卡展示游客设备抓手 | §6.2、`feed_dashboard.py`、`server/db.py`、`admin.html` |
