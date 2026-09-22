@@ -19,73 +19,6 @@
       "completeness": "可卖·材料齐",
       "priority": "P0",
       "namedCount": "11",
-      "whyChooseZh": [
-        "主图不出单、卖点写成千篇一律",
-        "美工产能跟不上上新节奏",
-        "详情页不会排、转化弱",
-        "后台琐事占掉选品和投放时间",
-        "不会看动销、退货、趋势",
-        "人工点后台又慢又容易漏"
-      ],
-      "flowWhyZh": [
-        {
-          "step": "产品图",
-          "why": "美工产能跟不上上新节奏"
-        },
-        {
-          "step": "主图/详情",
-          "why": "主图不出单、卖点写成千篇一律"
-        },
-        {
-          "step": "卖点文案",
-          "why": "主图不出单、卖点写成千篇一律"
-        },
-        {
-          "step": "上架",
-          "why": "主图不出单、卖点写成千篇一律"
-        },
-        {
-          "step": "店铺复盘",
-          "why": "把「店铺复盘」嵌进整条 SOP，避免前后断档"
-        }
-      ],
-      "coreSkills": [
-        {
-          "name": "ecommerce-visual-copywriting-skill",
-          "why": "写商品卖点文案，给主图和详情页用",
-          "sub": "主图卖点文案"
-        },
-        {
-          "name": "ecommerce-image-suite",
-          "why": "批量出商品图/主图",
-          "sub": "商品主图"
-        },
-        {
-          "name": "detail-flow",
-          "why": "专门做详情页流程",
-          "sub": "详情页结构"
-        },
-        {
-          "name": "eCommerce-Skills",
-          "why": "电商小管家，收日常运营动作",
-          "sub": "店铺日常"
-        },
-        {
-          "name": "User Action Analyze Platform",
-          "why": "分析店铺数据，判断该推什么品",
-          "sub": "店铺数据"
-        },
-        {
-          "name": "xlsx",
-          "why": "用店铺订单表算动销率、退货率、趋势图",
-          "sub": "订单表复盘"
-        },
-        {
-          "name": "电商素材生成Skill（笔记未写仓库名）",
-          "why": "批量出一套主图和详情页",
-          "sub": "主图+详情套装"
-        }
-      ],
       "boostCount": 5,
       "stubCount": 2,
       "coreCount": 7,
@@ -101,6 +34,8 @@
       "blurbZh": "选品到利润复盘的SOP，不是散装工具清单",
       "flowZh": [
         "市场",
+        "竞品分析",
+        "竞品追踪",
         "选品",
         "1688/供应链",
         "Listing",
@@ -110,92 +45,6 @@
       "completeness": "可卖·材料齐",
       "priority": "P0",
       "namedCount": "15 + 流程套装",
-      "whyChooseZh": [
-        "市场、竞品、店铺数据散在好几个工具里",
-        "同类任务每次重讲、反复返工",
-        "主图/场景图/视频产能不够",
-        "不会拆竞品评论，Listing 没卖点",
-        "选品仍靠感觉，利润和合规没核对",
-        "不知道跨境还该补哪类能力"
-      ],
-      "flowWhyZh": [
-        {
-          "step": "市场",
-          "why": "市场、竞品、店铺数据散在好几个工具里"
-        },
-        {
-          "step": "选品",
-          "why": "选品仍靠感觉，利润和合规没核对"
-        },
-        {
-          "step": "1688/供应链",
-          "why": "装了一堆工具仍不知道先干什么"
-        },
-        {
-          "step": "Listing",
-          "why": "不会拆竞品评论，Listing 没卖点"
-        },
-        {
-          "step": "广告",
-          "why": "装了一堆工具仍不知道先干什么"
-        },
-        {
-          "step": "净利润",
-          "why": "装了一堆工具仍不知道先干什么"
-        }
-      ],
-      "coreSkills": [
-        {
-          "name": "LinkFox Agent",
-          "why": "跨境运营总控台，少在分析工具之间来回切",
-          "sub": "运营总控"
-        },
-        {
-          "name": "LinkFox AI",
-          "why": "商品视觉生产：处理、方案、转动态视频",
-          "sub": "跨境视觉产能"
-        },
-        {
-          "name": "Amazon Reviews",
-          "why": "从评论提炼产品改良和 Listing 建议",
-          "sub": "评论挖痛点"
-        },
-        {
-          "name": "SellerSprite",
-          "why": "市场、竞品、关键词和选品研究",
-          "sub": "选品研究"
-        },
-        {
-          "name": "跨境17 Skill工作流（逐个名未点）",
-          "why": "把选品、供应链、Listing、广告、履约、利润串成SOP",
-          "sub": "跨境SOP主线"
-        },
-        {
-          "name": "亚马逊-前端商品搜索",
-          "why": "搜索亚马逊前端商品，找竞品和市场",
-          "sub": "亚马逊商品搜索"
-        },
-        {
-          "name": "亚马逊-前端商品详情",
-          "why": "查看详情页信息，拆竞品 Listing",
-          "sub": "拆竞品Listing"
-        },
-        {
-          "name": "亚马逊-商品评论",
-          "why": "分析评论和反馈，提炼购买需求",
-          "sub": "评论与差评"
-        },
-        {
-          "name": "亚马逊-店铺listing管理",
-          "why": "管理店铺 Listing，批量检查",
-          "sub": "Listing管理"
-        },
-        {
-          "name": "亚马逊-广告管理",
-          "why": "管理 Amazon Ads，看投放和预算",
-          "sub": "广告管理"
-        }
-      ],
       "boostCount": 8,
       "stubCount": 0,
       "coreCount": 10,
@@ -219,63 +68,6 @@
       "completeness": "可卖·材料齐",
       "priority": "P0",
       "namedCount": "9",
-      "whyChooseZh": [
-        "不知道内容电商先研究谁、研究什么",
-        "素材和数据靠手翻",
-        "爆款拆完就散了，下次重来",
-        "案例库权限打不通",
-        "每次带货流程口头教，带不走",
-        "对标账号只会截几条，拆不出结构"
-      ],
-      "flowWhyZh": [
-        {
-          "step": "调研",
-          "why": "不知道内容电商先研究谁、研究什么"
-        },
-        {
-          "step": "拆对标",
-          "why": "把「拆对标」嵌进整条 SOP，避免前后断档"
-        },
-        {
-          "step": "Hook",
-          "why": "视频3秒留不住，完播差"
-        },
-        {
-          "step": "内容",
-          "why": "不知道内容电商先研究谁、研究什么"
-        },
-        {
-          "step": "飞书案例库",
-          "why": "爆款拆完就散了，下次重来"
-        }
-      ],
-      "coreSkills": [
-        {
-          "name": "agent-reach",
-          "why": "规划调研路线，收集内容和评论区痛点",
-          "sub": "调研路线"
-        },
-        {
-          "name": "web-access",
-          "why": "自动找素材、看数据",
-          "sub": "自动找素材"
-        },
-        {
-          "name": "lark-base",
-          "why": "把素材写进飞书案例库",
-          "sub": "案例库"
-        },
-        {
-          "name": "nuwa-skill",
-          "why": "拆解带货达人和对标账号",
-          "sub": "拆带货达人"
-        },
-        {
-          "name": "dbs-hook",
-          "why": "优化视频前三秒 Hook",
-          "sub": "视频前三秒"
-        }
-      ],
       "boostCount": 4,
       "stubCount": 1,
       "coreCount": 5,
@@ -298,32 +90,6 @@
       "completeness": "骨架·待补采",
       "priority": "P1",
       "namedCount": "0（2个可借用）",
-      "whyChooseZh": [
-        "直播前3秒留不住，人进来就走",
-        "只看热闹，拆不出场次结构",
-        "不会按品写话术和逼单节点",
-        "播完不知道卡在哪个转化节点",
-        "直播间货盘乱，测品没有节奏"
-      ],
-      "flowWhyZh": [
-        {
-          "step": "选品上架",
-          "why": "直播间货盘乱，测品没有节奏"
-        },
-        {
-          "step": "话术",
-          "why": "只看热闹，拆不出场次结构"
-        },
-        {
-          "step": "开播Hook",
-          "why": "直播前3秒留不住，人进来就走"
-        },
-        {
-          "step": "场控复盘",
-          "why": "播完不知道卡在哪个转化节点"
-        }
-      ],
-      "coreSkills": [],
       "boostCount": 2,
       "stubCount": 3,
       "coreCount": 0,
@@ -346,49 +112,6 @@
       "completeness": "可卖·需补名",
       "priority": "P0",
       "namedCount": "4 + 2套流程",
-      "whyChooseZh": [
-        "不知道读者要什么，选题拍脑袋",
-        "写了很多没人搜到，公域吃不到",
-        "资讯号更新不稳",
-        "只有单篇，没有完整内容经营",
-        "Shopify/独立站没有搜得到的内容",
-        "付费停了独立站就没单"
-      ],
-      "flowWhyZh": [
-        {
-          "step": "痛点调研",
-          "why": "把「痛点调研」嵌进整条 SOP，避免前后断档"
-        },
-        {
-          "step": "长文",
-          "why": "把「长文」嵌进整条 SOP，避免前后断档"
-        },
-        {
-          "step": "SEO/GEO",
-          "why": "写了很多没人搜到，公域吃不到"
-        },
-        {
-          "step": "内容日历",
-          "why": "资讯号更新不稳"
-        }
-      ],
-      "coreSkills": [
-        {
-          "name": "Agent-Reach",
-          "why": "内容收集、评论区痛点、竞品账号研究",
-          "sub": "选题调研"
-        },
-        {
-          "name": "claude-seo",
-          "why": "SEO / GEO，让长内容能被搜到",
-          "sub": "搜索可见"
-        },
-        {
-          "name": "social-ai-team",
-          "why": "账号定位、标题、内容日历、复盘",
-          "sub": "账号日历"
-        }
-      ],
       "boostCount": 2,
       "stubCount": 1,
       "coreCount": 3,
@@ -411,32 +134,6 @@
       "completeness": "骨架·待补采",
       "priority": "P1",
       "namedCount": "0（2个可借用）",
-      "whyChooseZh": [
-        "短剧开头留不住，完播差",
-        "对标剧只会存，拆不出结构",
-        "不知道拍什么题材能回收",
-        "有选题不会拆成可拍分镜",
-        "成片后平台分发靠手"
-      ],
-      "flowWhyZh": [
-        {
-          "step": "选题",
-          "why": "不知道拍什么题材能回收"
-        },
-        {
-          "step": "分镜",
-          "why": "有选题不会拆成可拍分镜"
-        },
-        {
-          "step": "成片",
-          "why": "成片后平台分发靠手"
-        },
-        {
-          "step": "字幕切片分发",
-          "why": "把「字幕切片分发」嵌进整条 SOP，避免前后断档"
-        }
-      ],
-      "coreSkills": [],
       "boostCount": 2,
       "stubCount": 3,
       "coreCount": 0,
@@ -460,78 +157,6 @@
       "completeness": "可卖·材料齐",
       "priority": "P0",
       "namedCount": "11",
-      "whyChooseZh": [
-        "投放和内容不知道打谁",
-        "官网和内容没人搜到",
-        "广告视觉不统一，品牌散",
-        "只有单点工具，没有营销流程",
-        "投放停了账号也停",
-        "每次重新交代产品，文案广告各说各话"
-      ],
-      "flowWhyZh": [
-        {
-          "step": "定位地基",
-          "why": "把「定位地基」嵌进整条 SOP，避免前后断档"
-        },
-        {
-          "step": "文案",
-          "why": "只有单点工具，没有营销流程"
-        },
-        {
-          "step": "广告创意",
-          "why": "广告图和文案各说各话"
-        },
-        {
-          "step": "SEO/AEO",
-          "why": "付费停了就没量"
-        },
-        {
-          "step": "落地页CRO",
-          "why": "有量没转化"
-        }
-      ],
-      "coreSkills": [
-        {
-          "name": "Agent-Reach",
-          "why": "内容收集、评论区痛点、竞品研究",
-          "sub": "调研选题"
-        },
-        {
-          "name": "claude-seo",
-          "why": "官网、公众号、博客、长笔记的SEO",
-          "sub": "搜索与GEO"
-        },
-        {
-          "name": "GPT-Image2-Skill",
-          "why": "封面、品牌视觉、海报、图文配图",
-          "sub": "封面海报"
-        },
-        {
-          "name": "ai-marketing-claude",
-          "why": "AI市场部工具包，把营销动作串起来",
-          "sub": "市场部流程"
-        },
-        {
-          "name": "product-marketing",
-          "why": "一次沉淀产品/用户/定位，后面所有营销Skill共用",
-          "sub": "营销地基文档"
-        },
-        {
-          "name": "Copywriting / emails",
-          "why": "按营销框架写文案和邮件序列",
-          "sub": "文案专项"
-        },
-        {
-          "name": "Ad Creative",
-          "why": "广告创意专项，不和文案模块搅在一起",
-          "sub": "广告创意"
-        },
-        {
-          "name": "Page CRO",
-          "why": "转化优化，专治有流量不成交",
-          "sub": "落地页转化"
-        }
-      ],
       "boostCount": 3,
       "stubCount": 0,
       "coreCount": 8,
@@ -554,54 +179,6 @@
       "completeness": "可卖·需补名",
       "priority": "P0",
       "namedCount": "4",
-      "whyChooseZh": [
-        "封面不统一，账号不像一个品牌",
-        "美工产能跟不上货盘",
-        "详情页不会排，风格飘",
-        "主图场景图视频都要出",
-        "上新要一整套图",
-        "平面设计接电商单产能不够"
-      ],
-      "flowWhyZh": [
-        {
-          "step": "风格参考",
-          "why": "美工产能跟不上货盘"
-        },
-        {
-          "step": "主图",
-          "why": "美工产能跟不上货盘"
-        },
-        {
-          "step": "详情",
-          "why": "详情页不会排，风格飘"
-        },
-        {
-          "step": "封面海报",
-          "why": "把「封面海报」嵌进整条 SOP，避免前后断档"
-        }
-      ],
-      "coreSkills": [
-        {
-          "name": "GPT-Image2-Skill",
-          "why": "小红书封面、品牌视觉、海报、配图",
-          "sub": "封面与海报"
-        },
-        {
-          "name": "ecommerce-image-suite",
-          "why": "批量商品图/主图",
-          "sub": "电商主图"
-        },
-        {
-          "name": "detail-flow",
-          "why": "专门做详情页",
-          "sub": "详情页设计"
-        },
-        {
-          "name": "电商素材生成Skill（未写仓库名）",
-          "why": "批量出主图和详情页套装",
-          "sub": "主图详情套装"
-        }
-      ],
       "boostCount": 1,
       "stubCount": 1,
       "coreCount": 4,
@@ -624,29 +201,6 @@
       "completeness": "骨架·待补采",
       "priority": "P1",
       "namedCount": "0",
-      "whyChooseZh": [
-        "报表散、口径不齐",
-        "归因说不清，预算不知道往哪加"
-      ],
-      "flowWhyZh": [
-        {
-          "step": "取数",
-          "why": "固化「取数」成可复用步骤"
-        },
-        {
-          "step": "看板",
-          "why": "固化「看板」成可复用步骤"
-        },
-        {
-          "step": "归因",
-          "why": "固化「归因」成可复用步骤"
-        },
-        {
-          "step": "复盘",
-          "why": "固化「复盘」成可复用步骤"
-        }
-      ],
-      "coreSkills": [],
       "boostCount": 0,
       "stubCount": 0,
       "coreCount": 0,
