@@ -1096,7 +1096,7 @@ class TestContrastTokens(unittest.TestCase):
         rules = [m.group(1).strip() for m in re.finditer(
             r"([^{}]+)\{[^{}]*" + re.escape(self.PANEL) + r"[^{}]*\}", css)]
         self.assertEqual(
-            [".pitch .highlights li", ".pack-flow li", ".pack-flow-map li", ".pack-detail .howto-skel li"],
+            [".pitch .highlights li", ".pack-flow li", ".pack-detail .howto-skel li"],
             rules,
             f"{self.PANEL} 的用处变了（现在铺在 {rules}）；"
             f"回去核对 TEXT_TOKENS 里各令牌的背景清单")

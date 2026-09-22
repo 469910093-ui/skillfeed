@@ -645,6 +645,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-22 | 公开货架只注入用户可见字段（去 completeness 等运营键）；跨境包 blurb 改为「从选品做到利润复盘…」 | §5.1、`feed_dashboard.py`、`docs/packs/shelf_catalog.json` |
 | 2026-09-22 | 召回落地：只登 GitHub 不能外发；发现流/我的出绑定微信·手机条；有收藏出站内召回条；`POST /api/me/email` 同意后存邮箱（掩码，暂不发信） | §6.2、`feed_dashboard.py`、`server/db.py`、`server/app.py`、`login.html` |
 | 2026-09-22 | 底栏加「一站式配齐」付费场景包货架框架：首波货架/跨境/短剧/营销/数据分析；详情 HOWTO 八节壳 + 购买登录门禁；§3.1 补效率·数据分析；lite 隐藏该 tab | §3.1、§4、§5.1、`feed_dashboard.py`、`publish.html` |
 | 2026-09-22 | 游客身份接登录态：进站发/存 `device_token`，登录后自动 `claim` 并档；`devices` 落首触渠道；`/op` 用户卡展示游客设备抓手 | §6.2、`feed_dashboard.py`、`server/db.py`、`admin.html` |

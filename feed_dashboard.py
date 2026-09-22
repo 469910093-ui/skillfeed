@@ -74,8 +74,18 @@ def brand_png_data_uri(name: str = _FEIDE_LOGO) -> str:
     return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
 
 
+_PACK_PUBLIC_KEYS = (
+    "id", "group", "wave", "status", "titleZh", "audienceZh", "blurbZh",
+    "flowZh", "flowHintZh", "priority", "namedCount", "boostCount",
+    "coreCount", "stubCount", "totalRows",
+)
+
+
 def load_pack_shelf() -> list:
-    """飞书「包-*」表策展后的货架目录；商详卖统一亮点 + 工作流芯片，不倾倒全文。"""
+    """飞书「包-*」表策展后的货架目录；公开页只注入用户可见字段。
+
+    completeness / whyChooseZh / coreSkills 等运营字段不进页面。
+    """
     if not _PACKS_CATALOG.is_file():
         return []
     try:
@@ -83,7 +93,12 @@ def load_pack_shelf() -> list:
     except (OSError, json.JSONDecodeError):
         return []
     packs = data.get("packs") if isinstance(data, dict) else data
-    return [p for p in (packs or []) if isinstance(p, dict) and p.get("id")]
+    out = []
+    for p in packs or []:
+        if not isinstance(p, dict) or not p.get("id"):
+            continue
+        out.append({k: p[k] for k in _PACK_PUBLIC_KEYS if k in p})
+    return out
 
 
 def _sha256_source(text: str) -> str:
