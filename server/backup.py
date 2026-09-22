@@ -49,11 +49,23 @@ def prune_backups(dest_dir: Path, *, keep: int) -> None:
 
 def backup_status(dest_dir: Path) -> dict[str, Any]:
     dest_dir = Path(dest_dir)
-    files = sorted(dest_dir.glob("server-*.db"), key=lambda p: p.name)
-    latest = files[-1] if files else None
+    files = sorted(dest_dir.glob("server-*.db"), key=lambda p: p.name, reverse=True)
+    rows: list[dict[str, Any]] = []
+    for f in files:
+        try:
+            st = f.stat()
+            rows.append({
+                "name": f.name,
+                "bytes": int(st.st_size),
+                "mtime": datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat(),
+            })
+        except OSError:
+            continue
+    latest = files[0] if files else None
     return {
         "dir": str(dest_dir),
-        "count": len(files),
+        "count": len(rows),
         "latest": latest.name if latest else "",
-        "latest_bytes": int(latest.stat().st_size) if latest else 0,
+        "latest_bytes": int(rows[0]["bytes"]) if rows else 0,
+        "files": rows,
     }

@@ -45,8 +45,26 @@
   .kpi, .card, .panel {
     background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
   }
+  .kpi {
+    appearance: none; width: 100%; text-align: left; font: inherit; color: inherit;
+    cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .12s;
+  }
+  .kpi:hover, .kpi:focus-visible {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(13,115,119,.12); outline: none;
+  }
+  .kpi.on { border-color: var(--ink); box-shadow: 0 0 0 2px rgba(10,24,72,.12); }
+  .kpi .hint-go { display: block; margin-top: 6px; color: var(--accent); font-size: .68rem; font-weight: 600; }
   .kpi b { display: block; font-size: 1.6rem; letter-spacing: -.04em; }
   .kpi span { color: var(--muted); font-size: .75rem; }
+  .detail-head {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .detail-head .ghost {
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .78rem; font-weight: 600;
+    cursor: pointer;
+  }
   .grid { display: grid; grid-template-columns: 1fr 300px; gap: 16px; margin-top: 16px; }
   @media (max-width: 860px) {
     .grid { grid-template-columns: 1fr; }
@@ -90,6 +108,13 @@
   <div class="wrap">
     <section id="view-overview">
       <div class="kpis" id="kpis"></div>
+      <div class="card hide" id="kpiDetail" style="margin-top:16px">
+        <div class="detail-head">
+          <strong id="kpiDetailTitle">明细</strong>
+          <button type="button" class="ghost" id="kpiDetailClose">关闭</button>
+        </div>
+        <div id="kpiDetailBody" class="hint">读取中…</div>
+      </div>
       <div class="card" style="margin-top:16px">
         <strong>待审最新</strong>
         <div id="pendingList" class="hint" style="margin-top:8px">读取中…</div>
@@ -98,6 +123,7 @@
 
     <section id="view-path" class="hide">
       <div class="kpis" id="pathKpis"></div>
+      <div class="card" style="margin-top:16px" id="pathByDay"></div>
       <div class="card" style="margin-top:16px">
         <div class="views">
           <button type="button" data-hours="24">近 24 小时</button>
@@ -105,10 +131,10 @@
           <button type="button" data-hours="168">近 7 天</button>
           <a class="ghost" id="pathCsv" href="/api/op/journeys.csv?hours=72">导出 CSV</a>
         </div>
-        <p class="hint" style="margin-top:10px">一条会话就是一次打开站点到关掉页签。曝光/停留默认不进路径，避免刷屏。登录后会把本机 device 挂到 GitHub login。</p>
+        <p class="hint" style="margin-top:10px">一条会话就是一次打开站点到关掉页签。进站记渠道（UTM / referrer → SEO / GEO / 社交 / 直接等）。曝光/停留默认不进路径。登录后会把本机 device 挂到 GitHub login。</p>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>用户</th><th>开始</th><th>步数</th><th>路径</th></tr></thead>
+            <thead><tr><th>用户</th><th>渠道</th><th>来源域</th><th>开始</th><th>步数</th><th>路径</th></tr></thead>
             <tbody id="pathRows"></tbody>
           </table>
         </div>
@@ -119,8 +145,9 @@
     <section id="view-review" class="hide">
       <div class="views" id="views">
         <button type="button" data-status="pending" class="on">待审核</button>
-        <button type="button" data-status="rejected">已拒绝</button>
         <button type="button" data-status="approved">已上架</button>
+        <button type="button" data-status="rejected">已拒绝</button>
+        <button type="button" data-status="all">全部</button>
         <button type="button" data-status="hidden">已隐藏</button>
         <a class="ghost" id="csv" href="/api/op/queue.csv">导出 CSV</a>
       </div>
@@ -158,27 +185,227 @@
 let status = "pending";
 let rows = [];
 let selected = 0;
+let activeKpi = "";
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+function fmtBytes(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / (1024 * 1024)).toFixed(1) + " MB";
 }
 let pathHours = 72;
 let pathSessions = [];
 let pathSelected = 0;
 
 function tabFromHash() {
-  const t = (location.hash || "#overview").replace("#", "");
-  return ["overview", "path", "review", "site"].includes(t) ? t : "overview";
+  const raw = (location.hash || "#overview").replace("#", "");
+  const base = raw.split("?")[0].split("/")[0];
+  return ["overview", "path", "review", "site"].includes(base) ? base : "overview";
+}
+function hashParams() {
+  const raw = (location.hash || "").replace(/^#/, "");
+  const q = raw.includes("?") ? raw.slice(raw.indexOf("?") + 1) : "";
+  return new URLSearchParams(q);
 }
 function showTab(tab) {
   ["overview", "path", "review", "site"].forEach(name => {
     document.getElementById("view-" + name).classList.toggle("hide", name !== tab);
   });
   document.querySelectorAll("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
-  if (tab === "review") loadQueue();
+  if (tab === "review") {
+    const st = hashParams().get("status");
+    if (st) status = st;
+    loadQueue();
+  }
   if (tab === "site") loadSettings();
-  if (tab === "overview") loadStats();
-  if (tab === "path") loadJourneys();
+  if (tab === "overview") {
+    loadStats();
+    const d = hashParams().get("detail");
+    if (d) openKpiDetail(d);
+  }
+  if (tab === "path") {
+    const h = Number(hashParams().get("hours") || 0);
+    if (h) pathHours = h;
+    loadJourneys();
+  }
+}
+
+function closeKpiDetail() {
+  activeKpi = "";
+  const box = document.getElementById("kpiDetail");
+  if (box) box.classList.add("hide");
+  document.querySelectorAll("#kpis .kpi").forEach(el => el.classList.remove("on"));
+  if (tabFromHash() === "overview") history.replaceState(null, "", "#overview");
+}
+
+async function openKpiDetail(key) {
+  activeKpi = key;
+  document.querySelectorAll("#kpis .kpi").forEach(el =>
+    el.classList.toggle("on", el.dataset.kpi === key));
+  const titles = {
+    users: "用户明细",
+    pending: "待审帖子",
+    published: "已上架帖子",
+    rejected: "已拒绝帖子",
+    posts: "全部帖子",
+    events: "今日事件明细",
+    sessions: "今日会话明细",
+    backups: "库备份明细",
+  };
+  // 帖子类：跳审批 tab，带筛选
+  if (key === "pending" || key === "published" || key === "rejected" || key === "posts") {
+    status = ({ pending: "pending", published: "approved", rejected: "rejected", posts: "all" })[key];
+    history.replaceState(null, "", "#review?status=" + encodeURIComponent(status));
+    showTab("review");
+    return;
+  }
+  const box = document.getElementById("kpiDetail");
+  const title = document.getElementById("kpiDetailTitle");
+  const body = document.getElementById("kpiDetailBody");
+  box.classList.remove("hide");
+  title.textContent = titles[key] || "明细";
+  body.innerHTML = "<p class='hint'>读取中…</p>";
+  history.replaceState(null, "", "#overview?detail=" + encodeURIComponent(key));
+  try {
+    if (key === "users") {
+      const [ur, dr] = await Promise.all([
+        fetch("/api/op/users?limit=200", { credentials: "include" }),
+        fetch("/api/op/devices?limit=200", { credentials: "include" }),
+      ]);
+      if (ur.status === 403 || ur.status === 401 || dr.status === 403 || dr.status === 401) {
+        location.href = "/login?next=/op"; return;
+      }
+      const udata = await ur.json();
+      const ddata = await dr.json();
+      const list = udata.users || [];
+      const devices = ddata.devices || [];
+      const guests = devices.filter(d => d.anonymous);
+      const usersHtml = list.length
+        ? `<div class="table-scroll"><table>
+            <thead><tr><th>login</th><th>昵称</th><th>计划</th><th>信任</th><th>GitHub</th><th>微信</th><th>手机</th><th>过审帖</th><th>注册</th></tr></thead>
+            <tbody>${list.map(u => `<tr>
+              <td>@${esc(u.login)}</td>
+              <td>${esc(u.nickname || "—")}</td>
+              <td>${esc(u.plan || "free")}</td>
+              <td>${esc(u.trust_level || "new")}</td>
+              <td>${u.has_github ? "有" : "—"}</td>
+              <td>${u.has_wechat ? "有" : "—"}</td>
+              <td>${esc(u.phone_masked || "—")}</td>
+              <td>${esc(u.approved_count || 0)}</td>
+              <td>${esc((u.created_at || "").replace("T", " ").slice(0, 16))}</td>
+            </tr>`).join("")}</tbody></table></div>
+            <p class="hint" style="margin-top:8px">登录用户 ${esc(udata.count || list.length)} 人（最多 200）。</p>`
+        : "<p>还没有登录用户。</p>";
+      const devicesHtml = devices.length
+        ? `<p style="margin-top:16px"><strong>设备抓手</strong>
+             <span class="hint">（游客 ${esc(guests.length)} · 已挂账号 ${esc(devices.length - guests.length)}；登录后 claim 会把游客设备并到账号）</span></p>
+           <div class="table-scroll"><table>
+            <thead><tr><th>身份</th><th>渠道</th><th>来源域</th><th>着陆</th><th>首次</th><th>最近</th><th>设备</th></tr></thead>
+            <tbody>${devices.map(d => `<tr>
+              <td>${d.anonymous ? "游客" : ("@" + esc(d.user_login || "?"))}</td>
+              <td>${esc(channelLabel(d.channel))}</td>
+              <td>${esc(d.referrer || "—")}</td>
+              <td class="path">${esc((d.landing || "").slice(0, 40) || "—")}</td>
+              <td>${esc((d.first_seen || "").replace("T", " ").slice(0, 16))}</td>
+              <td>${esc((d.last_seen || "").replace("T", " ").slice(0, 16))}</td>
+              <td><code>${esc(d.device_short || "")}</code></td>
+            </tr>`).join("")}</tbody></table></div>`
+        : "<p class=\"hint\" style=\"margin-top:12px\">还没有设备记录。有人打开首页并上报后会出现。</p>";
+      body.innerHTML = usersHtml + devicesHtml;
+      return;
+    }
+    if (key === "events" || key === "sessions") {
+      const r = await fetch("/api/op/events/today?limit=300", { credentials: "include" });
+      if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op"; return; }
+      const data = await r.json();
+      const events = data.events || [];
+      if (key === "events") {
+        body.innerHTML = events.length
+          ? `<p class="hint">${esc(data.count)} 条有效事件 · ${esc(data.sessions)} 个会话
+              · <a href="#path?hours=24">打开路径分析 →</a></p>
+             <div class="table-scroll"><table>
+              <thead><tr><th>时间</th><th>动作</th><th>渠道</th><th>用户</th><th>条目/页</th><th>来源域</th></tr></thead>
+              <tbody>${events.map(e => `<tr>
+                <td>${esc((e.ts || "").replace("T", " ").slice(0, 19))}</td>
+                <td>${esc(actionLabel(e.action))}</td>
+                <td>${esc(channelLabel(e.channel))}</td>
+                <td>${esc(e.user_login ? ("@" + e.user_login) : "游客")}</td>
+                <td class="path">${esc((e.item_key || e.landing || "").slice(0, 48) || "—")}</td>
+                <td>${esc(e.referrer || "—")}</td>
+              </tr>`).join("")}</tbody></table></div>`
+          : "<p>今天还没有有效事件。</p>";
+        return;
+      }
+      const bySession = {};
+      events.forEach(e => {
+        const sid = e.session_id || "?";
+        if (!bySession[sid]) {
+          bySession[sid] = {
+            session_id: sid,
+            user_login: e.user_login || "",
+            channel: e.channel || "",
+            referrer: e.referrer || "",
+            started: e.ts || "",
+            steps: 0,
+            path: [],
+          };
+        }
+        const s = bySession[sid];
+        s.steps += 1;
+        if (!s.user_login && e.user_login) s.user_login = e.user_login;
+        if (!s.channel && e.channel) s.channel = e.channel;
+        if (!s.referrer && e.referrer) s.referrer = e.referrer;
+        if ((e.ts || "") < s.started) s.started = e.ts;
+        s.path.push(actionLabel(e.action));
+      });
+      const sessions = Object.values(bySession).sort((a, b) => (b.started || "").localeCompare(a.started || ""));
+      body.innerHTML = sessions.length
+        ? `<p class="hint">${esc(sessions.length)} 个今日会话
+            · <a href="#path?hours=24">打开路径分析 →</a></p>
+           <div class="table-scroll"><table>
+            <thead><tr><th>用户</th><th>渠道</th><th>来源域</th><th>开始</th><th>步数</th><th>路径</th></tr></thead>
+            <tbody>${sessions.map(s => `<tr>
+              <td>${esc(s.user_login ? ("@" + s.user_login) : "游客")}</td>
+              <td>${esc(channelLabel(s.channel))}</td>
+              <td>${esc(s.referrer || "—")}</td>
+              <td>${esc((s.started || "").replace("T", " ").slice(0, 16))}</td>
+              <td>${esc(s.steps)}</td>
+              <td class="path">${esc(s.path.slice().reverse().join(" → "))}</td>
+            </tr>`).join("")}</tbody></table></div>`
+        : "<p>今天还没有会话。</p>";
+      return;
+    }
+    if (key === "backups") {
+      const r = await fetch("/api/op/backups", { credentials: "include" });
+      if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op"; return; }
+      const data = await r.json();
+      const files = data.files || [];
+      body.innerHTML = `
+        <p class="hint">目录 <code>${esc(data.dir || "")}</code> · ${esc(data.count || 0)} 份
+          <button type="button" class="ghost" id="doBackupDetail">立刻再备一份</button></p>
+        ${files.length
+          ? `<div class="table-scroll"><table>
+              <thead><tr><th>文件</th><th>大小</th><th>时间(UTC)</th></tr></thead>
+              <tbody>${files.map(f => `<tr>
+                <td><code>${esc(f.name)}</code></td>
+                <td>${esc(fmtBytes(f.bytes))}</td>
+                <td>${esc((f.mtime || "").replace("T", " ").slice(0, 19))}</td>
+              </tr>`).join("")}</tbody></table></div>`
+          : "<p>还没有备份文件。</p>"}`;
+      const btn = document.getElementById("doBackupDetail");
+      if (btn) btn.onclick = async () => {
+        const br = await fetch("/api/op/backup", { method: "POST", credentials: "include" });
+        if (br.ok) { openKpiDetail("backups"); loadStats(); }
+      };
+      return;
+    }
+    body.innerHTML = "<p class='err'>未知明细。</p>";
+  } catch (e) {
+    body.innerHTML = "<p class='err'>读取失败。</p>";
+  }
 }
 
 async function loadStats() {
@@ -186,17 +413,19 @@ async function loadStats() {
   if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op"; return; }
   const data = await r.json();
   const items = [
-    ["用户", data.users],
-    ["待审", data.posts_pending],
-    ["已上架", data.posts_published],
-    ["已拒绝", data.posts_rejected],
-    ["帖子合计", data.posts_total],
-    ["今日事件", data.events_today || 0],
-    ["今日会话", data.sessions_today || 0],
-    ["库备份", (data.backup && data.backup.count) || 0],
+    ["users", "用户", data.users, "点开用户列表"],
+    ["pending", "待审", data.posts_pending, "去审批队列"],
+    ["published", "已上架", data.posts_published, "去已上架"],
+    ["rejected", "已拒绝", data.posts_rejected, "去已拒绝"],
+    ["posts", "帖子合计", data.posts_total, "看全部帖子"],
+    ["events", "今日事件", data.events_today || 0, "点开事件明细"],
+    ["sessions", "今日会话", data.sessions_today || 0, "点开会话明细"],
+    ["backups", "库备份", (data.backup && data.backup.count) || 0, "看备份文件"],
   ];
-  document.getElementById("kpis").innerHTML = items.map(([k, v]) =>
-    `<div class="kpi"><b>${esc(v)}</b><span>${esc(k)}</span></div>`
+  document.getElementById("kpis").innerHTML = items.map(([key, label, v, go]) =>
+    `<button type="button" class="kpi${activeKpi === key ? " on" : ""}" data-kpi="${esc(key)}" aria-label="${esc(label)}明细">
+      <b>${esc(v)}</b><span>${esc(label)}</span><span class="hint-go">${esc(go)} →</span>
+    </button>`
   ).join("");
   const pending = data.pending || [];
   const bak = data.backup || {};
@@ -223,6 +452,20 @@ function actionLabel(action) {
   })[action] || action;
 }
 
+function channelLabel(ch) {
+  return ({
+    direct: "直接",
+    organic_search: "搜索SEO",
+    geo_agent: "模型GEO",
+    social: "社交",
+    referral: "外链",
+    paid: "付费",
+    campaign: "活动UTM",
+    internal: "站内",
+    unknown: "未标",
+  })[ch] || ch || "未标";
+}
+
 async function loadJourneys() {
   const r = await fetch("/api/op/journeys?hours=" + pathHours + "&limit=40", { credentials: "include" });
   if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op#path"; return; }
@@ -232,19 +475,36 @@ async function loadJourneys() {
     ["有效事件", k.events || 0],
     ["会话", k.sessions || 0],
     ["7 日设备", k.devices_7d || 0],
-  ].concat((k.actions || []).slice(0, 4).map(a => [actionLabel(a.action), a.n]));
+    ["自然流(SEO+GEO)", k.organic_sessions || 0],
+    ["搜索SEO", k.seo_sessions || 0],
+    ["模型GEO", k.geo_sessions || 0],
+  ].concat((k.channels || []).slice(0, 4).map(c => [channelLabel(c.channel), c.sessions]));
   document.getElementById("pathKpis").innerHTML = items.map(([name, v]) =>
     `<div class="kpi"><b>${esc(v)}</b><span>${esc(name)}</span></div>`
   ).join("");
+  const days = k.by_day || [];
+  const dayBox = document.getElementById("pathByDay");
+  if (dayBox) {
+    dayBox.innerHTML = days.length
+      ? `<div class="table-scroll"><table><thead><tr><th>日期</th><th>会话</th><th>设备</th><th>进入</th><th>自然流</th><th>SEO</th><th>GEO</th></tr></thead><tbody>${
+        days.map(d => `<tr>
+          <td>${esc(d.day)}</td><td>${esc(d.sessions)}</td><td>${esc(d.devices)}</td>
+          <td>${esc(d.starts)}</td><td>${esc(d.organic)}</td><td>${esc(d.seo)}</td><td>${esc(d.geo)}</td>
+        </tr>`).join("")
+      }</tbody></table></div>`
+      : `<p class="hint">这个时间窗还没有按日汇总。</p>`;
+  }
   pathSessions = data.sessions || [];
   pathSelected = 0;
   document.getElementById("pathRows").innerHTML = pathSessions.map((s, i) => `
     <tr data-i="${i}" class="${i === pathSelected ? "on" : ""}">
       <td>${esc(s.user_login ? ("@" + s.user_login) : "游客")}</td>
+      <td>${esc(channelLabel(s.channel))}</td>
+      <td>${esc(s.referrer || "—")}</td>
       <td>${esc((s.started || "").replace("T", " ").slice(0, 16))}</td>
       <td>${esc(s.steps)}</td>
       <td class="path">${esc(s.path)}</td>
-    </tr>`).join("") || "<tr><td colspan='4'>这个时间窗还没有路径。用户刷过首页后会出现。</td></tr>";
+    </tr>`).join("") || "<tr><td colspan='6'>这个时间窗还没有路径。用户刷过首页后会出现。</td></tr>";
   document.querySelectorAll("#view-path [data-hours]").forEach(b =>
     b.classList.toggle("on", Number(b.dataset.hours) === pathHours));
   document.getElementById("pathCsv").href = "/api/op/journeys.csv?hours=" + pathHours;
@@ -256,9 +516,18 @@ function renderPathPanel() {
   const el = document.getElementById("pathPanel");
   if (!s) { el.textContent = "点一行看时间线。"; return; }
   const evs = s.events || [];
+  const utmBits = [
+    s.utm_source && ("utm_source=" + s.utm_source),
+    s.utm_medium && ("utm_medium=" + s.utm_medium),
+    s.utm_campaign && ("utm_campaign=" + s.utm_campaign),
+  ].filter(Boolean).join(" · ");
   el.innerHTML = `
     <p><b>${esc(s.user_login ? ("@" + s.user_login) : "游客")}</b>
        · ${esc(s.steps)} 步 · 设备 <code>${esc((s.device_id || "").slice(0, 18))}</code></p>
+    <p class="hint">渠道 <b>${esc(channelLabel(s.channel))}</b>
+       · 来源域 ${esc(s.referrer || "—")}
+       · 着陆 <code>${esc((s.landing || "").slice(0, 80) || "—")}</code>
+       ${utmBits ? (" · " + esc(utmBits)) : ""}</p>
     <ol class="tl">${evs.map(e =>
       `<li><code>${esc((e.ts || "").replace("T", " ").slice(11, 19))}</code>
         ${esc(actionLabel(e.action))}
@@ -275,7 +544,7 @@ async function loadQueue() {
   selected = 0;
   document.getElementById("rows").innerHTML = rows.map((p, i) => `
     <tr data-i="${i}" class="${i === selected ? "on" : ""}">
-      <td>${esc(p.title)}</td>
+      <td>${esc(p.title)}${status === "all" ? ` <span class="hint">(${esc(p.status)})</span>` : ""}</td>
       <td>${esc((p.description || "").slice(0, 80))}</td>
       <td><a href="${esc(p.github_url)}" target="_blank" rel="noopener">${esc(p.full_name)}</a></td>
       <td>@${esc(p.author_login)}</td>
@@ -325,8 +594,15 @@ document.getElementById("tabs").addEventListener("click", e => {
   if (!a) return;
   e.preventDefault();
   history.replaceState(null, "", "#" + a.dataset.tab);
+  if (a.dataset.tab === "overview") closeKpiDetail();
   showTab(a.dataset.tab);
 });
+document.getElementById("kpis").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-kpi]");
+  if (!btn) return;
+  openKpiDetail(btn.dataset.kpi);
+});
+document.getElementById("kpiDetailClose").addEventListener("click", closeKpiDetail);
 document.getElementById("rows").addEventListener("click", e => {
   const tr = e.target.closest("tr[data-i]");
   if (!tr) return;
@@ -345,12 +621,14 @@ document.getElementById("view-path").addEventListener("click", e => {
   const b = e.target.closest("[data-hours]");
   if (!b) return;
   pathHours = Number(b.dataset.hours);
+  history.replaceState(null, "", "#path?hours=" + pathHours);
   loadJourneys();
 });
 document.getElementById("views").addEventListener("click", e => {
   const b = e.target.closest("button[data-status]");
   if (!b) return;
   status = b.dataset.status;
+  history.replaceState(null, "", "#review?status=" + encodeURIComponent(status));
   loadQueue();
 });
 document.getElementById("panel").addEventListener("click", async e => {
@@ -388,6 +666,14 @@ document.getElementById("siteForm").addEventListener("submit", async e => {
 
 const q = new URLSearchParams(location.search);
 if (["review", "path", "site"].includes(q.get("tab") || "")) location.hash = q.get("tab");
+window.addEventListener("hashchange", () => showTab(tabFromHash()));
+document.getElementById("kpiDetail").addEventListener("click", e => {
+  const a = e.target.closest('a[href^="#"]');
+  if (!a) return;
+  e.preventDefault();
+  history.replaceState(null, "", a.getAttribute("href"));
+  showTab(tabFromHash());
+});
 showTab(tabFromHash());
 </script>
 </body>

@@ -63,12 +63,27 @@ _CHARSET_META = '<meta charset="utf-8">'
 
 _BRAND_ASSETS = Path(__file__).resolve().parent / "docs" / "brand" / "assets"
 _FEIDE_LOGO = "logo-feide-transparent.png"
+# 空态用完整透明团子（无磁贴底、无缺口）；禁止用带底图的残缺磁贴。
+_FEIDE_EMPTY = "logo-feide-transparent.png"
+_PACKS_CATALOG = Path(__file__).resolve().parent / "docs" / "packs" / "shelf_catalog.json"
 
 
 def brand_png_data_uri(name: str = _FEIDE_LOGO) -> str:
     """把品牌 PNG 编成 data URI，生成页时内联，改文件即换标。"""
     raw = (_BRAND_ASSETS / name).read_bytes()
     return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+
+
+def load_pack_shelf() -> list:
+    """飞书「包-*」表策展后的货架目录；商详只卖「为什么成套」，不倾倒全文。"""
+    if not _PACKS_CATALOG.is_file():
+        return []
+    try:
+        data = json.loads(_PACKS_CATALOG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    packs = data.get("packs") if isinstance(data, dict) else data
+    return [p for p in (packs or []) if isinstance(p, dict) and p.get("id")]
 
 
 def _sha256_source(text: str) -> str:
@@ -500,6 +515,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     logo_src = brand_png_data_uri()
     logo_mark = f'<img class="logo-mark" src="{logo_src}" alt="" />'
     feide_img = f'<img class="feide" src="{logo_src}" alt="feide" />'
+    pack_shelf_json = json.dumps(load_pack_shelf(), ensure_ascii=False, indent=2)
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1097,12 +1113,20 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .empty h2 {{ color: var(--ink); font-size: 1.1rem; }}
   .empty p {{ font-size: .85rem; line-height: 1.5; }}
   .feide-wrap {{ display: flex; justify-content: center; margin-bottom: 20px; }}
-  .feide {{ width: 120px; height: 120px; animation: feideRoll 3s ease-in-out infinite; }}
-  @keyframes feideRoll {{
-    0%, 100% {{ transform: translateX(-15px) rotate(-8deg) translateY(0); }}
-    25% {{ transform: translateX(0) rotate(0deg) translateY(-6px); }}
-    50% {{ transform: translateX(15px) rotate(8deg) translateY(0); }}
-    75% {{ transform: translateX(0) rotate(0deg) translateY(-6px); }}
+  /* 完整透明团子 logo-feide-transparent.png = 512×393（宽>高）。
+     等比例 contain；禁止正方形硬框，禁止带缺口蓝底的残缺磁贴。 */
+  .feide {{
+    width: 156px;
+    height: 120px;
+    object-fit: contain;
+    object-position: center;
+    display: block;
+    flex-shrink: 0;
+    animation: feideBounce 2.8s ease-in-out infinite;
+  }}
+  @keyframes feideBounce {{
+    0%, 100% {{ transform: translateY(0); }}
+    50% {{ transform: translateY(-8px); }}
   }}
 
   .bottom {{
@@ -1125,10 +1149,14 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .foot-logo {{ font-size: 1.05rem; }}
   .nav {{
     border: 0; background: transparent; color: var(--ink); cursor: pointer;
-    display: grid; place-items: center; gap: 2px; font-size: .58rem; font-weight: 600;
-    min-width: 52px;
+    display: grid; place-items: center; gap: 2px; font-size: .52rem; font-weight: 600;
+    min-width: 0; flex: 1; padding: 0 2px;
   }}
-  .nav svg {{ width: 24px; height: 24px; }}
+  .nav svg {{ width: 22px; height: 22px; }}
+  .nav-label {{
+    line-height: 1.15; text-align: center;
+    white-space: nowrap; /* 「一站式配齐」等长文案禁止拆字换行 */
+  }}
   /* 底部导航激活态走品牌色。红色只留给「已赞」这一个语义，
      否则页面上会同时存在绿和红两个强调色，谁是品牌就说不清了。 */
   .nav.on {{ color: var(--accent); }}
@@ -1151,7 +1179,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     background: var(--ink); color: #fff; border-color: var(--ink);
   }}
 
-  /* —— 底部 tab（发现 / 主题分类 / 发布 / 我的） ——
+  /* —— 底部 tab（发现 / 主题分类 / 一站式配齐 / 发布 / 我的） ——
      激活态原来只有一个颜色提示。WCAG 1.4.1 要求颜色不是唯一的视觉载体，所以再加
      一条顶端指示条和一档字重：位置与形状的变化在灰度和色觉障碍下同样读得出来。
      语义那一侧由 role=tab + aria-selected 承担，不靠这两条视觉提示。 */
@@ -1163,6 +1191,123 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .nav.on::before {{ opacity: 1; }}
   .nav.on .nav-label {{ font-weight: 800; }}
+
+  /* —— 一站式配齐（付费场景包货架） —— */
+  .packs-panel {{ padding: 14px 12px 28px; }}
+  .packs-panel h2 {{ margin: 0 0 4px; font-size: 1.15rem; }}
+  .packs-panel .lead {{ margin: 0 0 12px; font-size: .82rem; color: var(--muted); line-height: 1.45; }}
+  .packs-groups {{
+    display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px;
+  }}
+  .packs-groups button {{
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--muted);
+    border-radius: 999px; padding: 6px 11px; font: inherit; font-size: .74rem; font-weight: 650;
+    cursor: pointer;
+  }}
+  .packs-groups button[aria-pressed="true"] {{
+    color: var(--ink); border-color: var(--ink); font-weight: 800; background: #eef3ff;
+  }}
+  .pack-card {{
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 0; margin-bottom: 10px; overflow: hidden;
+  }}
+  .pack-card .pack-open {{
+    appearance: none; width: 100%; border: 0; background: transparent; font: inherit;
+    color: inherit; text-align: left; cursor: pointer; padding: 12px 12px 10px;
+  }}
+  .pack-card .pack-top {{
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    margin-bottom: 6px;
+  }}
+  .pack-card .pack-top b {{ font-size: .95rem; }}
+  .pack-badge {{
+    flex: 0 0 auto; font-size: .66rem; font-weight: 750; letter-spacing: .02em;
+    border-radius: 6px; padding: 3px 7px; background: #eef3ff; color: var(--accent);
+  }}
+  .pack-badge.soon {{ background: #f3f4f6; color: var(--muted); }}
+  .pack-card .who {{ font-size: .74rem; color: var(--muted); margin: 0 0 8px; line-height: 1.4; }}
+  .pack-flow {{
+    display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; padding: 0; list-style: none;
+  }}
+  .pack-flow li {{
+    font-size: .68rem; font-weight: 650; color: #3d4a6b;
+    background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 6px; padding: 3px 7px;
+  }}
+  .pack-foot {{
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 0 12px 12px;
+  }}
+  .pack-foot .price {{ font-size: .82rem; font-weight: 800; color: var(--ink); }}
+  .pack-foot .go {{
+    appearance: none; border: 1px solid var(--ink); background: var(--ink); color: #fff;
+    border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .74rem; font-weight: 700;
+    cursor: pointer;
+  }}
+  .pack-detail {{ padding: 14px 12px 28px; }}
+  .pack-detail .back {{
+    appearance: none; border: 0; background: transparent; color: var(--accent);
+    font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; padding: 0; margin: 0 0 10px;
+  }}
+  .pack-detail h2 {{ margin: 0 0 4px; font-size: 1.2rem; }}
+  .pack-detail .lead {{ margin: 0 0 12px; font-size: .82rem; color: var(--muted); line-height: 1.45; }}
+  .pack-detail .sec {{
+    font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .04em;
+    text-transform: uppercase; margin: 16px 0 8px;
+  }}
+  .pack-detail .howto-skel {{
+    list-style: none; margin: 0; padding: 0; display: grid; gap: 6px;
+  }}
+  .pack-detail .howto-skel li {{
+    font-size: .8rem; line-height: 1.4; color: #24292f;
+    padding: 9px 11px; background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 10px;
+  }}
+  .pack-detail .howto-skel li em {{
+    font-style: normal; font-size: .68rem; font-weight: 700; color: var(--muted); margin-right: 6px;
+  }}
+  .pack-detail .howto-skel.locked li {{
+    color: var(--muted); display: flex; align-items: center; gap: 6px;
+  }}
+  .pack-detail .howto-skel.locked li i {{
+    font-style: normal; margin-left: auto; font-size: .72rem;
+  }}
+  .pack-meta {{
+    margin: -4px 0 12px; font-size: .72rem; font-weight: 650; color: var(--accent);
+  }}
+  .pack-why-list, .pack-flow-why {{
+    list-style: none; margin: 0; padding: 0; display: grid; gap: 8px;
+  }}
+  .pack-why-list li, .pack-flow-why li {{
+    font-size: .82rem; line-height: 1.45; color: var(--ink);
+    padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  }}
+  .pack-flow-why li, .pack-why-list.core li {{
+    display: grid; gap: 4px;
+  }}
+  .pack-flow-why li b, .pack-why-list.core li b {{
+    font-size: .78rem; font-weight: 800;
+  }}
+  .pack-flow-why li span, .pack-why-list.core li span {{
+    font-size: .78rem; color: var(--muted); line-height: 1.4;
+  }}
+  .pack-buy-bar {{
+    position: sticky; bottom: calc(64px + env(safe-area-inset-bottom));
+    margin: 18px -12px 0; padding: 12px;
+    background: rgba(255,255,255,.96); border-top: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px;
+  }}
+  .pack-buy-bar .price {{ flex: 1; font-size: .9rem; font-weight: 800; }}
+  .pack-buy-bar .price span {{ display: block; font-size: .7rem; font-weight: 600; color: var(--muted); }}
+  .pack-buy-bar button {{
+    appearance: none; border: 1px solid var(--ink); background: var(--ink); color: #fff;
+    border-radius: 999px; padding: 10px 16px; font: inherit; font-size: .82rem; font-weight: 750;
+    cursor: pointer;
+  }}
+  .pack-buy-bar button:disabled {{
+    opacity: .55; cursor: not-allowed;
+  }}
+  @media (min-width: 1100px) {{
+    .pack-buy-bar {{ bottom: 0; }}
+  }}
 
   /* —— 回到顶部 ——
      滚动容器是文档本身（.shell 只是限宽，没有自己的滚动条），所以监听 window、
@@ -1452,6 +1597,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
 
   body.variant-lite .stories-wrap,
   body.variant-lite #followSheet,
+  body.variant-lite .nav[data-mode="packs"],
   body.variant-lite .nav[data-mode="publish"],
   body.variant-lite .nav[data-mode="me"],
   body.variant-lite .follow-mini,
@@ -1634,7 +1780,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     <main class="feed" id="feed" role="tabpanel" aria-labelledby="tab-all"></main>
     </div>
 
-    <!-- 底栏四入口：发现 / 主题分类 / 发布 / 我的。lite 用 CSS 藏发布和我的。 -->
+    <!-- 底栏五入口：发现 / 主题分类 / 一站式配齐 / 发布 / 我的。lite 用 CSS 藏配齐/发布/我的。 -->
     <div class="dock">
     <footer class="site-foot">
       <div class="logo foot-logo">
@@ -1650,6 +1796,10 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
       <button class="nav" type="button" data-mode="topics" role="tab" id="tab-topics" aria-selected="false" aria-controls="feed" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         <span class="nav-label" data-i18n="navTopics">主题分类</span>
+      </button>
+      <button class="nav" type="button" data-mode="packs" role="tab" id="tab-packs" aria-selected="false" aria-controls="feed" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 8l8-4 8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/></svg>
+        <span class="nav-label" data-i18n="navPacks">一站式配齐</span>
       </button>
       <button class="nav" type="button" data-mode="publish" role="tab" id="tab-publish" aria-selected="false" aria-controls="feed" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -1741,7 +1891,7 @@ function resolveApiBase() {{
   return '';
 }}
 const API_BASE = resolveApiBase();
-const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', topicsView: 'scene', shown: 0, intent: '', publisher: '' }};
+const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', topicsView: 'scene', packId: '', packGroup: 'all', shown: 0, intent: '', publisher: '' }};
 const demo = {{ on: false, step: 0, timer: null, focus: -1 }};
 const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
 const publisherCache = {{}};
@@ -1752,7 +1902,15 @@ const ACCT = {{ loading: false, loaded: false, user: null, posts: null, liked: 0
    落地后页面路径可能不是 /login；这里留成一个常量，改一行就能对齐。 */
 const LOGIN_PATH = '/login';
 /* 底部 tab ↔ URL 的映射。tab= 存稳定英文标识，不用展示文案（切语言会失效）。 */
-const TAB_QUERY = {{ all: 'discover', topics: 'topics', publish: 'publish', me: 'me' }};
+const TAB_QUERY = {{ all: 'discover', topics: 'topics', packs: 'packs', publish: 'publish', me: 'me' }};
+
+/* 一站式配齐货架：由 docs/packs/shelf_catalog.json（飞书包-* 表）注入。
+   商详只讲为什么成套买；默认清单与八节手册购买后才解锁，禁止在此倾倒全文。 */
+const PACK_SHELF = {pack_shelf_json};
+const PACK_HOWTO_LOCKED = [
+  'packsHowto1', 'packsHowto2', 'packsHowto3', 'packsHowto4',
+  'packsHowto5', 'packsHowto6', 'packsHowto7', 'packsHowto8',
+];
 
 /* ---------- 本机已装索引（可选，由 skill-picker 注入） ---------- */
 /* skill-picker 的 discover.py 把本页拷成 ~/.skill-picker/discover.html 时，会在 head
@@ -1849,7 +2007,7 @@ const I18N = {{
     filterByScene: '按行业筛选',
     followScene: '关注行业 · 最新进顶部圆环',
     searchPlaceholder: '短关键词更好，如：去AI味 / 剪视频',
-    navDiscover: '发现', navTopics: '主题分类', navPublish: '发布', navMe: '我的',
+    navDiscover: '发现', navTopics: '主题分类', navPacks: '一站式配齐', navPublish: '发布', navMe: '我的',
     valueLine: '每刷一下，就快人一步',
     coachSkip: 'Skip', coachNext: '下一步', coachDone: '开始刷',
     coachStepOf: '{{n}} / {{total}}',
@@ -1864,6 +2022,32 @@ const I18N = {{
     coach5Title: '推广你自己的 skill',
     coach5Body: '底部「发布」可以上传自己的 skill，让别人也刷到。需要先登录。',
     tabsAria: '主导航', backToTop: '回到顶部',
+
+    /* 一站式配齐 */
+    packsTitle: '一站式配齐',
+    packsLead: '按岗位场景买一套能做成一件事的 Skill 包。发现流仍全量免费；这里卖的是配齐与带练，不代装。',
+    packsGroupAll: '全部', packsGroupEcom: '电商', packsGroupMedia: '自媒体', packsGroupOps: '效率',
+    packsBadgeShelf: '首波上架', packsBadgeSoon: '下一波',
+    packsPriceTbd: '待定价', packsOpen: '查看方案', packsBuy: '购买此包',
+    packsBuyLocked: '登录后购买', packsBuySoon: '收银台即将开通，先收藏场景包方案',
+    packsBuyNeedSite: '请到 skillfeeder.cn 主站购买场景包',
+    packsBack: '← 返回货架',
+    packsSecFlow: '工作流怎么串', packsSecWhy: '为什么选成套，而不是自己散装下',
+    packsSecPains: '成套先解这些卡点', packsSecLocked: '购买后解锁',
+    packsSecSkills: '核心能力（只讲卡点，不含用法全文）',
+    packsSecHowto: '操作手册目录（锁）',
+    packsSkillsStub: '默认安装清单与八节带练手册购买后解锁。这里只展示「解什么卡点」，避免你直接单下散装。',
+    packsLockedHint: '付款后才开放手册全文、默认清单与三份练习。',
+    packsMetaNamed: '已点名 {{n}}',
+    packsHowto1: '这个包帮你完成什么',
+    packsHowto2: '今天先做哪一件',
+    packsHowto3: '怎么对 Agent 说话',
+    packsHowto4: '材料放哪',
+    packsHowto5: '每个 Part 何时用',
+    packsHowto6: '不要做的事',
+    packsHowto7: '第二天才能接的手',
+    packsHowto8: '坏了怎么办',
+    packsEmpty: '这一类暂时没有场景包。',
 
     /* 主题分类 */
     topicsTitle: '主题分类', topicsSecSection: '按栏目浏览',
@@ -2093,7 +2277,7 @@ const I18N = {{
     filterByScene: 'Filter by industry',
     followScene: 'Follow industry · newest goes to top ring',
     searchPlaceholder: 'Short keywords work best, e.g. de-slop / short video',
-    navDiscover: 'Discover', navTopics: 'Topics', navPublish: 'Post', navMe: 'Me',
+    navDiscover: 'Discover', navTopics: 'Topics', navPacks: 'Packs', navPublish: 'Post', navMe: 'Me',
     valueLine: 'Every swipe, one step ahead',
     coachSkip: 'Skip', coachNext: 'Next', coachDone: 'Start',
     coachStepOf: '{{n}} / {{total}}',
@@ -2108,6 +2292,31 @@ const I18N = {{
     coach5Title: 'Share your own skill',
     coach5Body: 'Use Post at the bottom to publish your skill so others can find it. Sign in first.',
     tabsAria: 'Main navigation', backToTop: 'Back to top',
+
+    packsTitle: 'One-stop packs',
+    packsLead: 'Buy a scenario pack that gets one job done. The discover feed stays free; packs sell curation and drills — never silent install.',
+    packsGroupAll: 'All', packsGroupEcom: 'Commerce', packsGroupMedia: 'Media', packsGroupOps: 'Ops',
+    packsBadgeShelf: 'Wave 1', packsBadgeSoon: 'Soon',
+    packsPriceTbd: 'Price TBA', packsOpen: 'View pack', packsBuy: 'Buy pack',
+    packsBuyLocked: 'Sign in to buy', packsBuySoon: 'Checkout coming soon — pack plan saved',
+    packsBuyNeedSite: 'Buy packs on skillfeeder.cn',
+    packsBack: '← Back to shelf',
+    packsSecFlow: 'How the workflow connects', packsSecWhy: 'Why buy the set, not cherry-pick',
+    packsSecPains: 'Pains this set clears first', packsSecLocked: 'Unlocked after purchase',
+    packsSecSkills: 'Core capabilities (pain only — not full how-tos)',
+    packsSecHowto: 'HOWTO outline (locked)',
+    packsSkillsStub: 'Default install list and eight-section drills unlock after purchase. Here we only show which pains get solved.',
+    packsLockedHint: 'Full HOWTO, default skill list, and three drills open after payment.',
+    packsMetaNamed: '{{n}} named',
+    packsHowto1: 'What this pack finishes',
+    packsHowto2: 'First win today',
+    packsHowto3: 'How to talk to the agent',
+    packsHowto4: 'Where materials go',
+    packsHowto5: 'When each Part is for',
+    packsHowto6: 'Do not do these',
+    packsHowto7: 'Day-two handoffs',
+    packsHowto8: 'When it breaks',
+    packsEmpty: 'No packs in this group yet.',
 
     topicsTitle: 'Topics', topicsSecSection: 'Browse by section',
     topicsSubScene: 'By topic', topicsSubSection: 'By section',
@@ -3756,7 +3965,7 @@ function accountMode() {{
    已有的 ?q= / ?intent= / ?demo=1 照旧，这里只多认一个键。 */
 function tabAllowed(mode) {{
   if (!Object.prototype.hasOwnProperty.call(TAB_QUERY, mode)) return false;
-  // lite 是 skill-picker 发现子页，按产品约定不含关注/发布/个人后台
+  // lite 是 skill-picker 发现子页，按产品约定不含关注/发布/个人后台/付费货架
   if (IS_LITE) return mode === 'all' || mode === 'topics';
   return true;
 }}
@@ -3776,7 +3985,7 @@ function tabFromQuery(search) {{
 }}
 
 /* saved / publisher 不是独立 tab，但用户是从某个 tab 钻进去的，
-   高亮要留在那个 tab 上，不能四个都灭 */
+   高亮要留在那个 tab 上，不能五个都灭 */
 function tabForMode(mode) {{
   if (mode === 'saved') return 'me';
   if (mode === 'publisher') return 'all';
@@ -3800,6 +4009,10 @@ function tabSearch(search, mode) {{
   else params.delete('l2');
   if (tab === 'topics' && state.topicsView === 'section') params.set('view', 'section');
   else params.delete('view');
+  if (tab === 'packs' && state.packId) params.set('pack', state.packId);
+  else params.delete('pack');
+  if (tab === 'packs' && state.packGroup && state.packGroup !== 'all') params.set('pg', state.packGroup);
+  else params.delete('pg');
   const q = params.toString();
   return q ? ('?' + q) : '';
 }}
@@ -3846,14 +4059,22 @@ function renderTabs() {{
 
 function switchTab(mode, opts) {{
   if (!tabAllowed(mode)) return;
+  const prev = state.mode;
   state.mode = mode;
   if (mode === 'all') state.section = 'all';
+  if (mode !== 'packs') {{
+    if (!(opts && opts.keepPack)) state.packId = '';
+  }} else if (prev === 'packs' && !(opts && opts.keepPack)) {{
+    /* 再点一次底栏 → 回到货架列表 */
+    state.packId = '';
+  }}
   state.shown = 0;
   render(true);
   syncTabUrl();
   if (!(opts && opts.keepScroll)) scrollToTop();
   track('view_tab', {{ item_key: mode, source: 'nav' }});
   if (mode === 'publish') track('publish_view', {{ source: 'tab' }});
+  if (mode === 'packs') track('packs_view', {{ source: 'tab' }});
 }}
 
 /* 键盘：左右键在 tab 之间走、Home/End 到两端。这是 role=tablist 的既定交互，
@@ -4018,6 +4239,203 @@ function topicsViewKeyTarget(key, current) {{
   return '';
 }}
 
+/* ---------- 一站式配齐（付费场景包货架） ---------- */
+function packById(id) {{
+  return PACK_SHELF.find(p => p.id === id) || null;
+}}
+
+function packTitle(p) {{
+  return LANG === 'en' ? (p.titleEn || p.titleZh) : p.titleZh;
+}}
+
+function packAudience(p) {{
+  return LANG === 'en' ? (p.audienceEn || p.audienceZh) : p.audienceZh;
+}}
+
+function packBlurb(p) {{
+  return LANG === 'en' ? (p.blurbEn || p.blurbZh) : p.blurbZh;
+}}
+
+function packFlow(p) {{
+  return LANG === 'en' ? (p.flowEn || p.flowZh || []) : (p.flowZh || []);
+}}
+
+function packGroupFromQuery(search) {{
+  let want = '';
+  try {{
+    want = (new URLSearchParams(search || '').get('pg') || '').trim().toLowerCase();
+  }} catch (e) {{
+    want = '';
+  }}
+  if (want === 'ecom' || want === 'media' || want === 'ops') return want;
+  return 'all';
+}}
+
+function packIdFromQuery(search) {{
+  let want = '';
+  try {{
+    want = (new URLSearchParams(search || '').get('pack') || '').trim();
+  }} catch (e) {{
+    want = '';
+  }}
+  return packById(want) ? want : '';
+}}
+
+function packsFiltered() {{
+  const g = state.packGroup || 'all';
+  const rows = PACK_SHELF.filter(p => g === 'all' || p.group === g);
+  return rows.slice().sort((a, b) => {{
+    if (a.wave !== b.wave) return a.wave - b.wave;
+    return String(a.id).localeCompare(String(b.id));
+  }});
+}}
+
+function packsGroupsHtml() {{
+  const cur = state.packGroup || 'all';
+  const opts = [
+    ['all', 'packsGroupAll'],
+    ['ecom', 'packsGroupEcom'],
+    ['media', 'packsGroupMedia'],
+    ['ops', 'packsGroupOps'],
+  ];
+  return `<div class="packs-groups" role="group" aria-label="${{escapeHtml(tr('packsTitle'))}}">` +
+    opts.map(([id, key]) => {{
+      const on = cur === id;
+      return `<button type="button" class="js-pack-group" data-group="${{id}}"
+        aria-pressed="${{on ? 'true' : 'false'}}">${{escapeHtml(tr(key))}}</button>`;
+    }}).join('') + `</div>`;
+}}
+
+function packCardHtml(p) {{
+  const shelf = p.status === 'shelf';
+  const badge = shelf ? tr('packsBadgeShelf') : tr('packsBadgeSoon');
+  const badgeCls = shelf ? '' : ' soon';
+  const flow = packFlow(p).map(s => `<li>${{escapeHtml(s)}}</li>`).join('');
+  return `<article class="pack-card" data-pack="${{escapeHtml(p.id)}}">
+    <button type="button" class="pack-open js-pack-open" data-pack="${{escapeHtml(p.id)}}">
+      <div class="pack-top">
+        <b>${{escapeHtml(packTitle(p))}}</b>
+        <span class="pack-badge${{badgeCls}}">${{escapeHtml(badge)}}</span>
+      </div>
+      <p class="who">${{escapeHtml(packAudience(p))}}</p>
+      <ul class="pack-flow">${{flow}}</ul>
+      <p class="who">${{escapeHtml(packBlurb(p))}}</p>
+    </button>
+    <div class="pack-foot">
+      <span class="price">${{escapeHtml(tr('packsPriceTbd'))}}</span>
+      <button type="button" class="go js-pack-open" data-pack="${{escapeHtml(p.id)}}">${{escapeHtml(tr('packsOpen'))}}</button>
+    </div>
+  </article>`;
+}}
+
+function packsShelfHtml() {{
+  const rows = packsFiltered();
+  const cards = rows.length
+    ? rows.map(packCardHtml).join('')
+    : `<p class="lead">${{escapeHtml(tr('packsEmpty'))}}</p>`;
+  return `<div class="packs-panel">
+    <h2>${{escapeHtml(tr('packsTitle'))}}</h2>
+    <p class="lead">${{escapeHtml(tr('packsLead'))}}</p>
+    ${{packsGroupsHtml()}}
+    ${{cards}}
+  </div>`;
+}}
+
+function packDetailHtml(p) {{
+  if (!p) return packsShelfHtml();
+  const why = (p.whyChooseZh || []).map(s =>
+    `<li>${{escapeHtml(s)}}</li>`).join('');
+  const flowWhy = (p.flowWhyZh || []).map(row =>
+    `<li><b>${{escapeHtml(row.step || '')}}</b><span>${{escapeHtml(row.why || '')}}</span></li>`
+  ).join('') || packFlow(p).map(s =>
+    `<li><b>${{escapeHtml(s)}}</b><span></span></li>`).join('');
+  const cores = (p.coreSkills || []).map(s =>
+    `<li><b>${{escapeHtml(s.name || '')}}</b><span>${{escapeHtml(s.why || s.sub || '')}}</span></li>`
+  ).join('');
+  const locked = PACK_HOWTO_LOCKED.map((key, i) =>
+    `<li><em>${{i + 1}}.</em>${{escapeHtml(tr(key))}}<i>🔒</i></li>`).join('');
+  const buyLabel = ACCT.user ? tr('packsBuy') : tr('packsBuyLocked');
+  const metaBits = [];
+  if (p.namedCount) metaBits.push(trn('packsMetaNamed', {{ n: p.namedCount }}));
+  if (p.completeness) metaBits.push(String(p.completeness));
+  const meta = metaBits.length
+    ? `<p class="pack-meta">${{escapeHtml(metaBits.join(' · '))}}</p>` : '';
+  const coresBlock = cores
+    ? `<ul class="pack-why-list core">${{cores}}</ul>`
+    : `<p class="lead">${{escapeHtml(tr('packsSkillsStub'))}}</p>`;
+  return `<div class="pack-detail" data-pack="${{escapeHtml(p.id)}}">
+    <button type="button" class="back js-pack-back">${{escapeHtml(tr('packsBack'))}}</button>
+    <h2>${{escapeHtml(packTitle(p))}}</h2>
+    <p class="lead">${{escapeHtml(packAudience(p))}} · ${{escapeHtml(packBlurb(p))}}</p>
+    ${{meta}}
+    <div class="sec">${{escapeHtml(tr('packsSecWhy'))}}</div>
+    <ul class="pack-why-list">${{why || `<li>${{escapeHtml(packBlurb(p))}}</li>`}}</ul>
+    <div class="sec">${{escapeHtml(tr('packsSecFlow'))}}</div>
+    <ul class="pack-flow-why">${{flowWhy}}</ul>
+    <div class="sec">${{escapeHtml(tr('packsSecSkills'))}}</div>
+    ${{coresBlock}}
+    <p class="lead">${{escapeHtml(tr('packsSkillsStub'))}}</p>
+    <div class="sec">${{escapeHtml(tr('packsSecLocked'))}}</div>
+    <p class="lead">${{escapeHtml(tr('packsLockedHint'))}}</p>
+    <ul class="howto-skel locked">${{locked}}</ul>
+    <div class="pack-buy-bar">
+      <div class="price">${{escapeHtml(tr('packsPriceTbd'))}}<span>${{escapeHtml(p.status === 'shelf' ? tr('packsBadgeShelf') : tr('packsBadgeSoon'))}}</span></div>
+      <button type="button" class="js-pack-buy" data-pack="${{escapeHtml(p.id)}}">${{escapeHtml(buyLabel)}}</button>
+    </div>
+  </div>`;
+}}
+
+function packsPanelHtml() {{
+  const p = state.packId ? packById(state.packId) : null;
+  return p ? packDetailHtml(p) : packsShelfHtml();
+}}
+
+function openPack(id) {{
+  const p = packById(id);
+  if (!p) return;
+  state.mode = 'packs';
+  state.packId = p.id;
+  render(true);
+  syncTabUrl();
+  scrollToTop();
+  track('pack_open', {{ item_key: p.id, source: 'shelf' }});
+}}
+
+function closePackDetail() {{
+  state.packId = '';
+  render(true);
+  syncTabUrl();
+  scrollToTop();
+}}
+
+function setPackGroup(group) {{
+  state.packGroup = (group === 'ecom' || group === 'media' || group === 'ops') ? group : 'all';
+  state.packId = '';
+  render(true);
+  syncTabUrl();
+}}
+
+function buyPack(packId) {{
+  const p = packById(packId);
+  if (!p) return;
+  track('pack_buy_click', {{ item_key: p.id, source: 'detail' }});
+  if (!API_BASE || accountMode() === 'local' || accountMode() === 'linked') {{
+    toast(tr('packsBuyNeedSite'));
+    return;
+  }}
+  if (!ACCT.user) {{
+    const login = loginUrl();
+    if (!login) {{
+      toast(tr('packsBuyNeedSite'));
+      return;
+    }}
+    const next = encodeURIComponent('/?tab=packs&pack=' + encodeURIComponent(p.id));
+    location.href = login + (login.includes('?') ? '&' : '?') + 'next=' + next;
+    return;
+  }}
+  toast(tr('packsBuySoon'));
+}}
+
 function goTopic(sceneId, l2Id) {{
   state.mode = 'all';
   state.publisher = '';
@@ -4138,6 +4556,33 @@ function journeyState() {{
   if (!g.__sfJourney) g.__sfJourney = {{ q: [], timer: 0 }};
   return g.__sfJourney;
 }}
+function collectAttribution() {{
+  let params;
+  try {{ params = new URLSearchParams(location.search || ''); }}
+  catch (e) {{ params = new URLSearchParams(''); }}
+  const utm_source = String(
+    params.get('utm_source') || params.get('sf_from') || params.get('from') || ''
+  ).slice(0, 80);
+  const utm_medium = String(params.get('utm_medium') || '').slice(0, 40);
+  const utm_campaign = String(params.get('utm_campaign') || '').slice(0, 80);
+  let referrer = '';
+  try {{
+    if (document.referrer) {{
+      referrer = (new URL(document.referrer).hostname || '').replace(/^www\\./, '');
+    }}
+  }} catch (e) {{}}
+  const landing = String((location.pathname || '/') + (location.search || '')).slice(0, 200);
+  const channelHint = String(params.get('ch') || params.get('channel') || '').slice(0, 40);
+  return {{
+    channel: channelHint,
+    referrer,
+    landing,
+    utm_source,
+    utm_medium,
+    utm_campaign,
+    source: channelHint || 'boot',
+  }};
+}}
 function track(action, extra) {{
   if (typeof IS_LITE !== 'undefined' && IS_LITE) return;
   if (!action) return;
@@ -4150,6 +4595,12 @@ function track(action, extra) {{
     source: String(row.source || '').slice(0, 40),
     scene: String(row.scene || '').slice(0, 40),
     owner: String(row.owner || '').slice(0, 80),
+    channel: String(row.channel || '').slice(0, 40),
+    referrer: String(row.referrer || '').slice(0, 120),
+    landing: String(row.landing || '').slice(0, 200),
+    utm_source: String(row.utm_source || '').slice(0, 80),
+    utm_medium: String(row.utm_medium || '').slice(0, 40),
+    utm_campaign: String(row.utm_campaign || '').slice(0, 80),
     client_ts: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
   }});
   if (st.q.length >= 8) {{ flushJourney(); return; }}
@@ -4171,6 +4622,14 @@ function flushJourney() {{
       headers: {{ 'Content-Type': 'application/json', 'X-Device-Id': id }},
       body: JSON.stringify({{ device_id: id, session_id: sid, events }}),
       keepalive: true,
+    }}).then(async (resp) => {{
+      if (!resp || !resp.ok) return;
+      try {{
+        const data = await resp.json();
+        if (data && data.device_token) {{
+          try {{ localStorage.setItem('sf_device_token', data.device_token); }} catch (e) {{}}
+        }}
+      }} catch (e) {{}}
     }}).catch(() => {{}});
   }} catch (e) {{}}
 }}
@@ -4208,6 +4667,46 @@ async function ensureDeviceToken() {{
   }}
 }}
 
+/** 登录后把本机游客 device 并档到账号：画像 / 赞藏 / 首触渠道都挂上，运营才能召回。 */
+async function claimGuestDevice() {{
+  if (typeof IS_LITE !== 'undefined' && IS_LITE) return false;
+  if (accountMode() !== 'live') return false;
+  const id = deviceId();
+  const token = await ensureDeviceToken();
+  if (!id || !token) return false;
+  try {{
+    const resp = await acctFetch('/api/profile/claim', {{
+      method: 'POST',
+      headers: {{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Device-Id': id,
+        'X-Device-Token': token,
+      }},
+      body: JSON.stringify({{ device_id: id, device_token: token }}),
+    }});
+    return resp.ok;
+  }} catch (e) {{
+    return false;
+  }}
+}}
+
+async function bootGuestIdentity() {{
+  if (typeof IS_LITE !== 'undefined' && IS_LITE) return;
+  try {{
+    await ensureDeviceToken();
+  }} catch (e) {{}}
+  track('session_start', collectAttribution());
+  track('view_tab', {{ item_key: state.mode || 'all', source: 'boot' }});
+  try {{
+    const me = await acctFetch('/auth/me', {{ headers: {{ 'Accept': 'application/json' }} }});
+    if (me && me.ok) {{
+      const data = await me.json();
+      if (data && data.user) await claimGuestDevice();
+    }}
+  }} catch (e) {{}}
+}}
+
 async function loadAccount() {{
   if (accountMode() !== 'live' || ACCT.loading) return;
   ACCT.loading = true;
@@ -4232,6 +4731,7 @@ async function loadAccount() {{
     ACCT.likedNames = null;
   }}
   if (ACCT.user) {{
+    try {{ await claimGuestDevice(); }} catch (e) {{}}
     try {{
       const resp = await acctFetch('/api/posts/me', {{ headers: {{ 'Accept': 'application/json' }} }});
       const data = resp.ok ? await resp.json() : null;
@@ -4750,7 +5250,7 @@ function render(reset) {{
   renderStories();
 
   const hideChrome = state.mode === 'me' || state.mode === 'publisher'
-    || state.mode === 'topics' || state.mode === 'publish';
+    || state.mode === 'topics' || state.mode === 'publish' || state.mode === 'packs';
   const scenes = sceneOptions();
   const secs = sectionOptions();
   const l2s = l2Options();
@@ -4768,6 +5268,10 @@ function render(reset) {{
 
   if (state.mode === 'topics') {{
     feed.innerHTML = topicsPanelHtml();
+    return;
+  }}
+  if (state.mode === 'packs') {{
+    feed.innerHTML = packsPanelHtml();
     return;
   }}
   if (state.mode === 'publish') {{
@@ -5303,6 +5807,25 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     goSection(topicSec.dataset.id || 'all', topicSec.dataset.scene || 'all');
     return;
   }}
+  const packGroup = t.closest('.js-pack-group');
+  if (packGroup) {{
+    setPackGroup(packGroup.dataset.group || 'all');
+    return;
+  }}
+  const packOpen = t.closest('.js-pack-open');
+  if (packOpen) {{
+    openPack(packOpen.dataset.pack || '');
+    return;
+  }}
+  if (t.closest('.js-pack-back')) {{
+    closePackDetail();
+    return;
+  }}
+  const packBuy = t.closest('.js-pack-buy');
+  if (packBuy) {{
+    buyPack(packBuy.dataset.pack || '');
+    return;
+  }}
   if (t.closest('.js-acct-logout')) {{
     logoutAccount();
     return;
@@ -5536,6 +6059,10 @@ try {{
   const tab = tabFromQuery(location.search);
   if (tab && !scene) state.mode = tab;
   if (tab === 'topics') state.topicsView = topicsViewFromQuery(location.search);
+  if (tab === 'packs') {{
+    state.packGroup = packGroupFromQuery(location.search);
+    state.packId = packIdFromQuery(location.search);
+  }}
 }})();
 
 renderIntentKeys();
@@ -5699,8 +6226,7 @@ if (new URLSearchParams(location.search).get('bind') === 'taken') {{
   toast(tr('acctBindTaken'));
 }}
 if (!IS_LITE) {{
-  track('session_start', {{ source: 'boot' }});
-  track('view_tab', {{ item_key: state.mode || 'all', source: 'boot' }});
+  bootGuestIdentity();
   document.addEventListener('click', (e) => {{
     const a = e.target && e.target.closest && e.target.closest('a[href]');
     if (!a) return;
