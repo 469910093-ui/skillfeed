@@ -2253,6 +2253,9 @@ const I18N = {{
     acctBindTaken: '这把钥匙已经绑在别的账号上。',
     bindNudgeTitle: '绑定手机或微信',
     bindNudgeBody: '换设备也能打开收藏，并接收重要更新。',
+    bindNudgeEmailTitle: '留下邮箱',
+    bindNudgeEmailBody: '换设备也能找到你，有重要更新时通知你。',
+    bindNudgeEmailCta: '去填写',
     bindNudgeLater: '以后再说',
     recallSavedTitle: '你收藏了 {{n}} 条',
     recallSavedCta: '查看收藏',
@@ -2536,6 +2539,9 @@ const I18N = {{
     acctBindTaken: 'That key is already bound to another account.',
     bindNudgeTitle: 'Bind phone or WeChat',
     bindNudgeBody: 'Keep your saves across devices and get important updates.',
+    bindNudgeEmailTitle: 'Leave an email',
+    bindNudgeEmailBody: 'So we can reach you across devices with important updates.',
+    bindNudgeEmailCta: 'Add email',
     bindNudgeLater: 'Not now',
     recallSavedTitle: 'You saved {{n}} items',
     recallSavedCta: 'View saves',
@@ -5173,7 +5179,9 @@ function needsOutboundKey() {{
   if (!ACCT.user || !ACCT.loaded) return false;
   const p = ACCT.user.providers || [];
   if (p.indexOf('wechat') >= 0 || p.indexOf('phone') >= 0) return false;
-  return !!(ACCT.wechat || ACCT.sms);
+  if (ACCT.user.email_opt_in) return false;
+  // 微信/短信未开时，仍可走邮箱同意（当前生产即此状态）。
+  return true;
 }}
 
 function bindNudgeHtml() {{
@@ -5181,6 +5189,9 @@ function bindNudgeHtml() {{
   if (!needsOutboundKey()) return '';
   try {{ if (localStorage.getItem('sf_bind_nudge') === '1') return ''; }} catch (e) {{ return ''; }}
   let actions = '';
+  let titleKey = 'bindNudgeTitle';
+  let bodyKey = 'bindNudgeBody';
+  let trackKey = 'show';
   if (ACCT.wechat) {{
     const href = API_BASE + '/auth/wechat?next=' + encodeURIComponent('/?tab=me');
     actions += `<a class="primary" href="${{escapeHtml(safeUrl(href))}}">${{escapeHtml(tr('acctBindWechat'))}}</a>`;
@@ -5189,16 +5200,21 @@ function bindNudgeHtml() {{
     const href = API_BASE + '/login?next=' + encodeURIComponent('/?tab=me');
     actions += `<a href="${{escapeHtml(safeUrl(href))}}">${{escapeHtml(tr('acctBindPhone'))}}</a>`;
   }}
-  if (!actions) return '';
+  if (!actions) {{
+    titleKey = 'bindNudgeEmailTitle';
+    bodyKey = 'bindNudgeEmailBody';
+    trackKey = 'show_email';
+    actions = `<button type="button" class="primary js-bind-nudge-email">${{escapeHtml(tr('bindNudgeEmailCta'))}}</button>`;
+  }}
   try {{
     if (!window.__sfBindNudgeTracked) {{
       window.__sfBindNudgeTracked = true;
-      track('bind_nudge', {{ item_key: 'show' }});
+      track('bind_nudge', {{ item_key: trackKey }});
     }}
   }} catch (e) {{}}
   return `<div class="recall-bar" role="region">
-    <div><b>${{escapeHtml(tr('bindNudgeTitle'))}}</b>
-      <p>${{escapeHtml(tr('bindNudgeBody'))}}</p></div>
+    <div><b>${{escapeHtml(tr(titleKey))}}</b>
+      <p>${{escapeHtml(tr(bodyKey))}}</p></div>
     <div class="recall-bar-actions">
       ${{actions}}
       <button type="button" class="js-bind-nudge-later">${{escapeHtml(tr('bindNudgeLater'))}}</button>
@@ -6099,6 +6115,12 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     try {{ localStorage.setItem('sf_bind_nudge', '1'); }} catch (err) {{}}
     track('bind_nudge', {{ item_key: 'dismiss' }});
     render(false);
+    return;
+  }}
+  if (t.closest('.js-bind-nudge-email')) {{
+    try {{ localStorage.setItem('sf_bind_nudge', '1'); }} catch (err) {{}}
+    track('bind_nudge', {{ item_key: 'email' }});
+    switchTab('me', {{ scroll: true }});
     return;
   }}
   if (t.closest('.js-recall-saved-later')) {{

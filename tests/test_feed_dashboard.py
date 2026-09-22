@@ -2335,6 +2335,7 @@ NEW_I18N_KEYS = (
     "acctKeyOn", "acctKeyOff", "acctBindWechat", "acctBindPhone", "acctBindGithub",
     "acctExport", "acctBindTaken",
     "bindNudgeTitle", "bindNudgeBody", "bindNudgeLater",
+    "bindNudgeEmailTitle", "bindNudgeEmailBody", "bindNudgeEmailCta",
     "recallSavedTitle", "recallSavedCta",
     "emailOptTitle", "emailOptBody", "emailOptPh", "emailOptCheck",
     "emailOptSave", "emailOptSaved", "emailOptBad", "emailOptOn",
@@ -2686,6 +2687,25 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
         gone = js.eval(
             "(localStorage.setItem('sf_bind_nudge', '1'), bindNudgeHtml())")
         self.assertEqual("", gone)
+
+    def test_bind_nudge_falls_back_to_email_when_channels_off(self):
+        """生产未开微信/短信时，引导去「我的」填邮箱（可落地的外联通道）。"""
+        js = self.harness(
+            api_base="https://skillfeeder.cn",
+            extra=(
+                "Object.assign(ACCT, { loaded: true, wechat: false, sms: false,"
+                " user: { login: 'kai', name: 'Kai', providers: ['github'],"
+                " email_opt_in: false } });"
+                "try { localStorage.removeItem('sf_bind_nudge'); } catch (e) {}"
+            ),
+        )
+        html = js.eval("bindNudgeHtml()")
+        self.assertIn("留下邮箱", html)
+        self.assertIn("js-bind-nudge-email", html)
+        self.assertNotIn("/auth/wechat", html)
+        opted = js.eval(
+            "(ACCT.user.email_opt_in = true, bindNudgeHtml())")
+        self.assertEqual("", opted)
 
     def test_recall_saved_strip_points_at_bookmarks(self):
         js = self.harness(
