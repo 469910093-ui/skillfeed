@@ -29,7 +29,7 @@ from crawl_waytoagi_wiki import (  # noqa: E402
 from gate_waytoagi_feed import probe_root  # noqa: E402
 from gates import description_shape_reason  # noqa: E402
 from ingest_waytoagi import ingest_corpus, merge_feed  # noqa: E402
-from ingest_waytoagi_candidates import merge_items, write_status  # noqa: E402
+from ingest_waytoagi_candidates import merge_items  # noqa: E402
 
 HOME = Path.home()
 DATA = HOME / ".skill-feed"
@@ -181,6 +181,7 @@ def harvest_search(
             items = list(first.get("items") or [])
             pages = min(10, (total + 99) // 100) if total else 1
             print(f"[search] {total:5d}  {q}", flush=True)
+            if total <= 0:
                 time.sleep(max(sleep, 2))
                 continue
             for page in range(2, pages + 1):
