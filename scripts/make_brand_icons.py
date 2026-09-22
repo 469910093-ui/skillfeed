@@ -22,12 +22,12 @@ def _trim(im: Image.Image, pad: int = 4) -> Image.Image:
     bbox = im.getbbox()
     if not bbox:
         return im
-    l, t, r, b = bbox
-    l = max(0, l - pad)
-    t = max(0, t - pad)
-    r = min(im.width, r + pad)
-    b = min(im.height, b + pad)
-    return im.crop((l, t, r, b))
+    left, top, right, bottom = bbox
+    left = max(0, left - pad)
+    top = max(0, top - pad)
+    right = min(im.width, right + pad)
+    bottom = min(im.height, bottom + pad)
+    return im.crop((left, top, right, bottom))
 
 
 def _rounded_bg(size: int, radius: int) -> Image.Image:

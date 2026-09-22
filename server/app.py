@@ -1700,8 +1700,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return '"' + str(v or "").replace('"', '""') + '"'
 
         lines = [
-            "ts,session_id,device_id,user_login,action,item_key,source,owner,"
-            "channel,referrer,landing,utm_source,utm_medium,utm_campaign"
+            (
+                "ts,session_id,device_id,user_login,action,item_key,source,owner,"
+                "channel,referrer,landing,utm_source,utm_medium,utm_campaign"
+            ),
         ]
         for r in rows:
             lines.append(",".join(cell(r.get(k)) for k in (
