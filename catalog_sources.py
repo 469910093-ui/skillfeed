@@ -230,6 +230,11 @@ def extract_github_full_names(text: str) -> list[str]:
 
 
 def _repo_api(full_name: str, user_agent: str, token: str) -> Optional[dict]:
+    try:
+        from gh_validate import validate_github_full_name
+        full_name = validate_github_full_name(full_name)
+    except Exception:  # noqa: BLE001
+        return None
     code, data = _http_json(
         f"https://api.github.com/repos/{full_name}",
         user_agent,

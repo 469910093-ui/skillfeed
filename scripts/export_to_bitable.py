@@ -40,6 +40,7 @@ SOURCE_LABELS = {
     "xiaohongshu": "小红书",
     "corpus": "知识库",
     "the-download": "The Download",
+    "ugc": "用户上传",
 }
 
 SCENE_TO_CAT = {
@@ -286,6 +287,49 @@ def build_rows(*, scope: str = "feed") -> list[dict]:
         if not merged:
             continue
         rows.append(to_bitable_row(fn, merged, in_live=fn in live))
+    # 追加已审核通过的 UGC 帖子（来源=用户上传）
+    rows.extend(_load_ugc_rows())
+    return rows
+
+
+def _load_ugc_rows() -> list[dict]:
+    """从 server SQLite 读已审核通过的 UGC 帖子，转成底表记录格式。"""
+    import sqlite3
+
+    db = DATA_DIR / "server.db"
+    if not db.is_file():
+        return []
+    rows: list[dict] = []
+    try:
+        conn = sqlite3.connect(str(db), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        posts = conn.execute(
+            "SELECT * FROM posts WHERE status IN ('approved','published') ORDER BY created_at DESC"
+        ).fetchall()
+        conn.close()
+    except sqlite3.Error:
+        return []
+    for p in posts:
+        fn = p["full_name"] or ""
+        if not fn:
+            continue
+        row = {
+            "name": p["title"] or fn.split("/")[-1],
+            "description": p["description"] or "",
+            "one_liner": (p["description"] or "")[:140],
+            "body_preview": p["description"] or "",
+            "full_name": fn,
+            "url": p["github_url"] or f"https://github.com/{fn}",
+            "skill_url": p["github_url"] or f"https://github.com/{fn}",
+            "source": "ugc",
+            "owner": fn.split("/")[0] if "/" in fn else "",
+            "stars": None,
+            "scene": p["scene"] or "other",
+            "scene_label": p["scene_label"] or "其他",
+            "scene_l2_label": p["scene_l2_label"] or "",
+            "ingested_at": p["created_at"] or "",
+        }
+        rows.append(to_bitable_row(fn, row, in_live=True))
     return rows
 
 

@@ -125,7 +125,7 @@ skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）─�
 
 ### 3.1 变现场景包（供给侧，先飞书后产品）
 
-卖的不是「一堆 skill 名」，是**某个具体人群、某条可跑通工作流**的打包方案。一级先分电商 / 自媒体，二级按下表拆，一张表一个场景：
+卖的不是「一堆 skill 名」，是**某个具体人群、某条可跑通工作流**的打包方案。一级先分电商 / 自媒体 / 效率，二级按下表拆，一张表一个场景：
 
 | 大类 | 场景包 | 卖给谁 | 工作流主线 | 材料纪律 |
 |---|---|---|---|---|
@@ -137,8 +137,11 @@ skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）─�
 | 自媒体 | 短剧 | 编导/切片分发 | 选题→分镜→成片→分发 | 本批未采到则标「待补采」 |
 | 自媒体 | 营销广告自媒体 | 投放/品牌/增长 | 地基→文案→广告→SEO/AEO→CRO | 模块要分工，禁止一个万能提示词 |
 | 自媒体 | 平面设计自媒体 | 美工/封面设计 | 风格→主图→详情→封面海报 | 须能批量出图 |
+| 效率 | 数据分析 | 运营/增长分析 | 取数→看板→归因→复盘 | 骨架先上架，点名后再写 HOWTO |
 
-策展底稿在飞书 Base（`包-总览` + 8 张场景表）。**未点名的 Skill 不得写成已验证能力**；直播/短剧允许先出骨架再补采。Feed pills / 主题分类要对齐这套二级场景时，再改前端，不得另起一套口语分类。
+策展底稿在飞书 Base（`包-总览` + 场景表）。**未点名的 Skill 不得写成已验证能力**；直播/短剧/数据分析允许先出骨架再补采。Feed pills / 主题分类要对齐这套二级场景时，再改前端，不得另起一套口语分类。
+
+**产品货架（full 底栏「一站式配齐」）：** 发现流仍全量免费；场景包是付费 SKU。首波上架骨架：货架电商、跨境电商、短剧、营销广告、数据分析；内容电商 / 直播电商 / 资讯 / 平面设计标「下一波」。**商详只卖「为什么成套」**（痛点、工作流怎么串、核心卡点清单），不把操作手册/默认安装清单全文展开——避免用户直接散装单下。手册八节与默认清单购买后解锁。收银台接场景包 SKU 前，购买 CTA 只做登录门禁 + 占位提示。目录真相源：飞书 Base `PCWZbMvydabY2Xs1yYSc2sc7nth` → `docs/packs/shelf_catalog.json`（`python scripts/sync_packs_shelf.py`）。深链：`?tab=packs` / `?tab=packs&pack=cross-border`。lite 不露出该 tab。
 
 每次再打包：走 `docs/packs/PACKAGING.workflow.md`（Agent 入口 `.cursor/skills/packaging-scene-skills`）。采集 → 编目 → 打标 → 飞书候选 →（要卖再）`HOWTO` + `QUALITY`。禁止跳过打标把原文笔记当产品。
 
@@ -150,7 +153,7 @@ skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）─�
 ┌──────────────────────────────────────────────┐
 │ 发现站前端（静态 HTML / 可连 API）              │
 │  搜意图 · 动态圆环(关注) · pills(筛选) · 卡片   │
-│  底栏：发现 / 发布 / 我的                       │
+│  底栏：发现 / 主题分类 / 一站式配齐 / 发布 / 我的 │
 │  发布者主页 · 动态全屏 · Demo 巡演            │
 └───────────────┬──────────────────────────────┘
                 │ api_base（可选）
@@ -202,8 +205,9 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | **动态圆环（关注动态）** | 见 5.4；圆环 = 关注的 Builder / 行业；点开看「最新」动态 或时间线 | P0 |
 | **Pills** | 仅作发现筛选：二级场景、栏目等；**空则隐藏**；不再放 Skills/AI/开源模式（与动态圆环脱钩） | P0 |
 | 信息流卡片 | 见 5.2 | P0 |
-| 底栏四入口 | **发现 / 主题分类 / 发布 / 我的**；`role=tablist` + `aria-selected`，左右键/Home/End 可走，激活态除颜色外另有指示条 + 字重 | P0 |
+| 底栏五入口 | **发现 / 主题分类 / 一站式配齐 / 发布 / 我的**；`role=tablist` + `aria-selected`，左右键/Home/End 可走，激活态除颜色外另有指示条 + 字重 | P0 |
 | **主题分类** | 一级场景各自成块（条目数 + 二级场景 chips + 按栏目浏览）；点进去落到发现流的对应筛选 | P0 |
+| **一站式配齐** | 付费场景包货架（对齐 §3.1）；首波骨架可点进详情（工作流 + HOWTO 八节壳 + Skill 清单占位）；购买须登录，收银台未接前只提示即将开通；lite 隐藏 | P0 |
 | 发布 | **接 `server/` 的 `POST /api/posts`**：同源时页内表单直接提交；跨源只给整页跳 `api_base/publish`；无 `api_base` 时：github.io 只出说明，**skillfeeder.cn 同源回退到本域**（防定时构建漏写环境变量） | P0 |
 | 我的 | 真实登录态（`/auth/me`）+ 我发布的（`/api/posts/me`，点开跳发现流卡片或审核中预览）+ 赞藏（`/api/profile/reactions`，读不到则退回本机）+ **关注管理**（Builder / 行业列表）。**不再放「发现站」说明行** | P0 |
 | 发布者主页 | Feed 内作品 + GitHub 仓库 + **关注/取消关注 Builder** | P0 |
@@ -211,20 +215,21 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | Demo 巡演 | 顶栏播放键或 `?demo=1` | P1 |
 | 反馈 | 赞/踩/打开 GitHub；静态站 localStorage | P1 |
 | **浏览器小标** | tab favicon / 添加到主屏用肥嘚**慵懒躺沙发**造型：`/favicon.ico`（16/32/48）`/favicon.png`（192，视网膜）`/apple-touch-icon.png`（180）。源图 `docs/brand/assets/logo-feide-transparent.png`，由 `scripts/make_brand_icons.py` 高分辨率缩小，禁止平滑发糊 | P0 |
+| **肥嘚展示比例** | 页头与空态统一用完整透明团子 `logo-feide-transparent.png`（512×393）：页头 **52×40**，空态 **156×120**，`object-fit: contain`。**禁止**用带蓝底缺口的残缺磁贴（`_logo_v2` / `logo-feide-empty`）进空态 | P0 |
 
-**URL 可寻址（P0）**：`?tab=discover|topics|publish|me`（默认 discover 不写参数）、
-`?scene=` / `?l2=` 深链到发现流的某个分类，与既有 `?q=` / `?intent=` / `?demo=1` 并存。
+**URL 可寻址（P0）**：`?tab=discover|topics|packs|publish|me`（默认 discover 不写参数）、
+`?pack=` / `?pg=`（仅 packs）、`?scene=` / `?l2=` 深链到发现流的某个分类，与既有 `?q=` / `?intent=` / `?demo=1` 并存。
 切 tab 用 `replaceState` 同步，刷新与分享不丢当前入口；`tab=` 存稳定英文标识，不存展示文案。
 
 **三种运行形态（P0，不许出现「点了没反应」的入口）**：判据只由 `IS_LITE` + `API_BASE`
 （`FEED.ui.api_base`）+ 「`API_BASE` 与本页是否同源」推出，不新造探测机制。
 
-| 形态 | 判据 | 发现 | 主题分类 | 发布 | 我的 |
-|---|---|---|---|---|---|
-| **同源有后端** | `API_BASE` 且同源（含主站漏写 `api_base` 时回退 `https://skillfeeder.cn`） | ✅ | ✅ | 页内表单 → `/api/posts` | 真实登录态 + 我发布的 |
-| **Pages 静态镜像** | `API_BASE` 跨源 | ✅ | ✅ | 只给「打开主站发布页」 | 只给「打开主站」（跨站 Cookie 是 `SameSite=Lax`，页内读不到登录态） |
-| **Pages 无后端** | 无 `API_BASE` 且不在主站 | ✅ | ✅ | 只出说明，无按钮 | 本机态（赞/藏/关注） |
-| **lite embed** | `IS_LITE` | ✅ | ✅ | 不出现 | 不出现 |
+| 形态 | 判据 | 发现 | 主题分类 | 一站式配齐 | 发布 | 我的 |
+|---|---|---|---|---|---|---|
+| **同源有后端** | `API_BASE` 且同源（含主站漏写 `api_base` 时回退 `https://skillfeeder.cn`） | ✅ | ✅ | 货架 + 登录后购买占位 | 页内表单 → `/api/posts` | 真实登录态 + 我发布的 |
+| **Pages 静态镜像** | `API_BASE` 跨源 | ✅ | ✅ | 可浏览货架；购买引导回主站 | 只给「打开主站发布页」 | 只给「打开主站」（跨站 Cookie 是 `SameSite=Lax`，页内读不到登录态） |
+| **Pages 无后端** | 无 `API_BASE` 且不在主站 | ✅ | ✅ | 可浏览货架；购买提示去主站 | 只出说明，无按钮 | 本机态（赞/藏/关注） |
+| **lite embed** | `IS_LITE` | ✅ | ✅ | 不出现 | 不出现 | 不出现 |
 
 **首屏纪律（P0）**：场景 / 二级场景 / 栏目三排 chips 归「主题分类」tab，
 发现页**只在真的筛着时**才把它们长回顶部（此时每排带「全部…」可清）。
@@ -421,8 +426,10 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 登出 | `POST /auth/logout` | |
 | 发布 UGC | `POST /api/posts`、表单 `/api/posts/form`、页 `/publish` | 只收 GitHub 链接 + 标题 + 文案；进审核后上架 |
 | 审核通知 | `SKILLFEED_REVIEW_WEBHOOK` 或后台「页面配置」里的 webhook | 进 pending 后推运营（飞书自定义机器人）；都不配则只落库，投稿人只看页内「审核中」 |
-| 官方管理后台 | `/op` 与 `/admin`（运营 login 白名单） | 四 tab：数据 KPI、**路径**（会话操作链 / 时间线 / CSV）、审批队列、页面配置（口号 / 搜索占位 / logo / 审核 webhook） |
-| 操作路径 | `POST /api/events`（**免登录**，限流）、`GET /api/op/journeys`（运营） | 首页记进入/开 tab/搜索/看卡/赞藏/GitHub/登录/发布/关注；曝光与停留不进路径视图；登录后 device 挂到 GitHub login。不记 IP / UA |
+| 官方管理后台 | `/op` 与 `/admin`（运营 login 白名单） | 四 tab：数据 KPI（**卡片可点进明细**）、**路径**（会话操作链 / 按日 / **分渠道** / 时间线 / CSV）、审批队列、页面配置（口号 / 搜索占位 / logo / 审核 webhook） |
+| 操作路径 | `POST /api/events`（**免登录**，限流）、`GET /api/op/journeys`（运营） | 首页记进入/开 tab/搜索/看卡/赞藏/GitHub/登录/发布/关注；**`session_start` 记渠道**：`utm_*` / `referrer` / `landing` → `channel`（`direct` / `organic_search` / `geo_agent` / `social` / `referral` / `paid` / `campaign` / `internal`）。曝光与停留不进路径视图；登录后 device 挂到 GitHub login。不记 IP / UA |
+| KPI 下钻 | `GET /api/op/users`、`/api/op/devices`、`/api/op/backups`、`/api/op/events/today`；帖子进 `#review?status=` | 数据页八张卡均可点：用户卡含**登录用户 + 游客设备抓手**（首触渠道）；今日事件/会话/备份就地明细；帖子跳审批筛选 |
+| 游客身份 | 本机 `sf_device_id` + 服务端 `device_token`；进站 `session_start` 写首触渠道到 `devices`；登录后 `POST /api/profile/claim` 并档 | 游客可召回的抓手是 device；登录后画像/赞藏/渠道挂到 `users.id`。不记 IP / UA |
 | 第二钥匙 | 已登录再走 `/auth/wechat` `/auth/sms/verify` `/auth/github` | 绑到同一个 `users.id`；钥匙已被别人占用则 409 / `bind=taken`。不自建密码 |
 | 账本导出 | `GET /api/me/export` | 登录用户下载自己的帖/反应/绑定状态（手机号掩码）；仓仍在 GitHub |
 | 库备份 | `python skillfeed.py backup-db`、`POST /api/op/backup`、每日 timer | SQLite 一致副本轮转到 `SKILLFEED_BACKUP_DIR`（默认库旁 `backups/`） |
@@ -452,6 +459,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 | `/llms.txt` | 所有 Agent | llmstxt.org v2：H1 + 一句话 + 链接。GitHub Pages 壳只指向规范域 |
 | `/llms-full.txt` | 需要目录的 Agent | 消毒后的 Top 200（星数降序）。Pages 壳不带条目 |
 | `/about.md` `/faq.md` `/compare.md` | 引用 / How-to / X vs Y | 纯 Markdown，不依赖 JS |
+| `/about.html` `/faq.html` `/compare.html` | 搜索引擎 / 不会跑 JS 的爬虫 | 与对应 `.md` 同文事实，独立 HTML，不进 Feed JS |
 | `/catalog.json` | 程序读取 | 字段白名单，与预览卡对齐 |
 | `/robots.txt` `/sitemap.xml` | 检索爬虫 | 放行 GPTBot / ClaudeBot / PerplexityBot；挡住 `/op` `/admin` `/auth` |
 | `GET /api/geo/skills?q=` | 按意图检索 | 免登录、限流、无 `rank_debug` |
@@ -466,12 +474,14 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 **首页 SEO（与 Agent 话术同一套定位）：**
 - `<title>`：`SkillFeeder｜已过滤的高星 Agent Skill 推荐`（不要只写品牌名）
 - `<meta name="description">` 用中文：安全/可靠/已过滤高星 + 发布者流量渠道
-- Open Graph / Twitter + `/og.png`；浏览器 tab / 添加到主屏：`/favicon.ico` `/favicon.png` `/apple-touch-icon.png`；JSON-LD（`WebSite` + `SearchAction` + 中文 FAQ）
-- `<noscript>` 用 H1/H2 写发现者与发布者，给不会跑 JS 的爬虫
-- `robots.txt` **放行** `/login` `/publish`（发布者着陆），仍挡住 `/op` `/admin` `/auth`
-- 登录页 / 发布页各自有中文 title + description，方便「skill 怎么推广」收录
+- Open Graph / Twitter + `/og.png`；浏览器 tab / 添加到主屏：`/favicon.ico` `/favicon.png` `/apple-touch-icon.png`
+- JSON-LD：`Organization`（含 `logo` / `sameAs` / `knowsAbout`）+ `SoftwareApplication` + `WebSite`/`SearchAction` + 中文优先 FAQ
+- `<noscript>` 用 H1/H2 写发现者与发布者，并链到 `/about.html` `/faq.html`
+- `robots.txt` **放行** `/login` `/publish` 与 HTML 说明页；显式允许 GPTBot / OAI-SearchBot / ClaudeBot / PerplexityBot / Bytespider 等；仍挡住 `/op` `/admin` `/auth`
+- 登录页 / 发布页各自有中文 title + description + Twitter/JSON-LD，方便「skill 怎么推广」收录
+- `/llms.txt` 的 `>` 一句话保持 <200 字符，并含 `## Key Facts`
 
-**首页 Agent 指针：** `<link rel="describedby" href="https://skillfeeder.cn/llms.txt">` + JSON-LD + `<noscript>`。
+**首页 Agent 指针：** `<link rel="describedby" href="https://skillfeeder.cn/llms.txt">` + `hreflang` + JSON-LD + `<noscript>`。
 
 **本产品自己的 skill：** 仓库根 `SKILL.md`（`name: skillfeeder`）。Agent 路由「找远程 skill」时用；不代装。
 
@@ -622,7 +632,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 1. 审核通知代码已接通；运营须在 `/op`「页面配置」粘贴飞书自定义机器人 webhook（或写 `SKILLFEED_REVIEW_WEBHOOK`），否则新投稿不会推 IM  
 2. 赞/藏/关注仍主要在 **浏览器 localStorage**，未与账号云同步（关注上云属 M4）  
-3. 举报、创作者面向的数据看板未做；官方运营后台 `/op` 已覆盖数据 / **路径** / 审批 / 文案与 logo  
+3. 举报、创作者面向的数据看板未做；官方运营后台 `/op` 已覆盖数据 / **路径（含分渠道与按日自然流）** / 审批 / 文案与 logo  
 3b. 微信服务号 / 短信通道生产未配齐前，登录页只露出 GitHub 主按钮，并提示内置浏览器走不通；第二钥匙绑定代码已支持同一 `users.id`  
 4. README 部分交互说明可能落后于 PRD——**以本 PRD 为准**并持续对齐  
 
@@ -634,6 +644,16 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-22 | 底栏加「一站式配齐」付费场景包货架框架：首波货架/跨境/短剧/营销/数据分析；详情 HOWTO 八节壳 + 购买登录门禁；§3.1 补效率·数据分析；lite 隐藏该 tab | §3.1、§4、§5.1、`feed_dashboard.py`、`publish.html` |
+| 2026-09-22 | 游客身份接登录态：进站发/存 `device_token`，登录后自动 `claim` 并档；`devices` 落首触渠道；`/op` 用户卡展示游客设备抓手 | §6.2、`feed_dashboard.py`、`server/db.py`、`admin.html` |
+| 2026-09-22 | `/op` 数据页 KPI 卡片可下钻：用户/备份就地明细；待审·上架·拒绝·全部跳审批；今日事件/会话跳路径 24h | §6.2、`admin.html`、`/api/op/users` `/backups` `/events/today` |
+| 2026-09-22 | 进站渠道归因：`session_start` 落 UTM/referrer/landing/channel；`/op` 路径 tab 加分渠道 KPI、按日 SEO/GEO 对照与 CSV 字段，便于看自然流 | §6.2、`server/attribution.py`、`server/db.py`、`feed_dashboard.py`、`admin.html` |
+| 2026-09-22 | 「一站式配齐」商详改卖点页：飞书「包-*」表灌入 `shelf_catalog.json`；只讲为什么成套/解哪些卡点，八节手册锁住购买后解锁，禁止展开全文散装下 | §3.1、§5.1、`docs/packs/shelf_catalog.json`、`scripts/sync_packs_shelf.py`、`feed_dashboard.py` |
+| 2026-09-22 | 底栏「一站式配齐」标签禁止拆字换行（去掉 `max-width: 4.8em`，改 `white-space: nowrap`） | §5.1、`feed_dashboard.py` |
+| 2026-09-22 | 空态肥嘚改回完整透明团子（156×120），去掉带蓝底缺口的残缺磁贴 | §5.1、`feed_dashboard.py` |
+| 2026-09-22 | 空态肥嘚曾误用定稿磁贴 `logo-feide-empty.png`（已回退） | §5.1、`feed_dashboard.py` |
+| 2026-09-22 | 空态肥嘚晃动动画去掉 120×120 正方形硬框 | §5.1、`feed_dashboard.py` |
+| 2026-09-21 | GEO 二次优化：独立 `/about.html` `/faq.html` `/compare.html` 给爬虫；JSON-LD 补 Organization；llms blockquote<200 + Key Facts；robots 补 OAI-SearchBot 等 AI 爬虫；登录/发布页补 Twitter 与 WebPage | §6.3、`geo.py`、`server/app.py`、登录/发布模板、Nginx/Pages 部署清单 |
 | 2026-09-21 | 浏览器小标改高分辨率缩小（192 PNG + 多尺寸 ICO），去掉平滑发糊；页头肥嘚加大到 52×40 | §5.1、`scripts/make_brand_icons.py`、`feed_dashboard.py` |
 | 2026-09-21 | 补浏览器 tab / 主屏小标：`publish-site` 落盘 `/favicon.ico` `/favicon.png` `/apple-touch-icon.png`（肥嘚慵懒躺沙发造型），首页与登录/发布页挂 link，阿里云/Pages 同步拷贝 | §5.1、§6.3、`geo.py`、`server/app.py`、登录/发布模板、`pages.yml` |
 | 2026-09-21 | 排序叠加路径判断：不改 G/P/F/N；冲突给置信度并 sticky；近邻同分才按 reliable/task/publisher 二次键。笔记 https://xhslink.cn/o/8fvgNlMau1U | §6.1、`ranking_path.py`、`server/app.py` |

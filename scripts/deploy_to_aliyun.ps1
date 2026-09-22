@@ -10,7 +10,8 @@ $hostName = "8.133.208.149"
 $user = "admin"
 $geoFiles = @(
     "llms.txt", "llms-full.txt", "robots.txt", "sitemap.xml",
-    "about.md", "faq.md", "compare.md", "catalog.json", "og.png",
+    "about.md", "about.html", "faq.md", "faq.html", "compare.md", "compare.html",
+    "catalog.json", "og.png",
     "favicon.ico", "favicon.png", "apple-touch-icon.png"
 )
 

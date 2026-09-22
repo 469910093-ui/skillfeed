@@ -124,7 +124,13 @@ CREATE TABLE IF NOT EXISTS devices (
   last_seen   TEXT NOT NULL,
   user_id     INTEGER,
   merged_into TEXT,
-  ua_hash     TEXT
+  ua_hash     TEXT,
+  channel TEXT NOT NULL DEFAULT '',
+  referrer TEXT NOT NULL DEFAULT '',
+  landing TEXT NOT NULL DEFAULT '',
+  utm_source TEXT NOT NULL DEFAULT '',
+  utm_medium TEXT NOT NULL DEFAULT '',
+  utm_campaign TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
@@ -139,6 +145,12 @@ CREATE TABLE IF NOT EXISTS events (
   position_band INTEGER,
   dwell_ms INTEGER,
   scene TEXT, scene_l2 TEXT, owner TEXT, language TEXT, source TEXT, scope TEXT,
+  channel TEXT NOT NULL DEFAULT '',
+  referrer TEXT NOT NULL DEFAULT '',
+  landing TEXT NOT NULL DEFAULT '',
+  utm_source TEXT NOT NULL DEFAULT '',
+  utm_medium TEXT NOT NULL DEFAULT '',
+  utm_campaign TEXT NOT NULL DEFAULT '',
   ts TEXT NOT NULL,
   client_ts TEXT NOT NULL DEFAULT '',
   UNIQUE(device_id, session_id, item_key, action, client_ts)
@@ -328,6 +340,24 @@ _USER_GOV_COLS: tuple[tuple[str, str], ...] = (
     ("approved_count", "INTEGER NOT NULL DEFAULT 0"),
 )
 
+_EVENT_ATTR_COLS: tuple[tuple[str, str], ...] = (
+    ("channel", "TEXT NOT NULL DEFAULT ''"),
+    ("referrer", "TEXT NOT NULL DEFAULT ''"),
+    ("landing", "TEXT NOT NULL DEFAULT ''"),
+    ("utm_source", "TEXT NOT NULL DEFAULT ''"),
+    ("utm_medium", "TEXT NOT NULL DEFAULT ''"),
+    ("utm_campaign", "TEXT NOT NULL DEFAULT ''"),
+)
+
+_DEVICE_ATTR_COLS: tuple[tuple[str, str], ...] = (
+    ("channel", "TEXT NOT NULL DEFAULT ''"),
+    ("referrer", "TEXT NOT NULL DEFAULT ''"),
+    ("landing", "TEXT NOT NULL DEFAULT ''"),
+    ("utm_source", "TEXT NOT NULL DEFAULT ''"),
+    ("utm_medium", "TEXT NOT NULL DEFAULT ''"),
+    ("utm_campaign", "TEXT NOT NULL DEFAULT ''"),
+)
+
 
 def _migrate_posts(conn: sqlite3.Connection) -> None:
     post_cols = _table_columns(conn, "posts")
@@ -352,6 +382,30 @@ def _migrate_posts(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {name} {decl}")
 
 
+def _migrate_events(conn: sqlite3.Connection) -> None:
+    cols = _table_columns(conn, "events")
+    if not cols:
+        return
+    for name, decl in _EVENT_ATTR_COLS:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE events ADD COLUMN {name} {decl}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_events_channel_ts ON events(channel, ts)"
+    )
+
+
+def _migrate_devices(conn: sqlite3.Connection) -> None:
+    cols = _table_columns(conn, "devices")
+    if not cols:
+        return
+    for name, decl in _DEVICE_ATTR_COLS:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE devices ADD COLUMN {name} {decl}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_devices_channel ON devices(channel)"
+    )
+
+
 def init_db(db_path: Path) -> None:
     conn = connect(db_path)
     try:
@@ -359,6 +413,8 @@ def init_db(db_path: Path) -> None:
         conn.commit()
         _migrate_users(conn)
         _migrate_posts(conn)
+        _migrate_events(conn)
+        _migrate_devices(conn)
         for stmt in USER_INDEXES:
             conn.execute(stmt)
         conn.commit()
@@ -742,18 +798,89 @@ def find_post_by_coord(
 def list_moderation_queue(
     conn: sqlite3.Connection, *, status: str = "pending", limit: int = 100,
 ) -> list[dict[str, Any]]:
-    rows = conn.execute(
-        """
-        SELECT p.*, u.login AS author_login, u.avatar_url AS author_avatar,
-               u.trust_level, u.approved_count, u.status AS author_status
-        FROM posts p JOIN users u ON u.id = p.author_id
-        WHERE p.status = ?
-        ORDER BY p.created_at ASC
-        LIMIT ?
-        """,
-        (status, limit),
-    ).fetchall()
+    limit = max(1, min(500, int(limit)))
+    status = (status or "pending").strip().lower()
+    if status in ("", "all", "total"):
+        rows = conn.execute(
+            """
+            SELECT p.*, u.login AS author_login, u.avatar_url AS author_avatar,
+                   u.trust_level, u.approved_count, u.status AS author_status
+            FROM posts p JOIN users u ON u.id = p.author_id
+            ORDER BY p.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    elif status in ("approved", "published", "live"):
+        rows = conn.execute(
+            """
+            SELECT p.*, u.login AS author_login, u.avatar_url AS author_avatar,
+                   u.trust_level, u.approved_count, u.status AS author_status
+            FROM posts p JOIN users u ON u.id = p.author_id
+            WHERE p.status IN ('approved', 'published')
+            ORDER BY p.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT p.*, u.login AS author_login, u.avatar_url AS author_avatar,
+                   u.trust_level, u.approved_count, u.status AS author_status
+            FROM posts p JOIN users u ON u.id = p.author_id
+            WHERE p.status = ?
+            ORDER BY p.created_at ASC
+            LIMIT ?
+            """,
+            (status, limit),
+        ).fetchall()
     return [dict(r) for r in rows]
+
+
+def _mask_phone(phone: str) -> str:
+    p = (phone or "").strip()
+    if not p:
+        return ""
+    if len(p) < 7:
+        return "***"
+    return p[:3] + "****" + p[-4:]
+
+
+def list_op_users(conn: sqlite3.Connection, *, limit: int = 200) -> list[dict[str, Any]]:
+    """运营看用户明细：login / 计划 / 绑定钥匙（手机号掩码），不含密钥。"""
+    limit = max(1, min(500, int(limit)))
+    cols = _table_columns(conn, "users")
+    select_cols = [
+        "id", "login", "nickname", "name", "plan", "plan_until", "created_at",
+        "github_id", "wechat_openid", "phone",
+    ]
+    for optional in ("trust_level", "status", "approved_count", "role"):
+        if optional in cols:
+            select_cols.append(optional)
+    rows = conn.execute(
+        f"SELECT {', '.join(select_cols)} FROM users ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        d = dict(r)
+        out.append({
+            "id": d["id"],
+            "login": d.get("login") or "",
+            "nickname": d.get("nickname") or d.get("name") or "",
+            "plan": d.get("plan") or "free",
+            "plan_until": d.get("plan_until") or "",
+            "created_at": d.get("created_at") or "",
+            "trust_level": d.get("trust_level") or "new",
+            "status": d.get("status") or "active",
+            "role": d.get("role") or "creator",
+            "approved_count": int(d.get("approved_count") or 0),
+            "has_github": bool(d.get("github_id")),
+            "has_wechat": bool(d.get("wechat_openid")),
+            "phone_masked": _mask_phone(str(d.get("phone") or "")),
+        })
+    return out
 
 
 def moderate_post(
@@ -1047,6 +1174,85 @@ def touch_device(conn: sqlite3.Connection, device_id: str, *, ua_hash: str = "")
     return created
 
 
+def set_device_attribution_if_empty(
+    conn: sqlite3.Connection, device_id: str, attr: dict[str, Any],
+) -> None:
+    """首触归因：只在设备尚无 channel 时写入，后续进站不覆盖。"""
+    if not device_id:
+        return
+    row = conn.execute(
+        "SELECT channel FROM devices WHERE device_id=?", (device_id,),
+    ).fetchone()
+    if not row:
+        return
+    if (row["channel"] or "").strip():
+        return
+    channel = str(attr.get("channel") or "")[:40]
+    if not channel:
+        return
+    conn.execute(
+        """
+        UPDATE devices SET
+          channel=?, referrer=?, landing=?,
+          utm_source=?, utm_medium=?, utm_campaign=?
+        WHERE device_id=? AND (channel IS NULL OR channel='')
+        """,
+        (
+            channel,
+            str(attr.get("referrer") or "")[:120],
+            str(attr.get("landing") or "")[:200],
+            str(attr.get("utm_source") or "")[:80],
+            str(attr.get("utm_medium") or "")[:40],
+            str(attr.get("utm_campaign") or "")[:80],
+            device_id,
+        ),
+    )
+
+
+def list_op_devices(
+    conn: sqlite3.Connection, *, limit: int = 200, anonymous_only: bool = False,
+) -> list[dict[str, Any]]:
+    """运营看设备抓手：游客设备 + 已挂账号的设备，含首触渠道。"""
+    limit = max(1, min(500, int(limit)))
+    where = "WHERE d.merged_into IS NULL OR d.merged_into = ''"
+    if anonymous_only:
+        where += " AND d.user_id IS NULL"
+    rows = conn.execute(
+        f"""
+        SELECT d.device_id, d.first_seen, d.last_seen, d.user_id,
+               d.channel, d.referrer, d.landing,
+               d.utm_source, d.utm_medium, d.utm_campaign,
+               u.login AS user_login
+        FROM devices d
+        LEFT JOIN users u ON u.id = d.user_id
+        {where}
+        ORDER BY d.last_seen DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        d = dict(r)
+        did = d.get("device_id") or ""
+        out.append({
+            "device_id": did,
+            "device_short": (did[:18] + "…") if len(did) > 18 else did,
+            "first_seen": d.get("first_seen") or "",
+            "last_seen": d.get("last_seen") or "",
+            "user_id": d.get("user_id"),
+            "user_login": d.get("user_login") or "",
+            "anonymous": d.get("user_id") is None,
+            "channel": d.get("channel") or "",
+            "referrer": d.get("referrer") or "",
+            "landing": d.get("landing") or "",
+            "utm_source": d.get("utm_source") or "",
+            "utm_medium": d.get("utm_medium") or "",
+            "utm_campaign": d.get("utm_campaign") or "",
+        })
+    return out
+
+
 def link_device_user(conn: sqlite3.Connection, device_id: str, user_id: int) -> None:
     if not device_id or not user_id:
         return
@@ -1075,11 +1281,15 @@ def resolve_device(conn: sqlite3.Connection, device_id: str, *, max_hops: int = 
 _EVENT_COLS = (
     "device_id", "session_id", "item_key", "action", "position", "position_band",
     "dwell_ms", "scene", "scene_l2", "owner", "language", "source", "scope",
+    "channel", "referrer", "landing", "utm_source", "utm_medium", "utm_campaign",
     "ts", "client_ts",
 )
 
 
-_TEXT_COLS = frozenset({"device_id", "session_id", "item_key", "action", "ts", "client_ts"})
+_TEXT_COLS = frozenset({
+    "device_id", "session_id", "item_key", "action", "ts", "client_ts",
+    "channel", "referrer", "landing", "utm_source", "utm_medium", "utm_campaign",
+})
 
 
 def insert_events(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1418,7 +1628,8 @@ def list_site_settings(conn: sqlite3.Connection, *, public_only: bool = False) -
         keys,
     ).fetchall()
     for row in rows:
-        out[row["key"]] = str(row["value"] or "")
+        key = str(row["key"])
+        out[key] = str(row["value"] or "")
     return out
 
 
@@ -1470,6 +1681,70 @@ def journey_kpis(conn: sqlite3.Connection, *, hours: int = 24) -> dict[str, Any]
             (cutoff,),
         )
     ]
+    # 会话渠道：取该会话第一条 session_start 的 channel；没有则算 unknown
+    channels = [
+        {"channel": r["channel"] or "unknown", "sessions": int(r["n"] or 0)}
+        for r in conn.execute(
+            """
+            SELECT COALESCE(NULLIF(channel, ''), 'unknown') AS channel,
+                   COUNT(DISTINCT session_id) AS n
+            FROM events
+            WHERE ts >= ? AND action = 'session_start'
+            GROUP BY COALESCE(NULLIF(channel, ''), 'unknown')
+            ORDER BY n DESC
+            """,
+            (cutoff,),
+        )
+    ]
+    by_day = [
+        {
+            "day": r["day"],
+            "sessions": int(r["sessions"] or 0),
+            "devices": int(r["devices"] or 0),
+            "starts": int(r["starts"] or 0),
+            "organic": int(r["organic"] or 0),
+            "geo": int(r["geo"] or 0),
+            "seo": int(r["seo"] or 0),
+        }
+        for r in conn.execute(
+            """
+            SELECT substr(ts, 1, 10) AS day,
+                   COUNT(DISTINCT session_id) AS sessions,
+                   COUNT(DISTINCT device_id) AS devices,
+                   SUM(CASE WHEN action='session_start' THEN 1 ELSE 0 END) AS starts,
+                   COUNT(DISTINCT CASE
+                     WHEN action='session_start'
+                      AND channel IN ('organic_search', 'geo_agent')
+                     THEN session_id END) AS organic,
+                   COUNT(DISTINCT CASE
+                     WHEN action='session_start' AND channel='geo_agent'
+                     THEN session_id END) AS geo,
+                   COUNT(DISTINCT CASE
+                     WHEN action='session_start' AND channel='organic_search'
+                     THEN session_id END) AS seo
+            FROM events
+            WHERE ts >= ?
+            GROUP BY substr(ts, 1, 10)
+            ORDER BY day DESC
+            LIMIT 14
+            """,
+            (cutoff,),
+        )
+    ]
+    seo_sessions = count(
+        """
+        SELECT COUNT(DISTINCT session_id) AS n FROM events
+        WHERE ts >= ? AND action='session_start' AND channel='organic_search'
+        """,
+        cutoff,
+    )
+    geo_sessions = count(
+        """
+        SELECT COUNT(DISTINCT session_id) AS n FROM events
+        WHERE ts >= ? AND action='session_start' AND channel='geo_agent'
+        """,
+        cutoff,
+    )
     return {
         "hours": hours,
         "events": count(
@@ -1483,6 +1758,11 @@ def journey_kpis(conn: sqlite3.Connection, *, hours: int = 24) -> dict[str, Any]
             "SELECT COUNT(DISTINCT device_id) AS n FROM events WHERE ts >= ?", week,
         ),
         "actions": actions,
+        "channels": channels,
+        "by_day": by_day,
+        "seo_sessions": seo_sessions,
+        "geo_sessions": geo_sessions,
+        "organic_sessions": seo_sessions + geo_sessions,
     }
 
 
@@ -1514,6 +1794,8 @@ def list_journey_sessions(
             for r in conn.execute(
                 """
                 SELECT e.ts, e.action, e.item_key, e.source, e.owner, e.device_id,
+                       e.channel, e.referrer, e.landing,
+                       e.utm_source, e.utm_medium, e.utm_campaign,
                        u.login AS user_login
                 FROM events e
                 LEFT JOIN devices d ON d.device_id = e.device_id
@@ -1529,6 +1811,7 @@ def list_journey_sessions(
             _journey_step_label(s["action"], s.get("item_key") or "")
             for s in steps
         )
+        start = next((s for s in steps if s.get("action") == "session_start"), None) or {}
         out.append({
             "session_id": sid,
             "device_id": head["device_id"],
@@ -1537,6 +1820,12 @@ def list_journey_sessions(
             "ended": head["ended"],
             "steps": int(head["steps"] or 0),
             "path": path,
+            "channel": start.get("channel") or "",
+            "referrer": start.get("referrer") or "",
+            "landing": start.get("landing") or "",
+            "utm_source": start.get("utm_source") or "",
+            "utm_medium": start.get("utm_medium") or "",
+            "utm_campaign": start.get("utm_campaign") or "",
             "events": steps,
         })
     return out
@@ -1553,7 +1842,9 @@ def list_journey_rows(
     rows = conn.execute(
         """
         SELECT e.ts, e.session_id, e.device_id, e.action, e.item_key, e.source,
-               e.owner, u.login AS user_login
+               e.owner, e.channel, e.referrer, e.landing,
+               e.utm_source, e.utm_medium, e.utm_campaign,
+               u.login AS user_login
         FROM events e
         LEFT JOIN devices d ON d.device_id = e.device_id
         LEFT JOIN users u ON u.id = d.user_id
@@ -1562,6 +1853,30 @@ def list_journey_rows(
         LIMIT ?
         """,
         (cutoff, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_today_event_rows(
+    conn: sqlite3.Connection, *, limit: int = 300,
+) -> list[dict[str, Any]]:
+    """今日有效事件明细（不含 impression/dwell），给数据页 KPI 下钻。"""
+    day = _now()[:10]
+    limit = max(1, min(2000, int(limit)))
+    rows = conn.execute(
+        """
+        SELECT e.ts, e.session_id, e.device_id, e.action, e.item_key, e.source,
+               e.owner, e.channel, e.referrer, e.landing,
+               e.utm_source, e.utm_medium, e.utm_campaign,
+               u.login AS user_login
+        FROM events e
+        LEFT JOIN devices d ON d.device_id = e.device_id
+        LEFT JOIN users u ON u.id = d.user_id
+        WHERE e.ts >= ? AND e.action NOT IN ('impression', 'dwell')
+        ORDER BY e.ts DESC
+        LIMIT ?
+        """,
+        (day, limit),
     ).fetchall()
     return [dict(r) for r in rows]
 

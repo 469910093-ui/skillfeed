@@ -169,6 +169,8 @@ class JsHarness:
             _grab(js, r"^const ACCT = \{[^\n]*\};"),
             _grab(js, r"^const LOGIN_PATH = '[^']*';"),
             _grab(js, r"^const TAB_QUERY = \{[^\n]*\};"),
+            _grab(js, r"^const PACK_SHELF = \[.*?\n\];"),
+            _grab(js, r"^const PACK_HOWTO_LOCKED = \[.*?\n\];"),
             _top_level_functions(js),
         ])
 
@@ -469,6 +471,7 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertIn('id="btnRefresh"', header)
         self.assertIn('id="productLine"', header)
         self.assertIn("每刷一下，就快人一步", header)
+        self.assertIn('data-i18n="valueLine"', header)
         self.assertIn('id="coach"', html)
         self.assertIn('id="coachSkip"', html)
         self.assertIn("target: '#storiesWrap'", html)
@@ -1314,10 +1317,32 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
         self.assertIn('class="site-foot"', self.html)
 
     def test_feide_logo_is_the_brand_asset_file(self):
-        """顶栏、页脚、空态都读 docs/brand/assets/logo-feide-transparent.png。"""
+        """顶栏/页脚/空态都用完整透明团子，不用带底图缺口的残缺磁贴。"""
         uri = feed_dashboard.brand_png_data_uri()
         self.assertTrue(uri.startswith("data:image/png;base64,"))
-        self.assertGreaterEqual(self.html.count(uri), 4)
+        self.assertGreaterEqual(self.html.count(uri), 3)  # 顶栏 + 页脚 + 空态
+        # 残缺磁贴（140×160 带蓝底缺口）不得进空态
+        empty_bad = feed_dashboard._BRAND_ASSETS / "logo-feide-empty.png"
+        if empty_bad.exists():
+            bad_uri = feed_dashboard.brand_png_data_uri("logo-feide-empty.png")
+            self.assertNotIn(bad_uri, self.html)
+
+    def test_feide_empty_mascot_keeps_source_aspect_ratio(self):
+        """空态肥嘚跟透明源图同比例（512×393 → 156×120），禁止正方形硬框。"""
+        m = re.search(r"\.feide\s*\{(.*?)\}", self.html, flags=re.S)
+        self.assertIsNotNone(m, "找不到 .feide 规则")
+        body = m.group(1)
+        self.assertIn("object-fit: contain", body)
+        self.assertRegex(body, r"width:\s*156px")
+        self.assertRegex(body, r"height:\s*120px")
+        wh = re.search(r"width:\s*(\d+)px", body)
+        hh = re.search(r"height:\s*(\d+)px", body)
+        self.assertIsNotNone(wh)
+        self.assertIsNotNone(hh)
+        self.assertNotEqual(wh.group(1), hh.group(1), "肥嘚被塞进正方形会变形")
+        self.assertIn(
+            'src="' + feed_dashboard.brand_png_data_uri("logo-feide-transparent.png"),
+            self.html)
 
     def test_ring_gradient_stays_in_the_accent_family(self):
         """头像环是渐变最大的曝光面：每张卡片一个。"""
@@ -2249,11 +2274,19 @@ TOPIC_FEED = {
 # 新增文案必须中英双份齐全。列出来而不是比整张表：老表里本来就有几处只在一侧
 # 出现的历史键，全表比对会把这条测试变成一个待修的旧账，拦不住新的漏译。
 NEW_I18N_KEYS = (
-    "navTopics", "tabsAria", "backToTop",
+    "navTopics", "navPacks", "tabsAria", "backToTop",
     "topicsTitle", "topicsSecSection", "topicsSubScene", "topicsSubSection",
     "topicsViewAria", "topicsLead", "topicsLeadSection", "topicsCount",
     "topicsCountScenes", "topicsCountNoL2", "topicsBrowse", "topicsNoL2",
     "topicsEmpty", "topicsSectionEmpty", "topicsOther",
+    "packsTitle", "packsLead", "packsGroupAll", "packsGroupEcom",
+    "packsGroupMedia", "packsGroupOps", "packsBadgeShelf", "packsBadgeSoon",
+    "packsPriceTbd", "packsOpen", "packsBuy", "packsBuyLocked", "packsBuySoon",
+    "packsBuyNeedSite", "packsBack", "packsSecFlow", "packsSecHowto",
+    "packsSecWhy", "packsSecPains", "packsSecLocked", "packsSecSkills",
+    "packsSkillsStub", "packsLockedHint", "packsMetaNamed", "packsEmpty",
+    "packsHowto1", "packsHowto2", "packsHowto3", "packsHowto4",
+    "packsHowto5", "packsHowto6", "packsHowto7", "packsHowto8",
     "publishTitle", "publishLead", "publishFieldTitle", "publishFieldUrl",
     "publishFieldDesc", "publishFieldBody", "publishHint", "publishSubmit",
     "publishSubmitting", "publishOkMsg", "publishNeedLogin", "publishLoginBtn",
@@ -2278,7 +2311,7 @@ NEW_I18N_KEYS = (
 
 
 class TestFourEntryPointsSkeleton(unittest.TestCase):
-    """发现 / 主题分类 / 发布 / 我的。"""
+    """发现 / 主题分类 / 一站式配齐 / 发布 / 我的。"""
 
     @classmethod
     def setUpClass(cls):
@@ -2298,17 +2331,24 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertNotIn("render(true)", fn)
         self.assertNotIn("meAboutTitle", _script_source(self.full).split("function mePanelHtml")[1][:2500])
         self.assertIn("function track", js)
+        self.assertIn("function collectAttribution", js)
         self.assertIn("flushJourney", js)
+        self.assertIn("function claimGuestDevice", js)
+        self.assertIn("function bootGuestIdentity", js)
         self.assertIn("/api/events", js)
 
     def test_the_bottom_bar_is_a_real_tablist(self):
-        """div + class 也能画出一样的东西，但读屏不会播报「4 个中的第 2 个」。"""
+        """div + class 也能画出一样的东西，但读屏不会播报「5 个中的第 2 个」。"""
         bar = re.search(r'<nav class="bottom"[^>]*>', self.full).group(0)
         self.assertIn('role="tablist"', bar)
         self.assertIn('data-i18n-aria="tabsAria"', bar)
         tabs = re.findall(r'<button class="nav[^>]*role="tab"[^>]*>', self.full)
-        self.assertEqual(4, len(tabs), "四个入口：发现 / 主题分类 / 发布 / 我的")
+        self.assertEqual(5, len(tabs), "五个入口：发现 / 主题分类 / 一站式配齐 / 发布 / 我的")
+        self.assertIn('id="tab-packs"', self.full)
         self.assertIn('id="tab-publish"', self.full)
+        self.assertTrue(
+            any('data-mode="packs"' in t for t in tabs),
+            "一站式配齐 tab 必须出现在公开页")
         self.assertTrue(
             any('data-mode="publish"' in t for t in tabs),
             "发布 tab 必须出现在公开页，首访引导要指到它")
@@ -2319,6 +2359,23 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         panel = re.search(r'<main class="feed" id="feed"[^>]*>', self.full).group(0)
         self.assertIn('role="tabpanel"', panel)
         self.assertIn('aria-labelledby=', panel)
+
+    def test_packs_shelf_framework_lists_first_wave(self):
+        js = _script_source(self.full)
+        self.assertIn("const PACK_SHELF = [", js)
+        self.assertIn("function packsPanelHtml", js)
+        self.assertIn("shelf-ecom", js)
+        self.assertIn("cross-border", js)
+        self.assertIn("short-drama", js)
+        self.assertIn("marketing", js)
+        self.assertIn("data-analytics", js)
+        self.assertIn("一站式配齐", self.full)
+        self.assertIn("packs: 'packs'", js)
+        # 商详卖为什么成套，不全文展开手册
+        self.assertIn("packsSecWhy", js)
+        self.assertIn("PACK_HOWTO_LOCKED", js)
+        self.assertIn("whyChooseZh", js)
+        self.assertIn("选品到利润复盘的SOP", js)
 
     def test_only_one_tab_starts_selected_and_the_rest_leave_the_tab_order(self):
         """roving tabindex：tablist 整体只占一个 Tab 位。"""
@@ -2337,10 +2394,19 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertIn(".nav.on::before {", self.full)
         self.assertRegex(self.full, r"\.nav\.on \.nav-label \{ font-weight")
 
-    def test_lite_keeps_topics_but_drops_publish_and_account(self):
-        """lite 是 skill-picker 的发现子页，按产品约定不含发布/个人后台。"""
+    def test_nav_labels_do_not_wrap_mid_word(self):
+        """「一站式配齐」等标签不许拆到第二行。"""
+        m = re.search(r"\.nav-label\s*\{(.*?)\}", self.full, flags=re.S)
+        self.assertIsNotNone(m)
+        body = m.group(1)
+        self.assertIn("white-space: nowrap", body)
+        self.assertNotIn("max-width:", body)
+
+    def test_lite_keeps_topics_but_drops_publish_account_and_packs(self):
+        """lite 是 skill-picker 的发现子页，按产品约定不含发布/个人后台/付费货架。"""
         self.assertIn('body.variant-lite .nav[data-mode="publish"]', self.lite)
         self.assertIn('body.variant-lite .nav[data-mode="me"]', self.lite)
+        self.assertIn('body.variant-lite .nav[data-mode="packs"]', self.lite)
         self.assertNotIn('body.variant-lite .nav[data-mode="topics"]', self.lite)
         # 旧的 data-action 钩子换成了 data-mode，别让隐藏规则指着一个不存在的属性
         self.assertNotIn('data-action="publish"', self.lite)
@@ -2419,9 +2485,9 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
     def test_every_tab_survives_a_url_roundtrip(self):
         """刷新/分享不能丢当前 tab，所以 query ↔ mode 必须是一对一的。"""
         got = self.harness().eval(
-            "['all','topics','publish','me'].map(m =>"
+            "['all','topics','packs','publish','me'].map(m =>"
             " (state.mode = m, tabFromQuery(tabSearch('', m)) || 'all'))")
-        self.assertEqual(["all", "topics", "publish", "me"], got)
+        self.assertEqual(["all", "topics", "packs", "publish", "me"], got)
 
     def test_publish_tab_is_addressable(self):
         got = self.harness().eval(
@@ -2458,16 +2524,25 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
 
     def test_lite_refuses_the_publish_and_account_tabs(self):
         got = self.harness(lite=True).eval(
-            "[tabAllowed('all'), tabAllowed('topics'), tabAllowed('publish'),"
-            " tabAllowed('me'), tabFromQuery('?tab=me'), tabFromQuery('?tab=publish')]")
-        self.assertEqual([True, True, False, False, "", ""], got,
-                         "lite 下 ?tab=me 不能把个人后台逼出来")
+            "[tabAllowed('all'), tabAllowed('topics'), tabAllowed('packs'),"
+            " tabAllowed('publish'), tabAllowed('me'), tabFromQuery('?tab=me'),"
+            " tabFromQuery('?tab=publish'), tabFromQuery('?tab=packs')]")
+        self.assertEqual([True, True, False, False, False, "", "", ""], got,
+                         "lite 下 ?tab=me / packs 不能把个人后台或付费货架逼出来")
 
     def test_subviews_keep_their_parent_tab_highlighted(self):
-        """「查看收藏」和发布者主页不是独立 tab，但也不该让四个 tab 全灭。"""
+        """「查看收藏」和发布者主页不是独立 tab，但也不该让五个 tab 全灭。"""
         got = self.harness().eval(
-            "['saved','publisher','topics','nope'].map(tabForMode)")
-        self.assertEqual(["me", "all", "topics", "all"], got)
+            "['saved','publisher','topics','packs','nope'].map(tabForMode)")
+        self.assertEqual(["me", "all", "topics", "packs", "all"], got)
+
+    def test_packs_tab_is_shareable_with_pack_deep_link(self):
+        got = self.harness().eval(
+            "(state.packId = 'shelf-ecom', state.packGroup = 'ecom',"
+            " tabSearch('', 'packs'))")
+        self.assertIn("tab=packs", got)
+        self.assertIn("pack=shelf-ecom", got)
+        self.assertIn("pg=ecom", got)
 
     def test_account_mode_follows_the_runtime_shape(self):
         """三种形态的判据全部由 IS_LITE + API_BASE 推出来，没有第二套探测。"""

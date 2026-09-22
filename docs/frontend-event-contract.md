@@ -79,7 +79,7 @@ if (data.device_token) localStorage.setItem("skillfeed_dtok", data.device_token)
 
 | action | 触发时机 | 额外字段 | 排序引擎里的用途 |
 |---|---|---|---|
-| `session_start` | 会话建立 / 换新 session_id | `referrer`, `viewport_w`, `viewport_h` | 会话计数（北极星分母） |
+| `session_start` | 会话建立 / 换新 session_id | `referrer`, `landing`, `utm_source`, `utm_medium`, `utm_campaign`, `channel`（可选 hint；服务端会再归类）, `viewport_w`, `viewport_h` | 会话计数（北极星分母）+ **渠道归因**（SEO/GEO/社交/直接等）；服务端把首触渠道写入 `devices`（只写一次） |
 | `impression` | 卡片 **≥50% 可见持续 ≥300ms** | — | CTR 分母、疲劳计数 |
 | `dwell` | 卡片离开视口时 | `dwell_ms` | 长停留正信号 / 快速划走负信号 |
 | `open_github` | 点击「打开 GitHub」CTA | — | **北极星行为**，CTR 分子，最强正信号 |

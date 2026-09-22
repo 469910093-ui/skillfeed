@@ -232,6 +232,11 @@ def repos_for_text(title: str, content: str, url: str = "") -> list[str]:
 
 
 def github_repo_api(full_name: str, token: str = "") -> dict | None:
+    try:
+        from gh_validate import validate_github_full_name
+        full_name = validate_github_full_name(full_name)
+    except Exception:  # noqa: BLE001
+        return None
     # 无 token 且 core 额度用尽时直接走 HTML，避免 403 重试浪费时间
     if not token:
         try:

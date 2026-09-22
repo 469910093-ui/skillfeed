@@ -159,6 +159,10 @@ class TestLoginGate(unittest.TestCase):
         self.assertEqual(self.client.get("/llms.txt").status_code, 200)
         self.assertTrue(self.client.get("/llms.txt").text.startswith("# SkillFeeder"))
         self.assertEqual(self.client.get("/about.md").status_code, 200)
+        about_html = self.client.get("/about.html")
+        self.assertEqual(about_html.status_code, 200)
+        self.assertIn("给发现者", about_html.text)
+        self.assertEqual(self.client.get("/faq.html").status_code, 200)
         self.assertEqual(self.client.get("/api/geo/openapi.json").status_code, 200)
         for path in ("/favicon.ico", "/favicon.png", "/apple-touch-icon.png", "/og.png"):
             with self.subTest(path=path):
@@ -1246,7 +1250,12 @@ class TestAdminSite(unittest.TestCase):
         self.client.post("/api/events", json={
             "device_id": "web-op", "session_id": "s-op",
             "events": [
-                {"action": "session_start", "client_ts": "j1"},
+                {
+                    "action": "session_start", "client_ts": "j1",
+                    "utm_source": "google", "utm_medium": "organic",
+                    "referrer": "https://www.google.com/search?q=skillfeeder",
+                    "landing": "/?utm_source=google&utm_medium=organic",
+                },
                 {"action": "view_tab", "item_key": "all", "client_ts": "j2"},
                 {"action": "search", "item_key": "周报", "client_ts": "j3"},
             ],
@@ -1256,16 +1265,70 @@ class TestAdminSite(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         data = r.json()
         self.assertGreaterEqual(data["kpis"]["sessions"], 1)
+        self.assertGreaterEqual(data["kpis"]["seo_sessions"], 1)
+        self.assertTrue(any(c.get("channel") == "organic_search" for c in data["kpis"]["channels"]))
         paths = " ".join(s.get("path") or "" for s in data["sessions"])
         self.assertIn("进入", paths)
+        self.assertEqual(data["sessions"][0].get("channel"), "organic_search")
         csv = self.client.get("/api/op/journeys.csv?hours=24")
         self.assertEqual(csv.status_code, 200)
         self.assertIn("session_start", csv.text)
+        self.assertIn("utm_source", csv.text)
+        self.assertIn("organic_search", csv.text)
 
     def test_stranger_cannot_read_journeys(self):
         self.client.get("/auth/dev-login?login=other-user")
         r = self.client.get("/api/op/journeys")
         self.assertEqual(r.status_code, 403)
+
+    def test_operator_kpi_detail_endpoints(self):
+        # 先匿名进站，再登录读运营接口 —— 游客设备才算 anonymous
+        anon = self.client.post("/api/events", json={
+            "device_id": "web-kpi", "session_id": "s-kpi",
+            "events": [{
+                "action": "session_start", "client_ts": "k1",
+                "utm_source": "google", "utm_medium": "organic",
+                "referrer": "https://www.google.com/",
+                "landing": "/?utm_source=google",
+            }],
+        })
+        self.assertEqual(anon.status_code, 200, anon.text)
+        self.assertIn("device_token", anon.json())
+
+        self.client.get("/auth/dev-login")
+        users = self.client.get("/api/op/users")
+        self.assertEqual(users.status_code, 200, users.text)
+        body = users.json()
+        self.assertGreaterEqual(body["count"], 1)
+        self.assertTrue(any(u.get("login") == "dev-user" for u in body["users"]))
+        self.assertNotIn("wechat_openid", body["users"][0])
+
+        backups = self.client.get("/api/op/backups")
+        self.assertEqual(backups.status_code, 200, backups.text)
+        self.assertIn("files", backups.json())
+
+        today = self.client.get("/api/op/events/today")
+        self.assertEqual(today.status_code, 200, today.text)
+        self.assertGreaterEqual(today.json()["count"], 1)
+
+        devices = self.client.get("/api/op/devices")
+        self.assertEqual(devices.status_code, 200, devices.text)
+        dbody = devices.json()
+        self.assertGreaterEqual(dbody["count"], 1)
+        hit = next(d for d in dbody["devices"] if d["device_id"] == "web-kpi")
+        self.assertEqual(hit["channel"], "organic_search")
+        self.assertTrue(hit["anonymous"])
+
+        all_posts = self.client.get("/api/op/queue?status=all")
+        self.assertEqual(all_posts.status_code, 200)
+
+    def test_stranger_cannot_read_kpi_details(self):
+        self.client.get("/auth/dev-login?login=other-user")
+        for path in (
+            "/api/op/users", "/api/op/backups",
+            "/api/op/events/today", "/api/op/devices",
+        ):
+            self.assertEqual(self.client.get(path).status_code, 403, path)
 
 
 @unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")

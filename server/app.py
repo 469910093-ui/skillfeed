@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 import geo
 import ranking
+import ranking_path
 from server import auth, backup, db, entitlement, metrics, notify, pay, ranking_service, sms, ugc
 from server.config import Settings, get_settings
 from server.ratelimit import EventLimiter, GeoLimiter, SmsLimiter
@@ -123,8 +124,11 @@ GATE_PUBLIC_EXACT = frozenset({
     "/robots.txt",
     "/sitemap.xml",
     "/about.md",
+    "/about.html",
     "/faq.md",
+    "/faq.html",
     "/compare.md",
+    "/compare.html",
     "/catalog.json",
     "/api/geo/skills",
     "/api/geo/openapi.json",
@@ -461,6 +465,18 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/compare.md")
     def compare_md() -> PlainTextResponse:
         return _geo_markdown("md", geo.render_compare_md())
+
+    @app.get("/about.html")
+    def about_html() -> HTMLResponse:
+        return HTMLResponse(geo.render_about_html())
+
+    @app.get("/faq.html")
+    def faq_html() -> HTMLResponse:
+        return HTMLResponse(geo.render_faq_html())
+
+    @app.get("/compare.html")
+    def compare_html() -> HTMLResponse:
+        return HTMLResponse(geo.render_compare_html())
 
     @app.get("/catalog.json")
     def catalog_json() -> dict[str, Any]:
@@ -1201,6 +1217,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             )
             ranked.extend(ordered)
 
+        path_decision = ranking_path.judge_feed_path(
+            profile, query=q, scene_filter=scene, device_id=device_id, config=cfg,
+        )
+        ranked = ranking_path.apply_path_tiebreak(ranked, path_decision, cfg)
+
         # 会话内顺序固化：翻页/刷新只对已算好的顺序切片，不重排。
         # 收到 not_interested 后缓存顺序会被截断到「已交付的高水位」，
         # 于是这里 cached 只覆盖用户已经看过的那一段，后面的部分按新画像重排——
@@ -1238,6 +1259,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "search" if q.strip()
                 else ("personalized" if (profile and profile.events) else "global")
             ),
+            "path_decision": path_decision.as_public(),
             "me": None,
         }
         # 凭据只在首次注册时返回一次，客户端要存下来；并档时用它证明设备归属
@@ -1479,6 +1501,56 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         stats["backup"] = backup.backup_status(settings.backup_dir)
         return stats
 
+    @app.get("/api/op/users")
+    def api_op_users(
+        request: Request, limit: int = Query(200, ge=1, le=500),
+    ) -> dict[str, Any]:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_op_users(conn, limit=limit)
+        return {"ok": True, "users": rows, "count": len(rows)}
+
+    @app.get("/api/op/devices")
+    def api_op_devices(
+        request: Request,
+        limit: int = Query(200, ge=1, le=500),
+        anonymous: int = Query(0, ge=0, le=1),
+    ) -> dict[str, Any]:
+        """游客/已挂账号设备列表：召回抓手（device_id + 首触渠道）。"""
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_op_devices(
+                conn, limit=limit, anonymous_only=bool(anonymous),
+            )
+        return {
+            "ok": True,
+            "devices": rows,
+            "count": len(rows),
+            "anonymous": sum(1 for d in rows if d.get("anonymous")),
+        }
+
+    @app.get("/api/op/backups")
+    def api_op_backups(request: Request) -> dict[str, Any]:
+        _op_user(request)
+        return {"ok": True, **backup.backup_status(settings.backup_dir)}
+
+    @app.get("/api/op/events/today")
+    def api_op_events_today(
+        request: Request, limit: int = Query(300, ge=1, le=2000),
+    ) -> dict[str, Any]:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_today_event_rows(conn, limit=limit)
+            sessions = {
+                r["session_id"] for r in rows if r.get("session_id")
+            }
+        return {
+            "ok": True,
+            "events": rows,
+            "count": len(rows),
+            "sessions": len(sessions),
+        }
+
     @app.post("/api/op/backup")
     def api_op_backup(request: Request) -> dict[str, Any]:
         _op_user(request)
@@ -1515,12 +1587,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/api/op/queue")
     def api_op_queue(
-        request: Request, status: str = Query("pending"),
+        request: Request,
+        status: str = Query("pending"),
+        limit: int = Query(100, ge=1, le=500),
     ) -> dict[str, Any]:
         _op_user(request)
         with db.db_session(settings.db_path) as conn:
-            rows = db.list_moderation_queue(conn, status=status)
-        return {"posts": rows}
+            rows = db.list_moderation_queue(conn, status=status, limit=limit)
+        return {"posts": rows, "status": status}
 
     @app.get("/api/op/queue.csv")
     def api_op_queue_csv(request: Request, status: str = Query("pending")) -> Response:
@@ -1625,11 +1699,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         def cell(v: Any) -> str:
             return '"' + str(v or "").replace('"', '""') + '"'
 
-        lines = ["ts,session_id,device_id,user_login,action,item_key,source,owner"]
+        lines = [
+            "ts,session_id,device_id,user_login,action,item_key,source,owner,"
+            "channel,referrer,landing,utm_source,utm_medium,utm_campaign"
+        ]
         for r in rows:
             lines.append(",".join(cell(r.get(k)) for k in (
                 "ts", "session_id", "device_id", "user_login",
                 "action", "item_key", "source", "owner",
+                "channel", "referrer", "landing",
+                "utm_source", "utm_medium", "utm_campaign",
             )))
         return Response(
             "\n".join(lines) + "\n",

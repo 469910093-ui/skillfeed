@@ -26,3 +26,5 @@ class TestSqliteBackup(unittest.TestCase):
             status = backup.backup_status(dest)
             self.assertEqual(status["count"], 2)
             self.assertTrue(status["latest"].startswith("server-"))
+            self.assertEqual(len(status["files"]), 2)
+            self.assertIn("bytes", status["files"][0])

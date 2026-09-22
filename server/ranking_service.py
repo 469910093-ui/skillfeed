@@ -16,7 +16,7 @@ from typing import Any, Optional
 import feedback as feedback_mod
 import ranking
 import ranking_profile
-from server import db
+from server import attribution, db
 
 # 事件里允许落库的动作。session_start 也存，它是北极星指标的分母
 ALLOWED_ACTIONS = frozenset({
@@ -109,6 +109,14 @@ def normalize_events(
             )
         except (TypeError, ValueError):
             band = None
+        attr = (
+            attribution.sanitize_attr(raw)
+            if action == "session_start"
+            else {
+                "channel": "", "referrer": "", "landing": "",
+                "utm_source": "", "utm_medium": "", "utm_campaign": "",
+            }
+        )
         row = {
             "device_id": device_id,
             "session_id": session_id,
@@ -121,11 +129,12 @@ def normalize_events(
             "scene_l2": (raw.get("scene_l2") or "")[:40],
             "owner": (raw.get("owner") or "")[:80],
             "language": (raw.get("language") or "")[:40],
-            "source": (raw.get("source") or "")[:40],
+            "source": (raw.get("source") or attr.get("channel") or "")[:40],
             "scope": (
                 ranking_profile.normalize_scope(raw.get("scope"))
                 if action == "not_interested" else None
             ),
+            **attr,
             "ts": now.isoformat(),
             "client_ts": (str(raw.get("client_ts") or ""))[:40],
             "_focus": raw.get("focus") if action == "focus_set" else None,
@@ -161,6 +170,8 @@ def ingest_events(
             continue
         action = row["action"]
         by_action[action] = by_action.get(action, 0) + 1
+        if action == "session_start":
+            db.set_device_attribution_if_empty(conn, device_id, row)
         if action == "impression" and row["item_key"]:
             db.bump_item_stats(
                 conn, item_key=row["item_key"],
