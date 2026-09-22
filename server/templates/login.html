@@ -230,7 +230,7 @@ if (DEV_ON) $("devBlock").classList.remove("hide");
 
 fetch("/auth/me", { credentials: "include" }).then(r => r.json()).then(data => {
   if (!data || !data.user) return;
-  $("lead").textContent = "你已经登录。在这里再绑一把微信或手机，GitHub 出问题时还能进「我的」、导出账本。";
+  $("lead").textContent = "再绑微信或手机，换设备也能打开收藏。";
   const wx = $("btnWechat");
   if (wx) { wx.textContent = "绑定微信"; wx.href = "/auth/wechat?next=" + encodeURIComponent("/?tab=me"); }
   const verify = $("btnVerify");

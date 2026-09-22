@@ -1096,7 +1096,7 @@ class TestContrastTokens(unittest.TestCase):
         rules = [m.group(1).strip() for m in re.finditer(
             r"([^{}]+)\{[^{}]*" + re.escape(self.PANEL) + r"[^{}]*\}", css)]
         self.assertEqual(
-            [".pitch .highlights li", ".pack-flow li", ".pack-detail .howto-skel li"],
+            [".pitch .highlights li", ".pack-flow li", ".pack-flow-map li", ".pack-detail .howto-skel li"],
             rules,
             f"{self.PANEL} 的用处变了（现在铺在 {rules}）；"
             f"回去核对 TEXT_TOKENS 里各令牌的背景清单")
@@ -2315,8 +2315,10 @@ NEW_I18N_KEYS = (
     "packsBuyNeedSite", "packsBack", "packsSecFlow", "packsSecHowto",
     "packsSecWhy", "packsSecLocked",
     "packsLockedHint", "packsMetaNamed", "packsEmpty",
-    "packsHighlightSafe", "packsHighlightFlow", "packsHighlightSpace",
-    "packsHighlightTeach",
+    "packsHighlightSafeTitle", "packsHighlightSafeBody",
+    "packsHighlightFlowTitle", "packsHighlightFlowBody",
+    "packsHighlightSpaceTitle", "packsHighlightSpaceBody",
+    "packsHighlightTeachTitle", "packsHighlightTeachBody",
     "packsHowto1", "packsHowto2", "packsHowto3", "packsHowto4",
     "packsHowto5", "packsHowto6", "packsHowto7", "packsHowto8",
     "publishTitle", "publishLead", "publishFieldTitle", "publishFieldUrl",
@@ -2331,7 +2333,11 @@ NEW_I18N_KEYS = (
     "acctReactionsPending",
     "acctKeysTitle", "acctKeysHint", "acctKeyGithub", "acctKeyWechat", "acctKeyPhone",
     "acctKeyOn", "acctKeyOff", "acctBindWechat", "acctBindPhone", "acctBindGithub",
-    "acctBindNeedWx", "acctBindNeedSms", "acctExport", "acctBindTaken",
+    "acctExport", "acctBindTaken",
+    "bindNudgeTitle", "bindNudgeBody", "bindNudgeLater",
+    "recallSavedTitle", "recallSavedCta",
+    "emailOptTitle", "emailOptBody", "emailOptPh", "emailOptCheck",
+    "emailOptSave", "emailOptSaved", "emailOptBad", "emailOptOn",
     "previewClose", "acctPostPending", "acctPostLive",
     "cardPreviewPending", "cardPreviewRejected",
     "refreshAria", "refreshTitle", "reshuffleToast",
@@ -2402,16 +2408,27 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertIn("marketing", js)
         self.assertIn("data-analytics", js)
         self.assertIn("一站式配齐", self.full)
+        self.assertIn("持续扩充中", self.full)
+        self.assertNotIn("发现流仍全量免费", self.full)
         self.assertIn("packs: 'packs'", js)
         # 商详卖成套亮点，不全文展开手册 / 核心能力
         self.assertIn("packsSecWhy", js)
-        self.assertIn("packsHighlightSafe", js)
+        self.assertIn("packsHighlightSafeTitle", js)
         self.assertIn("PACK_HOWTO_LOCKED", js)
         self.assertNotIn("whyChooseZh", js)
         self.assertNotIn("coreSkills", js)
+        self.assertIn("pack-flow-hero", js)
+        self.assertIn("pack-flow-map", js)
+        self.assertIn("flowHintZh", js)
+        self.assertIn("包含哪些环节？", self.full)
+        self.assertNotIn("可卖·材料齐", self.full)
         self.assertIn("竞品分析", js)
         self.assertIn("竞品追踪", js)
-        self.assertIn("选品到利润复盘的SOP", js)
+        self.assertIn("从选品做到利润复盘", js)
+        self.assertIn("只上架已验证技能", self.full)
+        self.assertNotIn("待定价", self.full)
+        self.assertNotIn("首波上架", self.full)
+        self.assertNotIn("收银台即将开通", self.full)
 
     def test_only_one_tab_starts_selected_and_the_rest_leave_the_tab_order(self):
         """roving tabindex：tablist 整体只占一个 Tab 位。"""
@@ -2651,6 +2668,50 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
         self.assertNotIn("发现站", html)
         posts = js.eval("mePanelHtml()")
         self.assertIn("my-skill", posts)
+
+    def test_bind_nudge_offers_wechat_or_phone_when_github_only(self):
+        """只登了 GitHub、且通道已开时，发现流要出绑定召回条。"""
+        js = self.harness(
+            api_base="https://skillfeeder.cn",
+            extra=(
+                "Object.assign(ACCT, { loaded: true, wechat: true, sms: true,"
+                " user: { login: 'kai', name: 'Kai', providers: ['github'] } });"
+                "try { localStorage.removeItem('sf_bind_nudge'); } catch (e) {}"
+            ),
+        )
+        html = js.eval("bindNudgeHtml()")
+        self.assertIn("绑定手机或微信", html)
+        self.assertIn("/auth/wechat", html)
+        self.assertIn("js-bind-nudge-later", html)
+        gone = js.eval(
+            "(localStorage.setItem('sf_bind_nudge', '1'), bindNudgeHtml())")
+        self.assertEqual("", gone)
+
+    def test_recall_saved_strip_points_at_bookmarks(self):
+        js = self.harness(
+            extra=(
+                "saved.add('acme/stop-slop');"
+                "try { sessionStorage.removeItem('sf_recall_saved'); } catch (e) {}"
+            ),
+        )
+        html = js.eval("recallSavedHtml()")
+        self.assertIn("你收藏了 1 条", html)
+        self.assertIn("js-recall-saved", html)
+
+    def test_email_opt_form_is_on_me_when_signed_in(self):
+        js = self.harness(
+            api_base="https://skillfeeder.cn",
+            extra=(
+                "Object.assign(ACCT, { loaded: true,"
+                " user: { login: 'kai', name: 'Kai', providers: ['github'],"
+                " email_opt_in: false, email_masked: '' } });"
+            ),
+        )
+        html = js.eval("mePanelHtml()")
+        self.assertIn("meEmailForm", html)
+        self.assertIn("邮件提醒", html)
+        self.assertNotIn("acctBindNeedWx", html)
+        self.assertNotIn("配好服务号", html)
 
     def test_the_account_page_drops_the_discover_explainer(self):
         html = self.harness().eval("mePanelHtml()")

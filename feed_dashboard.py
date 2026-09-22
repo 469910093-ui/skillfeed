@@ -1234,6 +1234,66 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     font-size: .68rem; font-weight: 650; color: #3d4a6b;
     background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 6px; padding: 3px 7px;
   }}
+  /* 商详核心：电商详情式环节大图 */
+  .pack-flow-hero {{
+    margin: 8px 0 4px;
+    padding: 16px 14px 6px;
+    border-radius: 18px;
+    background:
+      linear-gradient(165deg, rgba(13,115,119,.12) 0%, rgba(13,115,119,.03) 38%, #fff 72%);
+    border: 1px solid var(--line);
+    box-shadow: 0 16px 40px -24px rgba(10, 24, 72, .35);
+  }}
+  .pack-flow-hero .sec {{
+    margin: 0 0 14px;
+    font-size: .92rem; font-weight: 800; letter-spacing: -.01em;
+    text-transform: none; color: var(--ink);
+  }}
+  .pack-flow-map {{
+    list-style: none; margin: 0; padding: 0 0 8px;
+    display: grid; gap: 0;
+  }}
+  .pack-flow-map li {{
+    --i: 0;
+    display: grid; grid-template-columns: 48px 1fr; gap: 0 12px;
+    align-items: stretch;
+    animation: packWhyIn .5s cubic-bezier(.16, 1, .3, 1) both;
+    animation-delay: calc(var(--i) * 60ms);
+  }}
+  .pack-flow-map .rail {{
+    position: relative; display: flex; flex-direction: column; align-items: center;
+  }}
+  .pack-flow-map .rail em {{
+    flex: 0 0 auto; font-style: normal;
+    width: 36px; height: 36px; border-radius: 12px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: .78rem; font-weight: 800; color: #fff;
+    background: linear-gradient(145deg, var(--accent) 0%, var(--accent-strong) 100%);
+    box-shadow: 0 6px 14px -6px rgba(13, 115, 119, .55);
+    z-index: 1;
+  }}
+  .pack-flow-map .rail i {{
+    flex: 1 1 auto; width: 2px; min-height: 18px; margin: 4px 0 2px;
+    background: linear-gradient(180deg, rgba(13,115,119,.45), rgba(13,115,119,.08));
+    border-radius: 2px;
+  }}
+  .pack-flow-map li:last-child .rail i {{ display: none; }}
+  .pack-flow-map .body {{
+    margin: 0 0 12px; padding: 12px 14px 13px;
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 8px 22px -16px rgba(10, 24, 72, .22);
+  }}
+  .pack-flow-map li:last-child .body {{ margin-bottom: 4px; }}
+  .pack-flow-map .body b {{
+    display: block; font-size: 1rem; font-weight: 800; color: var(--ink);
+    letter-spacing: -.01em; line-height: 1.25; margin: 0 0 4px;
+  }}
+  .pack-flow-map .body span {{
+    display: block; font-size: .8rem; color: #4a5568; line-height: 1.45;
+  }}
+  @media (prefers-reduced-motion: reduce) {{
+    .pack-flow-map li {{ animation: none; }}
+  }}
   .pack-foot {{
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     padding: 0 12px 12px;
@@ -1275,11 +1335,48 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     margin: -4px 0 12px; font-size: .72rem; font-weight: 650; color: var(--accent);
   }}
   .pack-why-list {{
-    list-style: none; margin: 0; padding: 0; display: grid; gap: 8px;
+    list-style: none; margin: 0; padding: 0;
+    display: grid; gap: 10px;
   }}
   .pack-why-list li {{
-    font-size: .82rem; line-height: 1.45; color: var(--ink);
-    padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    --i: 0;
+    display: grid; grid-template-columns: 40px 1fr; gap: 2px 12px;
+    align-items: start;
+    padding: 14px 14px 13px;
+    background:
+      linear-gradient(145deg, rgba(13,115,119,.07) 0%, transparent 42%),
+      #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 10px 28px -18px rgba(10, 24, 72, .28);
+    animation: packWhyIn .45s cubic-bezier(.16, 1, .3, 1) both;
+    animation-delay: calc(var(--i) * 70ms);
+  }}
+  .pack-why-list li:active {{ transform: scale(.985); }}
+  .pack-why-list .mark {{
+    grid-row: 1 / span 2;
+    width: 40px; height: 40px; border-radius: 12px;
+    display: grid; place-items: center;
+    background: rgba(13, 115, 119, .12);
+    color: var(--accent-strong);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.65);
+  }}
+  .pack-why-list .mark svg {{
+    width: 20px; height: 20px; display: block;
+  }}
+  .pack-why-list li b {{
+    font-size: .95rem; font-weight: 800; color: var(--ink);
+    letter-spacing: -.01em; line-height: 1.2;
+  }}
+  .pack-why-list li span {{
+    font-size: .8rem; color: #4a5568; line-height: 1.45;
+  }}
+  @keyframes packWhyIn {{
+    from {{ opacity: 0; transform: translateY(8px); }}
+    to {{ opacity: 1; transform: none; }}
+  }}
+  @media (prefers-reduced-motion: reduce) {{
+    .pack-why-list li {{ animation: none; }}
   }}
   .pack-buy-bar {{
     position: sticky; bottom: calc(64px + env(safe-area-inset-bottom));
@@ -1392,6 +1489,32 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .acct-id .meta {{ min-width: 0; }}
   .acct-id .meta b {{ display: block; font-size: 1rem; }}
   .acct-id .meta span {{ font-size: .75rem; color: var(--muted); }}
+  .recall-bar {{
+    margin: 0 0 12px; padding: 12px 12px 10px;
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    display: grid; gap: 10px;
+  }}
+  .recall-bar b {{ display: block; font-size: .88rem; color: var(--ink); }}
+  .recall-bar p {{ margin: 2px 0 0; font-size: .76rem; color: var(--muted); line-height: 1.4; }}
+  .recall-bar-actions {{
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }}
+  .recall-bar-actions a, .recall-bar-actions button {{
+    appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .74rem; font-weight: 700;
+    cursor: pointer; text-decoration: none;
+  }}
+  .recall-bar-actions a.primary, .recall-bar-actions button.primary {{
+    border-color: var(--ink); background: var(--ink); color: #fff;
+  }}
+  .email-opt label.check {{
+    display: flex; gap: 8px; align-items: flex-start;
+    font-size: .78rem; color: var(--ink); font-weight: 600; margin: 8px 0;
+  }}
+  .email-opt input[type="email"] {{
+    width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
+    font: inherit; font-size: .85rem; background: #fff; color: var(--ink);
+  }}
 
   .demo-bar {{
     position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%);
@@ -2017,32 +2140,36 @@ const I18N = {{
 
     /* 一站式配齐 */
     packsTitle: '一站式配齐',
-    packsLead: '按岗位场景买一套能做成一件事的 Skill 包。发现流仍全量免费；这里卖的是配齐与带练，不代装。',
-    packsGroupAll: '全部', packsGroupEcom: '电商', packsGroupMedia: '自媒体', packsGroupOps: '效率',
-    packsBadgeShelf: '首波上架', packsBadgeSoon: '下一波',
-    packsPriceTbd: '待定价', packsOpen: '查看方案', packsBuy: '购买此包',
-    packsBuyLocked: '登录后购买', packsBuySoon: '收银台即将开通，先收藏场景包方案',
-    packsBuyNeedSite: '请到 skillfeeder.cn 主站购买场景包',
+    packsLead: '持续扩充中',
+    packsGroupAll: '全部', packsGroupEcom: '电商', packsGroupMedia: '自媒体', packsGroupOps: '数据分析',
+    packsBadgeShelf: '可买', packsBadgeSoon: '即将推出',
+    packsPriceTbd: '价格公布中', packsOpen: '查看详情', packsBuy: '购买此包',
+    packsBuyLocked: '登录后购买', packsBuySoon: '购买开通后会通知你',
+    packsBuyNeedSite: '请到 skillfeeder.cn 购买',
     packsBack: '← 返回货架',
-    packsSecFlow: '工作流怎么串',
+    packsSecFlow: '包含哪些环节？',
     packsSecWhy: '亮点',
     packsSecLocked: '购买后解锁',
-    packsSecHowto: '操作手册目录（锁）',
-    packsLockedHint: '付款后才开放手册全文、默认清单与三份练习。',
-    packsMetaNamed: '已点名 {{n}}',
-    packsHighlightSafe: '安全性：只推荐已验证过的技能',
-    packsHighlightFlow: '全流程：节省你零散搜寻的时间',
-    packsHighlightSpace: '省空间：避免累赘装载增加系统负担',
-    packsHighlightTeach: '包教会：每个环节用什么一清二楚',
+    packsSecHowto: '操作手册',
+    packsLockedHint: '付款后解锁手册、默认清单和三份练习。',
+    packsMetaNamed: '含 {{n}} 个技能',
+    packsHighlightSafeTitle: '安全',
+    packsHighlightSafeBody: '只上架已验证技能',
+    packsHighlightFlowTitle: '全流程',
+    packsHighlightFlowBody: '环节串好，你不用自己拼',
+    packsHighlightSpaceTitle: '省空间',
+    packsHighlightSpaceBody: '只装需要的，少占机器',
+    packsHighlightTeachTitle: '包教会',
+    packsHighlightTeachBody: '每步用哪个技能都写明',
     packsHowto1: '这个包帮你完成什么',
     packsHowto2: '今天先做哪一件',
     packsHowto3: '怎么对 Agent 说话',
     packsHowto4: '材料放哪',
-    packsHowto5: '每个 Part 何时用',
+    packsHowto5: '各部分何时用',
     packsHowto6: '不要做的事',
-    packsHowto7: '第二天才能接的手',
+    packsHowto7: '第二天怎么交接',
     packsHowto8: '坏了怎么办',
-    packsEmpty: '这一类暂时没有场景包。',
+    packsEmpty: '这类还没有场景包。',
 
     /* 主题分类 */
     topicsTitle: '主题分类', topicsSecSection: '按栏目浏览',
@@ -2098,7 +2225,7 @@ const I18N = {{
     acctLocalCounts: '本机记录：点赞 {{liked}} · 书签 {{saved}}',
     acctReactionsPending: '云端赞藏要等埋点链路接上才会有数，当前以本机记录为准。',
     acctKeysTitle: '登录钥匙',
-    acctKeysHint: 'GitHub 只用来认领仓库。再绑微信或手机，GitHub 出问题时还能进「我的」、导出账本。',
+    acctKeysHint: '再绑微信或手机，换设备也能打开收藏。',
     acctKeyGithub: 'GitHub',
     acctKeyWechat: '微信',
     acctKeyPhone: '手机',
@@ -2107,10 +2234,21 @@ const I18N = {{
     acctBindWechat: '绑定微信',
     acctBindPhone: '绑定手机',
     acctBindGithub: '绑定 GitHub',
-    acctBindNeedWx: '微信登录还没开通，配好服务号后就能绑。',
-    acctBindNeedSms: '短信通道还没开通，配好后就能绑手机。',
     acctExport: '导出我的账本',
     acctBindTaken: '这把钥匙已经绑在别的账号上。',
+    bindNudgeTitle: '绑定手机或微信',
+    bindNudgeBody: '换设备也能打开收藏，并接收重要更新。',
+    bindNudgeLater: '以后再说',
+    recallSavedTitle: '你收藏了 {{n}} 条',
+    recallSavedCta: '查看收藏',
+    emailOptTitle: '邮件提醒',
+    emailOptBody: '留下邮箱，有重要更新时通知你。',
+    emailOptPh: 'you@example.com',
+    emailOptCheck: '我同意接收邮件提醒',
+    emailOptSave: '保存',
+    emailOptSaved: '已保存',
+    emailOptBad: '请填写有效邮箱并勾选同意',
+    emailOptOn: '已开启邮件提醒',
     quotaTitle: '发现额度',
     quotaSubscriber: '订阅会员 · 今日不限条数',
     quotaFreeToday: '今日还可看 {{n}} / {{limit}} 条',
@@ -2289,29 +2427,33 @@ const I18N = {{
     tabsAria: 'Main navigation', backToTop: 'Back to top',
 
     packsTitle: 'One-stop packs',
-    packsLead: 'Buy a scenario pack that gets one job done. The discover feed stays free; packs sell curation and drills — never silent install.',
-    packsGroupAll: 'All', packsGroupEcom: 'Commerce', packsGroupMedia: 'Media', packsGroupOps: 'Ops',
-    packsBadgeShelf: 'Wave 1', packsBadgeSoon: 'Soon',
-    packsPriceTbd: 'Price TBA', packsOpen: 'View pack', packsBuy: 'Buy pack',
-    packsBuyLocked: 'Sign in to buy', packsBuySoon: 'Checkout coming soon — pack plan saved',
-    packsBuyNeedSite: 'Buy packs on skillfeeder.cn',
+    packsLead: 'Growing continuously',
+    packsGroupAll: 'All', packsGroupEcom: 'Commerce', packsGroupMedia: 'Media', packsGroupOps: 'Data analytics',
+    packsBadgeShelf: 'Available', packsBadgeSoon: 'Coming soon',
+    packsPriceTbd: 'Price soon', packsOpen: 'View details', packsBuy: 'Buy pack',
+    packsBuyLocked: 'Sign in to buy', packsBuySoon: "We'll notify you when checkout opens",
+    packsBuyNeedSite: 'Buy on skillfeeder.cn',
     packsBack: '← Back to shelf',
-    packsSecFlow: 'How the workflow connects', packsSecWhy: 'Highlights',
+    packsSecFlow: "What's included?", packsSecWhy: 'Highlights',
     packsSecLocked: 'Unlocked after purchase',
-    packsSecHowto: 'HOWTO outline (locked)',
-    packsLockedHint: 'Full HOWTO, default skill list, and three drills open after payment.',
-    packsMetaNamed: '{{n}} named',
-    packsHighlightSafe: 'Safety: only verified skills',
-    packsHighlightFlow: 'Full flow: stop hunting pieces one by one',
-    packsHighlightSpace: 'Lean install: skip clutter that weighs the system down',
-    packsHighlightTeach: 'Taught end-to-end: clear which skill for which step',
+    packsSecHowto: 'How-to guide',
+    packsLockedHint: 'Payment unlocks the guide, default skill list, and three drills.',
+    packsMetaNamed: '{{n}} skills included',
+    packsHighlightSafeTitle: 'Safe',
+    packsHighlightSafeBody: 'Only verified skills ship',
+    packsHighlightFlowTitle: 'End-to-end',
+    packsHighlightFlowBody: 'Steps already linked for you',
+    packsHighlightSpaceTitle: 'Lean',
+    packsHighlightSpaceBody: 'Install what you need',
+    packsHighlightTeachTitle: 'Taught',
+    packsHighlightTeachBody: 'Each step names its skill',
     packsHowto1: 'What this pack finishes',
-    packsHowto2: 'First win today',
+    packsHowto2: 'First task today',
     packsHowto3: 'How to talk to the agent',
     packsHowto4: 'Where materials go',
-    packsHowto5: 'When each Part is for',
-    packsHowto6: 'Do not do these',
-    packsHowto7: 'Day-two handoffs',
+    packsHowto5: 'When each part applies',
+    packsHowto6: 'What to avoid',
+    packsHowto7: 'Day-two handoff',
     packsHowto8: 'When it breaks',
     packsEmpty: 'No packs in this group yet.',
 
@@ -2366,7 +2508,7 @@ const I18N = {{
     acctLocalCounts: 'In this browser: {{liked}} liked · {{saved}} bookmarked',
     acctReactionsPending: 'Server-side likes and saves need the analytics pipeline wired up; until then this browser is the source of truth.',
     acctKeysTitle: 'Sign-in keys',
-    acctKeysHint: 'GitHub is only for claiming a repo. Bind WeChat or a phone so you can still open Me and export your ledger if GitHub is down.',
+    acctKeysHint: 'Bind WeChat or a phone so saved items follow you across devices.',
     acctKeyGithub: 'GitHub',
     acctKeyWechat: 'WeChat',
     acctKeyPhone: 'Phone',
@@ -2375,10 +2517,21 @@ const I18N = {{
     acctBindWechat: 'Bind WeChat',
     acctBindPhone: 'Bind phone',
     acctBindGithub: 'Bind GitHub',
-    acctBindNeedWx: 'WeChat sign-in is not configured yet.',
-    acctBindNeedSms: 'SMS is not configured yet.',
     acctExport: 'Export my ledger',
     acctBindTaken: 'That key is already bound to another account.',
+    bindNudgeTitle: 'Bind phone or WeChat',
+    bindNudgeBody: 'Keep your saves across devices and get important updates.',
+    bindNudgeLater: 'Not now',
+    recallSavedTitle: 'You saved {{n}} items',
+    recallSavedCta: 'View saves',
+    emailOptTitle: 'Email updates',
+    emailOptBody: 'Leave an email for important updates.',
+    emailOptPh: 'you@example.com',
+    emailOptCheck: 'I agree to receive email updates',
+    emailOptSave: 'Save',
+    emailOptSaved: 'Saved',
+    emailOptBad: 'Enter a valid email and check the box',
+    emailOptOn: 'Email updates on',
     quotaTitle: 'Discovery quota',
     quotaSubscriber: 'Subscriber · unlimited today',
     quotaFreeToday: '{{n}} / {{limit}} left today',
@@ -4257,6 +4410,10 @@ function packFlow(p) {{
   return LANG === 'en' ? (p.flowEn || p.flowZh || []) : (p.flowZh || []);
 }}
 
+function packFlowHints(p) {{
+  return LANG === 'en' ? (p.flowHintEn || p.flowHintZh || []) : (p.flowHintZh || []);
+}}
+
 function packGroupFromQuery(search) {{
   let want = '';
   try {{
@@ -4340,17 +4497,37 @@ function packsShelfHtml() {{
 
 function packDetailHtml(p) {{
   if (!p) return packsShelfHtml();
+  const highlightIcons = {{
+    packsHighlightSafeTitle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-2.8 7.6-7 9-4.2-1.4-7-4.5-7-9V6l7-3z"/><path d="M9.2 12.2l1.9 1.9 3.7-3.8"/></svg>',
+    packsHighlightFlowTitle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path d="M8 7h8M7.2 8.8l3.4 6M16.8 8.8l-3.4 6"/></svg>',
+    packsHighlightSpaceTitle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M9 12h6M12 9v6"/></svg>',
+    packsHighlightTeachTitle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V6.8A1.8 1.8 0 0 1 5.8 5H12v14H5.8A1.8 1.8 0 0 1 4 17.2"/><path d="M12 5h6.2A1.8 1.8 0 0 1 20 6.8v10.4a1.8 1.8 0 0 1-1.8 1.8H12"/><path d="M15 9h2M15 12h2"/></svg>',
+  }};
   const highlights = [
-    'packsHighlightSafe', 'packsHighlightFlow',
-    'packsHighlightSpace', 'packsHighlightTeach',
-  ].map(key => `<li>${{escapeHtml(tr(key))}}</li>`).join('');
-  const flow = packFlow(p).map(s => `<li>${{escapeHtml(s)}}</li>`).join('');
+    ['packsHighlightSafeTitle', 'packsHighlightSafeBody'],
+    ['packsHighlightFlowTitle', 'packsHighlightFlowBody'],
+    ['packsHighlightSpaceTitle', 'packsHighlightSpaceBody'],
+    ['packsHighlightTeachTitle', 'packsHighlightTeachBody'],
+  ].map(([t, b], i) =>
+    `<li style="--i:${{i}}"><span class="mark">${{highlightIcons[t]}}</span><b>${{escapeHtml(tr(t))}}</b><span>${{escapeHtml(tr(b))}}</span></li>`
+  ).join('');
+  const hints = packFlowHints(p);
+  const flow = packFlow(p).map((s, i) => {{
+    const hint = hints[i] ? `<span>${{escapeHtml(hints[i])}}</span>` : '';
+    const n = String(i + 1).padStart(2, '0');
+    return `<li style="--i:${{i}}">
+      <div class="rail"><em>${{n}}</em><i></i></div>
+      <div class="body"><b>${{escapeHtml(s)}}</b>${{hint}}</div>
+    </li>`;
+  }}).join('');
   const locked = PACK_HOWTO_LOCKED.map((key, i) =>
     `<li><em>${{i + 1}}.</em>${{escapeHtml(tr(key))}}<i>🔒</i></li>`).join('');
   const buyLabel = ACCT.user ? tr('packsBuy') : tr('packsBuyLocked');
   const metaBits = [];
-  if (p.namedCount) metaBits.push(trn('packsMetaNamed', {{ n: p.namedCount }}));
-  if (p.completeness) metaBits.push(String(p.completeness));
+  const namedN = parseInt(String(p.namedCount || '').replace(/[^\d].*$/, ''), 10);
+  if (Number.isFinite(namedN) && namedN > 0) {{
+    metaBits.push(trn('packsMetaNamed', {{ n: namedN }}));
+  }}
   const meta = metaBits.length
     ? `<p class="pack-meta">${{escapeHtml(metaBits.join(' · '))}}</p>` : '';
   return `<div class="pack-detail" data-pack="${{escapeHtml(p.id)}}">
@@ -4358,10 +4535,12 @@ function packDetailHtml(p) {{
     <h2>${{escapeHtml(packTitle(p))}}</h2>
     <p class="lead">${{escapeHtml(packAudience(p))}} · ${{escapeHtml(packBlurb(p))}}</p>
     ${{meta}}
+    <section class="pack-flow-hero">
+      <div class="sec">${{escapeHtml(tr('packsSecFlow'))}}</div>
+      <ol class="pack-flow-map">${{flow}}</ol>
+    </section>
     <div class="sec">${{escapeHtml(tr('packsSecWhy'))}}</div>
     <ul class="pack-why-list">${{highlights}}</ul>
-    <div class="sec">${{escapeHtml(tr('packsSecFlow'))}}</div>
-    <ul class="pack-flow">${{flow}}</ul>
     <div class="sec">${{escapeHtml(tr('packsSecLocked'))}}</div>
     <p class="lead">${{escapeHtml(tr('packsLockedHint'))}}</p>
     <ul class="howto-skel locked">${{locked}}</ul>
@@ -4560,7 +4739,7 @@ function collectAttribution() {{
   }} catch (e) {{}}
   const landing = String((location.pathname || '/') + (location.search || '')).slice(0, 200);
   const channelHint = String(params.get('ch') || params.get('channel') || '').slice(0, 40);
-  return {{
+  const attr = {{
     channel: channelHint,
     referrer,
     landing,
@@ -4569,6 +4748,18 @@ function collectAttribution() {{
     utm_campaign,
     source: channelHint || 'boot',
   }};
+  try {{
+    const prev = JSON.parse(localStorage.getItem('sf_attr') || '{{}}');
+    if (!prev.first_at) {{
+      localStorage.setItem('sf_attr', JSON.stringify({{
+        first_channel: attr.channel || '',
+        first_utm: attr.utm_source || '',
+        first_ref: attr.referrer || '',
+        first_at: Date.now(),
+      }}));
+    }}
+  }} catch (e) {{}}
+  return attr;
 }}
 function track(action, extra) {{
   if (typeof IS_LITE !== 'undefined' && IS_LITE) return;
@@ -4841,6 +5032,34 @@ async function logoutAccount() {{
   render(false);
 }}
 
+async function saveEmailOpt(form) {{
+  if (!(form instanceof HTMLFormElement)) return;
+  const email = String((form.elements.namedItem('email') || {{}}).value || '').trim();
+  const opt = !!(form.elements.namedItem('opt_in') || {{}}).checked;
+  if (!email || email.indexOf('@') < 0 || !opt) {{
+    toast(tr('emailOptBad'));
+    return;
+  }}
+  try {{
+    const resp = await acctFetch('/api/me/email', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json', 'Accept': 'application/json' }},
+      body: JSON.stringify({{ email, opt_in: true }}),
+    }});
+    const data = await resp.json().catch(() => ({{}}));
+    if (!resp.ok) {{
+      toast(tr('emailOptBad'));
+      return;
+    }}
+    if (data.user) ACCT.user = data.user;
+    toast(tr('emailOptSaved'));
+    track('email_opt', {{ item_key: 'save' }});
+    render(false);
+  }} catch (e) {{
+    toast(tr('emailOptBad'));
+  }}
+}}
+
 function acctIdentityHtml() {{
   const mode = accountMode();
   if (mode === 'local') {{
@@ -4884,6 +5103,7 @@ function acctIdentityHtml() {{
       <button type="button" class="js-acct-logout">${{escapeHtml(tr('acctLogout'))}}</button>
     </div>
     ${{acctKeysHtml()}}
+    ${{acctEmailHtml()}}
   </div>`;
 }}
 
@@ -4894,15 +5114,12 @@ function acctKeysHtml() {{
     `<p>${{escapeHtml(label)}} · ${{escapeHtml(on ? tr('acctKeyOn') : tr('acctKeyOff'))}}${{extra || ''}}</p>`;
   const phone = ACCT.user && ACCT.user.phone_masked ? (' · ' + ACCT.user.phone_masked) : '';
   const wxHref = ACCT.wechat ? (API_BASE + '/auth/wechat?next=' + encodeURIComponent('/?tab=me')) : '';
-  const smsHref = API_BASE + '/login?next=' + encodeURIComponent('/?tab=me');
+  const smsHref = ACCT.sms ? (API_BASE + '/login?next=' + encodeURIComponent('/?tab=me')) : '';
   const ghHref = ACCT.oauth ? (API_BASE + '/auth/github?next=' + encodeURIComponent('/?tab=me')) : '';
   let actions = `<a href="${{escapeHtml(safeUrl(API_BASE + '/api/me/export'))}}">${{escapeHtml(tr('acctExport'))}}</a>`;
   if (!has('wechat') && wxHref) actions += `<a href="${{escapeHtml(safeUrl(wxHref))}}">${{escapeHtml(tr('acctBindWechat'))}}</a>`;
-  if (!has('phone')) actions += `<a href="${{escapeHtml(safeUrl(smsHref))}}">${{escapeHtml(tr('acctBindPhone'))}}</a>`;
+  if (!has('phone') && smsHref) actions += `<a href="${{escapeHtml(safeUrl(smsHref))}}">${{escapeHtml(tr('acctBindPhone'))}}</a>`;
   if (!has('github') && ghHref) actions += `<a href="${{escapeHtml(safeUrl(ghHref))}}">${{escapeHtml(tr('acctBindGithub'))}}</a>`;
-  let need = '';
-  if (!has('wechat') && !ACCT.wechat) need += `<p class="hint">${{escapeHtml(tr('acctBindNeedWx'))}}</p>`;
-  if (!has('phone') && !ACCT.sms) need += `<p class="hint">${{escapeHtml(tr('acctBindNeedSms'))}}</p>`;
   return `<div class="me-card" style="margin-top:10px">
     <strong>${{escapeHtml(tr('acctKeysTitle'))}}</strong>
     <p>${{escapeHtml(tr('acctKeysHint'))}}</p>
@@ -4910,7 +5127,81 @@ function acctKeysHtml() {{
     ${{row(tr('acctKeyWechat'), has('wechat'))}}
     ${{row(tr('acctKeyPhone'), has('phone'), phone)}}
     <div class="me-actions">${{actions}}</div>
-    ${{need}}
+  </div>`;
+}}
+
+function acctEmailHtml() {{
+  if (!ACCT.user) return '';
+  const masked = String(ACCT.user.email_masked || '');
+  const on = !!ACCT.user.email_opt_in;
+  const status = on && masked
+    ? `<p>${{escapeHtml(tr('emailOptOn'))}} · ${{escapeHtml(masked)}}</p>`
+    : `<p>${{escapeHtml(tr('emailOptBody'))}}</p>`;
+  return `<div class="me-card email-opt" style="margin-top:10px">
+    <strong>${{escapeHtml(tr('emailOptTitle'))}}</strong>
+    ${{status}}
+    <form id="meEmailForm">
+      <input type="email" name="email" autocomplete="email"
+        placeholder="${{escapeHtml(tr('emailOptPh'))}}" value="" />
+      <label class="check">
+        <input type="checkbox" name="opt_in" ${{on ? 'checked' : ''}} />
+        <span>${{escapeHtml(tr('emailOptCheck'))}}</span>
+      </label>
+      <div class="me-actions">
+        <button type="submit" class="primary">${{escapeHtml(tr('emailOptSave'))}}</button>
+      </div>
+    </form>
+  </div>`;
+}}
+
+function needsOutboundKey() {{
+  if (!ACCT.user || !ACCT.loaded) return false;
+  const p = ACCT.user.providers || [];
+  if (p.indexOf('wechat') >= 0 || p.indexOf('phone') >= 0) return false;
+  return !!(ACCT.wechat || ACCT.sms);
+}}
+
+function bindNudgeHtml() {{
+  if (typeof IS_LITE !== 'undefined' && IS_LITE) return '';
+  if (!needsOutboundKey()) return '';
+  try {{ if (localStorage.getItem('sf_bind_nudge') === '1') return ''; }} catch (e) {{ return ''; }}
+  let actions = '';
+  if (ACCT.wechat) {{
+    const href = API_BASE + '/auth/wechat?next=' + encodeURIComponent('/?tab=me');
+    actions += `<a class="primary" href="${{escapeHtml(safeUrl(href))}}">${{escapeHtml(tr('acctBindWechat'))}}</a>`;
+  }}
+  if (ACCT.sms) {{
+    const href = API_BASE + '/login?next=' + encodeURIComponent('/?tab=me');
+    actions += `<a href="${{escapeHtml(safeUrl(href))}}">${{escapeHtml(tr('acctBindPhone'))}}</a>`;
+  }}
+  if (!actions) return '';
+  try {{
+    if (!window.__sfBindNudgeTracked) {{
+      window.__sfBindNudgeTracked = true;
+      track('bind_nudge', {{ item_key: 'show' }});
+    }}
+  }} catch (e) {{}}
+  return `<div class="recall-bar" role="region">
+    <div><b>${{escapeHtml(tr('bindNudgeTitle'))}}</b>
+      <p>${{escapeHtml(tr('bindNudgeBody'))}}</p></div>
+    <div class="recall-bar-actions">
+      ${{actions}}
+      <button type="button" class="js-bind-nudge-later">${{escapeHtml(tr('bindNudgeLater'))}}</button>
+    </div>
+  </div>`;
+}}
+
+function recallSavedHtml() {{
+  if (typeof IS_LITE !== 'undefined' && IS_LITE) return '';
+  const n = effectiveSavedSet().size;
+  if (n < 1) return '';
+  try {{ if (sessionStorage.getItem('sf_recall_saved') === '1') return ''; }} catch (e) {{}}
+  return `<div class="recall-bar" role="region">
+    <div><b>${{escapeHtml(trn('recallSavedTitle', {{ n }}))}}</b></div>
+    <div class="recall-bar-actions">
+      <button type="button" class="primary js-recall-saved">${{escapeHtml(tr('recallSavedCta'))}}</button>
+      <button type="button" class="js-recall-saved-later">${{escapeHtml(tr('bindNudgeLater'))}}</button>
+    </div>
   </div>`;
 }}
 
@@ -5267,7 +5558,7 @@ function render(reset) {{
     return;
   }}
   if (state.mode === 'me') {{
-    feed.innerHTML = mePanelHtml();
+    feed.innerHTML = bindNudgeHtml() + mePanelHtml();
     return;
   }}
   if (state.mode === 'publisher') {{
@@ -5277,7 +5568,7 @@ function render(reset) {{
 
   const items = filtered();
   if (!items.length) {{
-    feed.innerHTML = emptyHtml(items);
+    feed.innerHTML = bindNudgeHtml() + emptyHtml(items);
     return;
   }}
 
@@ -5286,7 +5577,10 @@ function render(reset) {{
 
   const slice = items.slice(0, state.shown);
   noteShownPositions(slice, reset);
-  feed.innerHTML = slice.map((it, idx) => cardHtml(it, idx)).join('') +
+  const chrome = (state.mode === 'all' || state.mode === 'saved')
+    ? (bindNudgeHtml() + (state.mode === 'all' ? recallSavedHtml() : ''))
+    : '';
+  feed.innerHTML = chrome + slice.map((it, idx) => cardHtml(it, idx)).join('') +
     `<div class="sentinel" id="sentinel">${{
       state.shown < items.length
         ? trn('moreShown', {{ n: state.shown, total: items.length }})
@@ -5770,14 +6064,43 @@ intentEl.addEventListener('keydown', (e) => {{
 
 document.getElementById('feed').addEventListener('submit', (e) => {{
   const form = e.target;
-  if (!(form instanceof HTMLFormElement) || form.id !== 'meActivateForm') return;
-  e.preventDefault();
-  activateSubscription(form);
+  if (!(form instanceof HTMLFormElement)) return;
+  if (form.id === 'meActivateForm') {{
+    e.preventDefault();
+    activateSubscription(form);
+    return;
+  }}
+  if (form.id === 'meEmailForm') {{
+    e.preventDefault();
+    saveEmailOpt(form);
+  }}
 }});
 
 document.getElementById('feed').addEventListener('click', (e) => {{
   const t = e.target;
   if (!(t instanceof Element)) return;
+
+  if (t.closest('.js-bind-nudge-later')) {{
+    try {{ localStorage.setItem('sf_bind_nudge', '1'); }} catch (err) {{}}
+    track('bind_nudge', {{ item_key: 'dismiss' }});
+    render(false);
+    return;
+  }}
+  if (t.closest('.js-recall-saved-later')) {{
+    try {{ sessionStorage.setItem('sf_recall_saved', '1'); }} catch (err) {{}}
+    track('recall_strip', {{ item_key: 'dismiss' }});
+    render(false);
+    return;
+  }}
+  if (t.closest('.js-recall-saved')) {{
+    try {{ sessionStorage.setItem('sf_recall_saved', '1'); }} catch (err) {{}}
+    track('recall_strip', {{ item_key: 'saved' }});
+    state.mode = 'saved';
+    state.shown = 0;
+    render(true);
+    syncTabUrl();
+    return;
+  }}
 
   const viewBtn = t.closest('.js-topics-view');
   if (viewBtn) {{

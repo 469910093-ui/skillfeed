@@ -125,7 +125,7 @@ skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）─�
 
 ### 3.1 变现场景包（供给侧，先飞书后产品）
 
-卖的不是「一堆 skill 名」，是**某个具体人群、某条可跑通工作流**的打包方案。一级先分电商 / 自媒体 / 效率，二级按下表拆，一张表一个场景：
+卖的不是「一堆 skill 名」，是**某个具体人群、某条可跑通工作流**的打包方案。一级先分电商 / 自媒体 / 数据分析，二级按下表拆，一张表一个场景：
 
 | 大类 | 场景包 | 卖给谁 | 工作流主线 | 材料纪律 |
 |---|---|---|---|---|
@@ -137,11 +137,11 @@ skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）─�
 | 自媒体 | 短剧 | 编导/切片分发 | 选题→分镜→成片→分发 | 本批未采到则标「待补采」 |
 | 自媒体 | 营销广告自媒体 | 投放/品牌/增长 | 地基→文案→广告→SEO/AEO→CRO | 模块要分工，禁止一个万能提示词 |
 | 自媒体 | 平面设计自媒体 | 美工/封面设计 | 风格→主图→详情→封面海报 | 须能批量出图 |
-| 效率 | 数据分析 | 运营/增长分析 | 取数→看板→归因→复盘 | 骨架先上架，点名后再写 HOWTO |
+| 数据分析 | 数据分析 | 运营/增长分析 | 取数→看板→归因→复盘 | 骨架先上架，点名后再写 HOWTO |
 
 策展底稿在飞书 Base（`包-总览` + 场景表）。**未点名的 Skill 不得写成已验证能力**；直播/短剧/数据分析允许先出骨架再补采。Feed pills / 主题分类要对齐这套二级场景时，再改前端，不得另起一套口语分类。
 
-**产品货架（full 底栏「一站式配齐」）：** 发现流仍全量免费；场景包是付费 SKU。首波上架骨架：货架电商、跨境电商、短剧、营销广告、数据分析；内容电商 / 直播电商 / 资讯 / 平面设计标「下一波」。**商详只卖「为什么成套」**（痛点、工作流怎么串、核心卡点清单），不把操作手册/默认安装清单全文展开——避免用户直接散装单下。手册八节与默认清单购买后解锁。收银台接场景包 SKU 前，购买 CTA 只做登录门禁 + 占位提示。目录真相源：飞书 Base `PCWZbMvydabY2Xs1yYSc2sc7nth` → `docs/packs/shelf_catalog.json`（`python scripts/sync_packs_shelf.py`）。深链：`?tab=packs` / `?tab=packs&pack=cross-border`。lite 不露出该 tab。
+**产品货架（full 底栏「一站式配齐」）：** 发现流仍全量免费；场景包是付费 SKU。首波上架骨架：货架电商、跨境电商、短剧、营销广告、数据分析；内容电商 / 直播电商 / 资讯 / 平面设计标「下一波」。**商详环节大图优先**（电商详情式纵向时间线：「包含哪些环节？」+ 大号序号 + 环节名 + 短说明；跨境拆竞品分析/追踪）+ **成套亮点**（可读长句 + 青绿图标单列卡），不展开核心能力清单与操作手册——避免用户直接散装单下。手册八节购买后解锁。收银台接场景包 SKU 前，购买 CTA 只做登录门禁 + 占位提示。目录真相源：飞书 Base `PCWZbMvydabY2Xs1yYSc2sc7nth` → `docs/packs/shelf_catalog.json`（`python scripts/sync_packs_shelf.py`）。深链：`?tab=packs` / `?tab=packs&pack=cross-border`。lite 不露出该 tab。
 
 每次再打包：走 `docs/packs/PACKAGING.workflow.md`（Agent 入口 `.cursor/skills/packaging-scene-skills`）。采集 → 编目 → 打标 → 飞书候选 →（要卖再）`HOWTO` + `QUALITY`。禁止跳过打标把原文笔记当产品。
 
@@ -207,7 +207,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 信息流卡片 | 见 5.2 | P0 |
 | 底栏五入口 | **发现 / 主题分类 / 一站式配齐 / 发布 / 我的**；`role=tablist` + `aria-selected`，左右键/Home/End 可走，激活态除颜色外另有指示条 + 字重 | P0 |
 | **主题分类** | 一级场景各自成块（条目数 + 二级场景 chips + 按栏目浏览）；点进去落到发现流的对应筛选 | P0 |
-| **一站式配齐** | 付费场景包货架（对齐 §3.1）；首波骨架可点进详情（工作流 + HOWTO 八节壳 + Skill 清单占位）；购买须登录，收银台未接前只提示即将开通；lite 隐藏 | P0 |
+| **一站式配齐** | 付费场景包货架（对齐 §3.1）；导语「持续扩充中」；商详**环节大图优先**（纵向时间线）+ 亮点单列卡；手册八节锁住；不展示「可卖/材料齐」等运营草稿；购买须登录；lite 隐藏 | P0 |
 | 发布 | **接 `server/` 的 `POST /api/posts`**：同源时页内表单直接提交；跨源只给整页跳 `api_base/publish`；无 `api_base` 时：github.io 只出说明，**skillfeeder.cn 同源回退到本域**（防定时构建漏写环境变量） | P0 |
 | 我的 | 真实登录态（`/auth/me`）+ 我发布的（`/api/posts/me`，点开跳发现流卡片或审核中预览）+ 赞藏（`/api/profile/reactions`，读不到则退回本机）+ **关注管理**（Builder / 行业列表）。**不再放「发现站」说明行** | P0 |
 | 发布者主页 | Feed 内作品 + GitHub 仓库 + **关注/取消关注 Builder** | P0 |
@@ -431,7 +431,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | KPI 下钻 | `GET /api/op/users`、`/api/op/devices`、`/api/op/backups`、`/api/op/events/today`；帖子进 `#review?status=` | 数据页八张卡均可点：用户卡含**登录用户 + 游客设备抓手**（首触渠道）；今日事件/会话/备份就地明细；帖子跳审批筛选 |
 | 游客身份 | 本机 `sf_device_id` + 服务端 `device_token`；进站 `session_start` 写首触渠道到 `devices`；登录后 `POST /api/profile/claim` 并档 | 游客可召回的抓手是 device；登录后画像/赞藏/渠道挂到 `users.id`。不记 IP / UA |
 | 第二钥匙 | 已登录再走 `/auth/wechat` `/auth/sms/verify` `/auth/github` | 绑到同一个 `users.id`；钥匙已被别人占用则 409 / `bind=taken`。不自建密码 |
-| 账本导出 | `GET /api/me/export` | 登录用户下载自己的帖/反应/绑定状态（手机号掩码）；仓仍在 GitHub |
+| 召回抓手 | 发现流/「我的」绑定条；收藏召回条；`POST /api/me/email` | **只登 GitHub 不能外发消息**。主路径：引导绑微信/手机。站内：有收藏时提示「查看收藏」。补充：用户主动填邮箱并勾选同意后入库（掩码对外，暂不发信） |
+| 账本导出 | `GET /api/me/export` | 登录用户下载自己的帖/反应/绑定状态（手机号/邮箱掩码）；仓仍在 GitHub |
 | 库备份 | `python skillfeed.py backup-db`、`POST /api/op/backup`、每日 timer | SQLite 一致副本轮转到 `SKILLFEED_BACKUP_DIR`（默认库旁 `backups/`） |
 | 卡片短链 | `/p/{仓库名}` | 免登录 302 到 `/?card=` 编码后的 public_id；聊天里不要贴带 `::` 的长链 |
 | 站点配置 | `GET /api/site-config`（公开）、`GET/POST /api/op/settings` | 首页拉公开文案与 logo；webhook 不对外 |
@@ -644,10 +645,18 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-09-22 | 召回落地：只登 GitHub 不能外发；发现流/我的出绑定微信·手机条；有收藏出站内召回条；`POST /api/me/email` 同意后存邮箱（掩码，暂不发信） | §6.2、`feed_dashboard.py`、`server/db.py`、`server/app.py`、`login.html` |
 | 2026-09-22 | 底栏加「一站式配齐」付费场景包货架框架：首波货架/跨境/短剧/营销/数据分析；详情 HOWTO 八节壳 + 购买登录门禁；§3.1 补效率·数据分析；lite 隐藏该 tab | §3.1、§4、§5.1、`feed_dashboard.py`、`publish.html` |
 | 2026-09-22 | 游客身份接登录态：进站发/存 `device_token`，登录后自动 `claim` 并档；`devices` 落首触渠道；`/op` 用户卡展示游客设备抓手 | §6.2、`feed_dashboard.py`、`server/db.py`、`admin.html` |
 | 2026-09-22 | `/op` 数据页 KPI 卡片可下钻：用户/备份就地明细；待审·上架·拒绝·全部跳审批；今日事件/会话跳路径 24h | §6.2、`admin.html`、`/api/op/users` `/backups` `/events/today` |
 | 2026-09-22 | 进站渠道归因：`session_start` 落 UTM/referrer/landing/channel；`/op` 路径 tab 加分渠道 KPI、按日 SEO/GEO 对照与 CSV 字段，便于看自然流 | §6.2、`server/attribution.py`、`server/db.py`、`feed_dashboard.py`、`admin.html` |
+| 2026-09-22 | 「一站式配齐」全站用户文案 stop-slop：去运营口吻（待定价/已点名/可借用）、亮点与环节说明改短直说 | §5.1、`feed_dashboard.py`、`docs/packs/shelf_catalog.json` |
+| 2026-09-22 | 「一站式配齐」环节区改电商详情式纵向大图（序号轨 + 卡片 + 短说明），并前置为核心卖点；去掉「可卖·材料齐」等运营字段上屏 | §3.1、§5.1、`feed_dashboard.py`、`docs/packs/shelf_catalog.json` |
+| 2026-09-22 | 「一站式配齐」亮点改可读长句 + 青绿图标单列营销卡（更醒目） | §5.1、`feed_dashboard.py` |
+| 2026-09-22 | 用户可见文案禁草稿/开发者向说明；「一站式配齐」导语定为「持续扩充中」 | §5.1、`feed_dashboard.py`、`.cursor/rules/no-draft-user-copy.mdc` |
+| 2026-09-22 | 「一站式配齐」货架分组「效率」改标为「数据分析」 | §3.1、`feed_dashboard.py` |
+| 2026-09-22 | 「一站式配齐」商详环节改成编号箭头示意图；标题改为「包含哪些环节？」；亮点为短句双列营销卡 | §3.1、§5.1、`feed_dashboard.py` |
+| 2026-09-22 | 「一站式配齐」商详亮点改短句+双列营销卡（安全/全流程/省空间/包教会）；工作流只留步骤芯片并拆出竞品分析·追踪；去掉核心能力整块 | §3.1、§5.1、`feed_dashboard.py`、`docs/packs/shelf_catalog.json`、`scripts/sync_packs_shelf.py` |
 | 2026-09-22 | 「一站式配齐」商详改卖点页：飞书「包-*」表灌入 `shelf_catalog.json`；只讲为什么成套/解哪些卡点，八节手册锁住购买后解锁，禁止展开全文散装下 | §3.1、§5.1、`docs/packs/shelf_catalog.json`、`scripts/sync_packs_shelf.py`、`feed_dashboard.py` |
 | 2026-09-22 | 底栏「一站式配齐」标签禁止拆字换行（去掉 `max-width: 4.8em`，改 `white-space: nowrap`） | §5.1、`feed_dashboard.py` |
 | 2026-09-22 | 空态肥嘚改回完整透明团子（156×120），去掉带蓝底缺口的残缺磁贴 | §5.1、`feed_dashboard.py` |

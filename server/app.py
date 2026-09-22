@@ -77,6 +77,11 @@ class ActivateBody(BaseModel):
     code: str = ""
 
 
+class EmailBody(BaseModel):
+    email: str = ""
+    opt_in: bool = False
+
+
 class SiteSettingsBody(BaseModel):
     slogan: str = ""
     search_placeholder: str = ""
@@ -1010,6 +1015,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         resp = JSONResponse(payload)
         resp.headers["Content-Disposition"] = 'attachment; filename="skillfeeder-account.json"'
         return resp
+
+    @app.post("/api/me/email")
+    def api_me_email(request: Request, body: EmailBody) -> dict[str, Any]:
+        """登录用户主动留下邮箱并勾选同意；不发信，只存召回抓手。"""
+        uid = auth.require_user_id(request, settings)
+        try:
+            with db.db_session(settings.db_path) as conn:
+                user = db.set_user_email(
+                    conn, uid, email=body.email, opt_in=bool(body.opt_in),
+                )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"ok": True, "user": db.user_public(user) if user else None}
 
     @app.post("/api/account/activate")
     def activate_subscription(request: Request, body: ActivateBody) -> dict[str, Any]:
