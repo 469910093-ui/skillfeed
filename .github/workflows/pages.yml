@@ -246,7 +246,7 @@ jobs:
           done
 
       - name: Keep a copy for the Aliyun Nginx job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nginx-index
           path: nginx-site
