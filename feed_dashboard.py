@@ -515,7 +515,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     logo_src = brand_png_data_uri()
     logo_mark = f'<img class="logo-mark" src="{logo_src}" alt="" />'
     feide_img = f'<img class="feide" src="{logo_src}" alt="feide" />'
-    pack_shelf_json = json.dumps(load_pack_shelf(), ensure_ascii=False, indent=2)
+    pack_shelf_json = _json_for_script(load_pack_shelf())
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
