@@ -169,9 +169,9 @@ class JsHarness:
             _grab(js, r"^const ACCT = \{[^\n]*\};"),
             _grab(js, r"^const LOGIN_PATH = '[^']*';"),
             _grab(js, r"^const TAB_QUERY = \{[^\n]*\};"),
-            # 空货架是 `[];` 单行；有内容才是多行。必须先匹配 `[];`，否则
-            # `[\s\S]*?\n]` 会从空数组的 `[` 一路吞到后面的 PACK_HOWTO_LOCKED。
-            _grab(js, r"^const PACK_SHELF = (?:\[\];|\[[\s\S]*?\n\];)"),
+            # 空货架 `[];`、单行 JSON、或多行 indent 都能收口在第一个 `];`。
+            # 旧写法要求 `\n]`，空 `[]` 会一路吞到后面的 PACK_HOWTO_LOCKED。
+            _grab(js, r"^const PACK_SHELF = \[[\s\S]*?\];"),
             _grab(js, r"^const PACK_HOWTO_LOCKED = \[[\s\S]*?\n\];"),
             _top_level_functions(js),
         ])
@@ -735,8 +735,12 @@ class TestNoChineseLiteralsInLogic(unittest.TestCase):
     def _skeleton(self, variant):
         html = feed_dashboard.build_feed_html(
             {"items": [], "corpus": []}, variant=variant)
-        html = re.sub(r"<script>.*?</script>", "", html, flags=re.S)
-        return re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+        # 含 type=ld+json 的 script、以及给爬虫看的 noscript GEO 块，都不是
+        # applyLang 要换的 UI 文案；只剥「无属性 script」会把 JSON-LD 漏进来。
+        html = re.sub(r"<script\b[^>]*>.*?</script>", "", html, flags=re.S | re.I)
+        html = re.sub(r"<style\b[^>]*>.*?</style>", "", html, flags=re.S | re.I)
+        html = re.sub(r"<noscript\b[^>]*>.*?</noscript>", "", html, flags=re.S | re.I)
+        return html
 
     def test_static_chinese_aria_labels_are_i18n_hooked(self):
         # 骨架里带中文的 aria-label / title 必须挂 data-i18n-aria / data-i18n-title，
@@ -757,15 +761,19 @@ class TestNoChineseLiteralsInLogic(unittest.TestCase):
         用真 parser 而不是按标签切串，因为 liteBanner 这类文案里裹着 <b>，
         钩子挂在外层元素上，只看同一段文本判断不出来。
         """
+        import geo as _geo
         for variant in ("full", "lite"):
             with self.subTest(variant=variant):
                 leaks = _static_chinese_without_i18n(self._skeleton(variant))
                 # 语言开关自己的「中文」按钮按惯例用本语言书写，不跟随开关；
-                # lite 的 <title> 由服务端渲染，applyLang 里另有一刀补上
-                expected = ["中文"] if variant == "full" else ["去 GitHub 发现", "中文"]
+                # <title> 由服务端渲染中文默认值（full=GEO 标题，lite=发现子页），
+                # applyLang 里另有一刀；JSON-LD / noscript 已在 _skeleton 剥掉。
+                if variant == "full":
+                    expected = [_geo.PAGE_TITLE, "中文"]
+                else:
+                    expected = ["去 GitHub 发现", "中文"]
                 self.assertEqual(expected, leaks,
                                  variant + " 骨架里有没挂 i18n 钩子的中文：" + str(leaks))
-
 
 EVIL_CLOSE = "</script><script>window.__PWNED__=1;</script>"
 
