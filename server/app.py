@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 import geo
 import ranking
 import ranking_path
-from server import auth, backup, db, entitlement, metrics, notify, pay, ranking_service, sms, ugc
+from server import auth, backup, db, entitlement, metrics, notify, pack_delivery, pay, ranking_service, sms, ugc
 from server.config import Settings, get_settings
 from server.ratelimit import EventLimiter, GeoLimiter, SmsLimiter
 
@@ -90,7 +90,12 @@ class SiteSettingsBody(BaseModel):
 
 
 class PayCreateBody(BaseModel):
-    sku: str = pay.SKU_YEAR
+    sku: str = pay.SKU_MONTH_CONT
+    assign_pack: str = ""
+
+
+class SeatsBody(BaseModel):
+    pack_ids: list[str] = []
 
 
 class PayDevNotifyBody(BaseModel):
@@ -621,7 +626,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 settings.github_login_visible and settings.oauth_configured
             ) else "0"),
             ("{{dev_login}}", "1" if settings.dev_login_allowed else "0"),
-            ("{{next}}", html_escape(dest, quote=True)),
+            # script 里 &amp; 不会被 HTML 解析器还原，购买回跳的 & 必须按 JS 字符串注入
+            ("{{next_js}}", json.dumps(dest, ensure_ascii=False)),
             ("{{sms_cooldown}}", str(settings.sms_resend_cooldown_s)),
         ):
             html = html.replace(key, value)
@@ -939,7 +945,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return resp
 
     @app.get("/auth/dev-login")
-    def auth_dev_login(request: Request, login: str = "dev-user") -> RedirectResponse:
+    def auth_dev_login(request: Request, login: str = "dev-user", next: str = "") -> RedirectResponse:  # noqa: A002
         if not settings.dev_login_allowed:
             raise HTTPException(404, "dev auth disabled")
         safe_login = (login[:39] or "dev-user")
@@ -958,7 +964,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 avatar_url="",
                 name="Dev User",
             )
-        resp = RedirectResponse("/publish", status_code=302)
+        dest = _safe_next(next) if (next or "").strip() else "/publish"
+        resp = RedirectResponse(dest, status_code=302)
         auth.set_session_cookie(resp, settings, int(user["id"]), user["login"])
         return resp
 
@@ -987,8 +994,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         }
         uid = auth.session_user_id(request, settings)
         if uid is None:
-            return {"user": None, "quota": None, **base}
+            return {"user": None, "quota": None, "packs": [], **base}
         quota = None
+        saved: list[str] = []
+        liked: list[str] = []
+        packs: list[str] = []
         with db.db_session(settings.db_path) as conn:
             user = db.get_user(conn, uid)
             if user:
@@ -999,11 +1009,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 # 做列表与计数同源，避免「计数读云端、列表读本机」两边对不上。
                 saved = db.user_saved_full_names(conn, uid)
                 liked = db.user_liked_full_names(conn, uid)
+                packs = db.list_active_pack_ids(conn, uid)
         return {
             "user": db.user_public(user) if user else None,
             "quota": quota,
             "saved": saved,
             "liked": liked,
+            "packs": packs,
             **base,
         }
 
@@ -1044,8 +1056,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 datetime.now(timezone.utc) + timedelta(days=settings.subscriber_days)
             ).isoformat()
         with db.db_session(settings.db_path) as conn:
-            db.set_user_plan(conn, uid, "subscriber", until)
+            db.set_user_plan(
+                conn, uid, "subscriber", until,
+                seat_limit=3, billing="activation",
+            )
             user = db.get_user(conn, uid)
+            packs = db.list_active_pack_ids(conn, uid) if user else []
             quota = entitlement.quota_status(
                 conn, user, limit=settings.free_daily_feed_items,
             ) if user else None
@@ -1053,6 +1069,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "ok": True,
             "user": db.user_public(user) if user else None,
             "quota": quota,
+            "packs": packs,
         }
 
     def _pay_error(exc: pay.PayError) -> HTTPException:
@@ -1063,10 +1080,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         uid = auth.session_user_id(request, settings)
         if uid is None:
             raise HTTPException(401, "login required")
+        items = list(pay.catalog(settings).values())
+        # 默认推连续续费；单独买同周期列在后面
+        items.sort(key=lambda s: (
+            0 if s.billing == pay.BILLING_CONTINUOUS else 1,
+            {"month": 0, "quarter": 1, "year": 2}.get(s.period, 9),
+        ))
         return {
-            "items": [pay.sku_public(s) for s in pay.catalog(settings).values()],
+            "items": [pay.sku_public(s) for s in items],
             "wechat_pay": settings.wechat_pay_configured,
             "dev_notify": settings.dev_mode,
+            "entry_sku": pay.SKU_MONTH_CONT,
         }
 
     @app.post("/api/pay/create")
@@ -1082,6 +1106,121 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except pay.PayError as e:
             raise _pay_error(e) from e
         return {"ok": True, "order": pay.order_public(order)}
+
+    def _checkout_assign_pack(raw: str) -> str:
+        pack = (raw or "").strip()
+        if not pack:
+            return ""
+        if not pack_delivery.is_sellable_pack(pack):
+            raise pay.PayError(400, "这个场景还不能订阅")
+        return pack
+
+    @app.post("/api/pay/checkout")
+    def pay_checkout(request: Request, body: PayCreateBody) -> dict[str, Any]:
+        """下单并尽量完成开通。
+
+        开发模式直接按到账处理，用来把购买链路跑通。
+        生产没接微信支付时拒绝开通，订单也不会落成已付。
+        可带 assign_pack：开通后占用一个场景席位。
+        """
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        try:
+            assign = _checkout_assign_pack(body.assign_pack)
+            with db.db_session(settings.db_path) as conn:
+                order = pay.create_order(
+                    conn, user_id=uid, sku_id=body.sku, settings=settings,
+                )
+                if not settings.dev_mode:
+                    if not settings.wechat_pay_configured:
+                        raise pay.PayError(503, "微信支付还没开通")
+                    packs = db.list_active_pack_ids(conn, uid)
+                    return {
+                        "ok": True,
+                        "paid": False,
+                        "order": pay.order_public(order),
+                        "packs": packs,
+                        "assign_pack": assign,
+                    }
+                paid, replay = pay.apply_paid_notify(
+                    conn,
+                    out_trade_no=order["out_trade_no"],
+                    provider_txn_id=f"dev-{order['out_trade_no']}",
+                    amount_fen=int(order["amount_fen"]),
+                    settings=settings,
+                    assign_pack=assign,
+                )
+                packs = db.list_active_pack_ids(conn, uid)
+                user = db.get_user(conn, uid)
+        except pay.PayError as e:
+            raise _pay_error(e) from e
+        return {
+            "ok": True,
+            "paid": True,
+            "replay": replay,
+            "order": pay.order_public(paid),
+            "packs": packs,
+            "user": db.user_public(user) if user else None,
+        }
+
+    @app.put("/api/me/seats")
+    def me_seats(request: Request, body: SeatsBody) -> dict[str, Any]:
+        """替换当前订阅的场景席位占用。"""
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        for pid in body.pack_ids or []:
+            if not pack_delivery.is_sellable_pack(str(pid)):
+                raise HTTPException(400, "这个场景还不能选用")
+        try:
+            with db.db_session(settings.db_path) as conn:
+                packs = db.set_user_seats(
+                    conn, user_id=uid, pack_ids=list(body.pack_ids or []),
+                )
+                user = db.get_user(conn, uid)
+        except db.SeatError as e:
+            raise HTTPException(e.status, e.detail) from e
+        return {
+            "ok": True,
+            "packs": packs,
+            "user": db.user_public(user) if user else None,
+        }
+
+    @app.post("/api/me/seats/assign")
+    def me_seats_assign(request: Request, body: PayCreateBody) -> dict[str, Any]:
+        """已有订阅时，把一个可卖场景占用到空席位。"""
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        pack = (body.assign_pack or "").strip()
+        if not pack_delivery.is_sellable_pack(pack):
+            raise HTTPException(400, "这个场景还不能选用")
+        try:
+            with db.db_session(settings.db_path) as conn:
+                packs = db.assign_pack_seat(conn, user_id=uid, pack_id=pack)
+                user = db.get_user(conn, uid)
+        except db.SeatError as e:
+            raise HTTPException(e.status, e.detail) from e
+        return {
+            "ok": True,
+            "packs": packs,
+            "user": db.user_public(user) if user else None,
+        }
+
+    @app.get("/api/packs/{pack_id}/delivery")
+    def pack_delivery_doc(pack_id: str, request: Request) -> dict[str, Any]:
+        """手册、技能排序、应用介绍、知识库。只给订阅有效且占用了该席位的人。"""
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        with db.db_session(settings.db_path) as conn:
+            if not db.user_can_access_pack(conn, uid, pack_id):
+                raise HTTPException(403, "需要订阅并选用这个场景")
+        doc = pack_delivery.load_delivery(pack_id)
+        if doc is None:
+            raise HTTPException(404, "这一包还没有手册")
+        return {"ok": True, **doc}
 
     @app.get("/api/pay/orders")
     def pay_orders(request: Request) -> dict[str, Any]:

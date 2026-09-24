@@ -1,0 +1,39 @@
+{
+  "id": "short-drama",
+  "title": "短剧",
+  "md": "# 短剧\n\n选题立项、分镜、字幕分发\n\n## 技能排序\n\n1. dbs-hook · 前三秒钩子\n2. nuwa-skill · 拆对标剧\n\n## 应用介绍\n\n### dbs-hook\n视频前三秒，短剧片头可借用\n\n### nuwa-skill\n拆对标结构，短剧编导可借用\n\n## 知识库\n\n- 飞碟啾AI（内容电商材料）：前三秒钩子、拆对标剧\n  https://www.xiaohongshu.com/discovery/item/6a734b240000000008011b2c\n",
+  "skills": [
+    {
+      "order": 1,
+      "name": "dbs-hook",
+      "step": "前三秒钩子",
+      "intro": "视频前三秒，短剧片头可借用"
+    },
+    {
+      "order": 2,
+      "name": "nuwa-skill",
+      "step": "拆对标剧",
+      "intro": "拆对标结构，短剧编导可借用"
+    }
+  ],
+  "apps": [
+    {
+      "name": "dbs-hook",
+      "intro": "视频前三秒，短剧片头可借用"
+    },
+    {
+      "name": "nuwa-skill",
+      "intro": "拆对标结构，短剧编导可借用"
+    }
+  ],
+  "kb": [
+    {
+      "source": "飞碟啾AI（内容电商材料）",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a734b240000000008011b2c",
+      "topics": [
+        "前三秒钩子",
+        "拆对标剧"
+      ]
+    }
+  ]
+}

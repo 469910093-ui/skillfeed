@@ -1,0 +1,135 @@
+{
+  "id": "content-ecom",
+  "title": "内容电商",
+  "md": "# 内容电商\n\n找素材、拆爆款、去AI味、沉淀案例库\n\n## 技能排序\n\n1. agent-reach · 调研路线\n2. web-access · 自动找素材\n3. lark-base · 案例库\n4. nuwa-skill · 拆带货达人\n5. dbs-hook · 视频前三秒\n6. lark-shared · 飞书授权\n7. skill-creator · 流程固化\n8. humanizer + dbs-ai-check · 带货文案去AI味\n9. social-ai-team · 账号日历\n\n## 应用介绍\n\n### agent-reach\n规划调研路线，收集内容和评论区痛点\n\n### web-access\n自动找素材、看数据\n\n### lark-base\n把素材写进飞书案例库\n\n### nuwa-skill\n拆解带货达人和对标账号\n\n### dbs-hook\n优化视频前三秒 Hook\n\n### lark-shared\n打通飞书授权和权限\n\n### skill-creator\n把成熟流程固化成可复用 Skill\n\n### humanizer + dbs-ai-check\n去AI味并过检测，才能投内容电商\n\n### social-ai-team\n贴近小红书账号运营的持续更新\n\n## 知识库\n\n- 飞碟啾AI：调研路线、自动找素材、案例库、飞书授权、流程固化、拆带货达人、视频前三秒\n  https://www.xiaohongshu.com/discovery/item/6a734b240000000008011b2c\n- 里维斯Leevis：带货文案去AI味\n  https://www.xiaohongshu.com/discovery/item/6a676c41000000000f0049ab\n- 营销拆解室：账号日历\n  https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9\n- TK视频拆解笔记：复刻带货视频\n  https://www.xiaohongshu.com/discovery/item/6a58cd12000000000f01c572\n",
+  "skills": [
+    {
+      "order": 1,
+      "name": "agent-reach",
+      "step": "调研路线",
+      "intro": "规划调研路线，收集内容和评论区痛点"
+    },
+    {
+      "order": 2,
+      "name": "web-access",
+      "step": "自动找素材",
+      "intro": "自动找素材、看数据"
+    },
+    {
+      "order": 3,
+      "name": "lark-base",
+      "step": "案例库",
+      "intro": "把素材写进飞书案例库"
+    },
+    {
+      "order": 4,
+      "name": "nuwa-skill",
+      "step": "拆带货达人",
+      "intro": "拆解带货达人和对标账号"
+    },
+    {
+      "order": 5,
+      "name": "dbs-hook",
+      "step": "视频前三秒",
+      "intro": "优化视频前三秒 Hook"
+    },
+    {
+      "order": 6,
+      "name": "lark-shared",
+      "step": "飞书授权",
+      "intro": "打通飞书授权和权限"
+    },
+    {
+      "order": 7,
+      "name": "skill-creator",
+      "step": "流程固化",
+      "intro": "把成熟流程固化成可复用 Skill"
+    },
+    {
+      "order": 8,
+      "name": "humanizer + dbs-ai-check",
+      "step": "带货文案去AI味",
+      "intro": "去AI味并过检测，才能投内容电商"
+    },
+    {
+      "order": 9,
+      "name": "social-ai-team",
+      "step": "账号日历",
+      "intro": "贴近小红书账号运营的持续更新"
+    }
+  ],
+  "apps": [
+    {
+      "name": "agent-reach",
+      "intro": "规划调研路线，收集内容和评论区痛点"
+    },
+    {
+      "name": "web-access",
+      "intro": "自动找素材、看数据"
+    },
+    {
+      "name": "lark-base",
+      "intro": "把素材写进飞书案例库"
+    },
+    {
+      "name": "nuwa-skill",
+      "intro": "拆解带货达人和对标账号"
+    },
+    {
+      "name": "dbs-hook",
+      "intro": "优化视频前三秒 Hook"
+    },
+    {
+      "name": "lark-shared",
+      "intro": "打通飞书授权和权限"
+    },
+    {
+      "name": "skill-creator",
+      "intro": "把成熟流程固化成可复用 Skill"
+    },
+    {
+      "name": "humanizer + dbs-ai-check",
+      "intro": "去AI味并过检测，才能投内容电商"
+    },
+    {
+      "name": "social-ai-team",
+      "intro": "贴近小红书账号运营的持续更新"
+    }
+  ],
+  "kb": [
+    {
+      "source": "飞碟啾AI",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a734b240000000008011b2c",
+      "topics": [
+        "调研路线",
+        "自动找素材",
+        "案例库",
+        "飞书授权",
+        "流程固化",
+        "拆带货达人",
+        "视频前三秒"
+      ]
+    },
+    {
+      "source": "里维斯Leevis",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a676c41000000000f0049ab",
+      "topics": [
+        "带货文案去AI味"
+      ]
+    },
+    {
+      "source": "营销拆解室",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9",
+      "topics": [
+        "账号日历"
+      ]
+    },
+    {
+      "source": "TK视频拆解笔记",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a58cd12000000000f01c572",
+      "topics": [
+        "复刻带货视频"
+      ]
+    }
+  ]
+}

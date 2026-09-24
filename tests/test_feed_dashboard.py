@@ -2312,9 +2312,19 @@ NEW_I18N_KEYS = (
     "packsTitle", "packsLead", "packsGroupAll", "packsGroupEcom",
     "packsGroupMedia", "packsGroupOps", "packsBadgeShelf", "packsBadgeSoon",
     "packsPriceTbd", "packsOpen", "packsBuy", "packsBuyLocked", "packsBuySoon",
-    "packsBuyNeedSite", "packsBack", "packsSecFlow", "packsSecHowto",
+    "packsBuyNeedSite", "packsOwned", "packsBuyOk", "packsBuyFail",
+    "packsSeatsFull", "packsEntryPrice", "packsMonthHint", "packsInstallHint",
+    "packsUnlockedHint", "packsMine", "packsNoneOwned",
+    "subPlanTitle", "subHero1", "subHero2", "subTrackCont", "subTrackOnce",
+    "subMonthCont", "subQuarterCont", "subYearCont",
+    "subMonthOnce", "subQuarterOnce", "subYearOnce",
+    "subPlanActive", "subPlanFree",
+    "subUpgradeQuarter", "subUpgradeYear",
+    "packsBack", "packsSecFlow", "packsSecHowto",
     "packsSecWhy", "packsSecLocked",
-    "packsLockedHint", "packsMetaNamed", "packsEmpty",
+    "packsLockedHint", "packsDeliverMd", "packsDeliverSkills",
+    "packsDeliverApps", "packsDeliverKb", "packsCopyMd", "packsDeliverEmpty",
+    "packsMetaNamed", "packsEmpty",
     "packsHighlightSafeTitle", "packsHighlightSafeBody",
     "packsHighlightFlowTitle", "packsHighlightFlowBody",
     "packsHighlightSpaceTitle", "packsHighlightSpaceBody",
@@ -2412,6 +2422,14 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertIn("持续扩充中", self.full)
         self.assertNotIn("发现流仍全量免费", self.full)
         self.assertIn("packs: 'packs'", js)
+        self.assertNotIn('"priceFen"', js)
+        self.assertIn("连续包月 ¥29 起", self.full)
+        self.assertIn("按你电脑里已有的技能推荐", self.full)
+        self.assertIn("function packsSubHeroHtml", js)
+        self.assertIn("subscriber_month_cont", js)
+        self.assertIn("/api/pay/checkout", js)
+        self.assertIn("/api/me/seats/assign", js)
+        self.assertIn("function packPriceText", js)
         # 商详卖成套亮点，不全文展开手册 / 核心能力
         self.assertIn("packsSecWhy", js)
         self.assertIn("packsHighlightSafeTitle", js)

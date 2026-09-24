@@ -1,0 +1,75 @@
+{
+  "id": "media-news",
+  "title": "资讯类自媒体",
+  "md": "# 资讯类自媒体\n\n选题、SEO/GEO、日历，让长内容能被搜到\n\n## 技能排序\n\n1. Agent-Reach · 选题调研\n2. claude-seo · 搜索可见\n3. social-ai-team · 账号日历\n4. ai-marketing-claude · 营销全流程\n\n## 应用介绍\n\n### Agent-Reach\n内容收集、评论区痛点、竞品账号研究\n\n### claude-seo\nSEO / GEO，让长内容能被搜到\n\n### social-ai-team\n账号定位、标题、内容日历、复盘\n\n### ai-marketing-claude\n更像AI市场部工具包\n\n## 知识库\n\n- 营销拆解室：选题调研、搜索可见、账号日历、营销全流程\n  https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9\n- 小巧见：独立站SEO/GEO\n  https://www.xiaohongshu.com/discovery/item/6a886878000000003300e8dd\n- 取个什么名好呢：独立站GEO获客\n  https://www.xiaohongshu.com/discovery/item/6a8edaac000000002102f678\n",
+  "skills": [
+    {
+      "order": 1,
+      "name": "Agent-Reach",
+      "step": "选题调研",
+      "intro": "内容收集、评论区痛点、竞品账号研究"
+    },
+    {
+      "order": 2,
+      "name": "claude-seo",
+      "step": "搜索可见",
+      "intro": "SEO / GEO，让长内容能被搜到"
+    },
+    {
+      "order": 3,
+      "name": "social-ai-team",
+      "step": "账号日历",
+      "intro": "账号定位、标题、内容日历、复盘"
+    },
+    {
+      "order": 4,
+      "name": "ai-marketing-claude",
+      "step": "营销全流程",
+      "intro": "更像AI市场部工具包"
+    }
+  ],
+  "apps": [
+    {
+      "name": "Agent-Reach",
+      "intro": "内容收集、评论区痛点、竞品账号研究"
+    },
+    {
+      "name": "claude-seo",
+      "intro": "SEO / GEO，让长内容能被搜到"
+    },
+    {
+      "name": "social-ai-team",
+      "intro": "账号定位、标题、内容日历、复盘"
+    },
+    {
+      "name": "ai-marketing-claude",
+      "intro": "更像AI市场部工具包"
+    }
+  ],
+  "kb": [
+    {
+      "source": "营销拆解室",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9",
+      "topics": [
+        "选题调研",
+        "搜索可见",
+        "账号日历",
+        "营销全流程"
+      ]
+    },
+    {
+      "source": "小巧见",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a886878000000003300e8dd",
+      "topics": [
+        "独立站SEO/GEO"
+      ]
+    },
+    {
+      "source": "取个什么名好呢",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a8edaac000000002102f678",
+      "topics": [
+        "独立站GEO获客"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,165 @@
+{
+  "id": "shelf-ecom",
+  "title": "货架电商",
+  "md": "# 货架电商\n\n把主图、详情、文案、店铺数据收成一套上架流水线\n\n## 技能排序\n\n1. ecommerce-visual-copywriting-skill · 主图卖点文案\n2. ecommerce-image-suite · 商品主图\n3. detail-flow · 详情页结构\n4. eCommerce-Skills · 店铺日常\n5. User Action Analyze Platform · 店铺数据\n6. xlsx · 订单表复盘\n7. agent-browser · 批量后台\n8. humanizer · 带货文案去AI味\n9. dbs-ai-check · AI痕迹检测\n10. docx · 详情周报文档\n11. CordysCRM Sales Agent · B端线索成交\n\n## 应用介绍\n\n### ecommerce-visual-copywriting-skill\n写商品卖点文案，给主图和详情页用\n\n### ecommerce-image-suite\n批量出商品图/主图\n\n### detail-flow\n专门做详情页流程\n\n### eCommerce-Skills\n电商小管家，收日常运营动作\n\n### User Action Analyze Platform\n分析店铺数据，判断该推什么品\n\n### xlsx\n用店铺订单表算动销率、退货率、趋势图\n\n### agent-browser\n给 AI 装浏览器，批量操作电商后台\n\n### humanizer\n把 AI 带货文案改成真人味\n\n### dbs-ai-check\n检测哪一段像 GPT，形成改写闭环\n\n### docx\n一键生成产品详情页、经营周报、报价单\n\n### CordysCRM Sales Agent\nB端电商/批发的线索成交链路\n\n## 知识库\n\n- 大厂刘饱饱：主图卖点文案、商品主图、详情页结构、店铺日常、店铺数据\n  https://www.xiaohongshu.com/discovery/item/6a50d275000000001702f721\n- 里维斯Leevis：批量后台、带货文案去AI味、AI痕迹检测、订单表复盘、详情周报文档、B端线索成交\n  https://www.xiaohongshu.com/discovery/item/6a676c41000000000f0049ab\n- 废话老洪：主图+详情套装\n  https://www.xiaohongshu.com/discovery/item/69fa869c000000003701fdea\n- YANG：详情页8张直出\n  https://www.xiaohongshu.com/discovery/item/6a55b3ec00000000070296d3\n- 淘宝运营笔记：竞品链接报告\n  https://www.xiaohongshu.com/discovery/item/6a92a5dd000000001f01fe7d\n",
+  "skills": [
+    {
+      "order": 1,
+      "name": "ecommerce-visual-copywriting-skill",
+      "step": "主图卖点文案",
+      "intro": "写商品卖点文案，给主图和详情页用"
+    },
+    {
+      "order": 2,
+      "name": "ecommerce-image-suite",
+      "step": "商品主图",
+      "intro": "批量出商品图/主图"
+    },
+    {
+      "order": 3,
+      "name": "detail-flow",
+      "step": "详情页结构",
+      "intro": "专门做详情页流程"
+    },
+    {
+      "order": 4,
+      "name": "eCommerce-Skills",
+      "step": "店铺日常",
+      "intro": "电商小管家，收日常运营动作"
+    },
+    {
+      "order": 5,
+      "name": "User Action Analyze Platform",
+      "step": "店铺数据",
+      "intro": "分析店铺数据，判断该推什么品"
+    },
+    {
+      "order": 6,
+      "name": "xlsx",
+      "step": "订单表复盘",
+      "intro": "用店铺订单表算动销率、退货率、趋势图"
+    },
+    {
+      "order": 7,
+      "name": "agent-browser",
+      "step": "批量后台",
+      "intro": "给 AI 装浏览器，批量操作电商后台"
+    },
+    {
+      "order": 8,
+      "name": "humanizer",
+      "step": "带货文案去AI味",
+      "intro": "把 AI 带货文案改成真人味"
+    },
+    {
+      "order": 9,
+      "name": "dbs-ai-check",
+      "step": "AI痕迹检测",
+      "intro": "检测哪一段像 GPT，形成改写闭环"
+    },
+    {
+      "order": 10,
+      "name": "docx",
+      "step": "详情周报文档",
+      "intro": "一键生成产品详情页、经营周报、报价单"
+    },
+    {
+      "order": 11,
+      "name": "CordysCRM Sales Agent",
+      "step": "B端线索成交",
+      "intro": "B端电商/批发的线索成交链路"
+    }
+  ],
+  "apps": [
+    {
+      "name": "ecommerce-visual-copywriting-skill",
+      "intro": "写商品卖点文案，给主图和详情页用"
+    },
+    {
+      "name": "ecommerce-image-suite",
+      "intro": "批量出商品图/主图"
+    },
+    {
+      "name": "detail-flow",
+      "intro": "专门做详情页流程"
+    },
+    {
+      "name": "eCommerce-Skills",
+      "intro": "电商小管家，收日常运营动作"
+    },
+    {
+      "name": "User Action Analyze Platform",
+      "intro": "分析店铺数据，判断该推什么品"
+    },
+    {
+      "name": "xlsx",
+      "intro": "用店铺订单表算动销率、退货率、趋势图"
+    },
+    {
+      "name": "agent-browser",
+      "intro": "给 AI 装浏览器，批量操作电商后台"
+    },
+    {
+      "name": "humanizer",
+      "intro": "把 AI 带货文案改成真人味"
+    },
+    {
+      "name": "dbs-ai-check",
+      "intro": "检测哪一段像 GPT，形成改写闭环"
+    },
+    {
+      "name": "docx",
+      "intro": "一键生成产品详情页、经营周报、报价单"
+    },
+    {
+      "name": "CordysCRM Sales Agent",
+      "intro": "B端电商/批发的线索成交链路"
+    }
+  ],
+  "kb": [
+    {
+      "source": "大厂刘饱饱",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a50d275000000001702f721",
+      "topics": [
+        "主图卖点文案",
+        "商品主图",
+        "详情页结构",
+        "店铺日常",
+        "店铺数据"
+      ]
+    },
+    {
+      "source": "里维斯Leevis",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a676c41000000000f0049ab",
+      "topics": [
+        "批量后台",
+        "带货文案去AI味",
+        "AI痕迹检测",
+        "订单表复盘",
+        "详情周报文档",
+        "B端线索成交"
+      ]
+    },
+    {
+      "source": "废话老洪",
+      "url": "https://www.xiaohongshu.com/discovery/item/69fa869c000000003701fdea",
+      "topics": [
+        "主图+详情套装"
+      ]
+    },
+    {
+      "source": "YANG",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a55b3ec00000000070296d3",
+      "topics": [
+        "详情页8张直出"
+      ]
+    },
+    {
+      "source": "淘宝运营笔记",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a92a5dd000000001f01fe7d",
+      "topics": [
+        "竞品链接报告"
+      ]
+    }
+  ]
+}

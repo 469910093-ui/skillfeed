@@ -1212,6 +1212,39 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .packs-panel {{ padding: 14px 12px 28px; }}
   .packs-panel h2 {{ margin: 0 0 4px; font-size: 1.15rem; }}
   .packs-panel .lead {{ margin: 0 0 12px; font-size: .82rem; color: var(--muted); line-height: 1.45; }}
+  .sub-hero {{
+    margin: 0 0 16px; padding: 14px 14px 12px; border-radius: 16px;
+    border: 1px solid var(--line);
+    background: linear-gradient(165deg, rgba(13,115,119,.12) 0%, #fff 68%);
+  }}
+  .sub-hero-top {{
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-bottom: 8px;
+  }}
+  .sub-hero-top b {{ font-size: 1.02rem; }}
+  .sub-points {{ margin: 0 0 10px; padding: 0; list-style: none; }}
+  .sub-points li {{
+    position: relative; font-size: .8rem; line-height: 1.45; padding: 2px 0 2px 14px;
+  }}
+  .sub-points li::before {{
+    content: ""; position: absolute; left: 0; top: .55em;
+    width: 6px; height: 6px; border-radius: 50%; background: #0d7377;
+  }}
+  .sub-hero .lead {{ margin: 0 0 8px; }}
+  .sub-kicker {{
+    margin: 8px 0 6px; font-size: .68rem; font-weight: 750; color: var(--muted);
+  }}
+  .sub-plans {{ display: grid; gap: 6px; }}
+  .sub-plans button {{
+    appearance: none; width: 100%; text-align: left; cursor: pointer;
+    border: 1px solid var(--ink); background: var(--ink); color: #fff;
+    border-radius: 10px; padding: 10px 12px; font: inherit; font-size: .82rem; font-weight: 750;
+  }}
+  .sub-plans.once {{ grid-template-columns: 1fr 1fr 1fr; }}
+  .sub-plans.once button {{
+    background: #fff; color: var(--ink); font-weight: 650; text-align: center; padding: 8px 4px;
+    font-size: .72rem;
+  }}
   .packs-groups {{
     display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px;
   }}
@@ -1392,6 +1425,21 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   @media (prefers-reduced-motion: reduce) {{
     .pack-why-list li {{ animation: none; }}
+  }}
+  .pack-deliver {{ margin: 8px 0 12px; }}
+  .pack-deliver h3 {{ margin: 18px 0 8px; font-size: .95rem; font-weight: 800; }}
+  .pack-deliver ol, .pack-deliver ul {{ list-style: none; margin: 0; padding: 0; }}
+  .pack-deliver li {{
+    background: #fff; border-radius: 14px; padding: 12px 14px; margin: 0 0 8px;
+  }}
+  .pack-deliver li b {{ display: block; font-size: .92rem; }}
+  .pack-deliver li span, .pack-deliver li p {{
+    display: block; margin: 4px 0 0; color: #4a5568; font-size: .8rem; line-height: 1.45;
+  }}
+  .pack-deliver a {{ color: var(--accent-strong); font-weight: 700; text-decoration: none; }}
+  .pack-copy {{
+    margin-top: 8px; border: 0; border-radius: 999px; padding: 8px 14px;
+    background: #e7f3f3; color: var(--accent-strong); font-weight: 800; cursor: pointer;
   }}
   .pack-buy-bar {{
     position: sticky; bottom: calc(64px + env(safe-area-inset-bottom));
@@ -2027,7 +2075,7 @@ const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
 const publisherCache = {{}};
 /* 「我的」的服务端侧状态。loaded 分「没拉过」和「拉过但是空的」，
    否则每次 render 都会再打一轮请求。 */
-const ACCT = {{ loading: false, loaded: false, user: null, posts: null, liked: 0, saved: 0, savedNames: null, likedNames: null, remote: false, quota: null, devAuth: false, wechat: false, sms: false, oauth: false }};
+const ACCT = {{ loading: false, loaded: false, user: null, posts: null, liked: 0, saved: 0, savedNames: null, likedNames: null, remote: false, quota: null, devAuth: false, wechat: false, sms: false, oauth: false, packs: [] }};
 /* 登录页路径。另一个 agent 正在给 server/ 加强制登录墙（认证服务号 + 短信兜底），
    落地后页面路径可能不是 /login；这里留成一个常量，改一行就能对齐。 */
 const LOGIN_PATH = '/login';
@@ -2035,8 +2083,10 @@ const LOGIN_PATH = '/login';
 const TAB_QUERY = {{ all: 'discover', topics: 'topics', packs: 'packs', publish: 'publish', me: 'me' }};
 
 /* 一站式配齐货架：由 docs/packs/shelf_catalog.json（飞书包-* 表）注入。
-   商详只讲为什么成套买；默认清单与八节手册购买后才解锁，禁止在此倾倒全文。 */
+   商详只讲为什么成套买。手册、技能排序、应用介绍、知识库购买后才向已购账号拉取。 */
 const PACK_SHELF = {pack_shelf_json};
+const packDelivery = {{}};
+const PACK_DELIVER_LOCKED = ['packsDeliverMd', 'packsDeliverSkills', 'packsDeliverApps', 'packsDeliverKb'];
 const PACK_HOWTO_LOCKED = [
   'packsHowto1', 'packsHowto2', 'packsHowto3', 'packsHowto4',
   'packsHowto5', 'packsHowto6', 'packsHowto7', 'packsHowto8',
@@ -2158,15 +2208,41 @@ const I18N = {{
     packsLead: '持续扩充中',
     packsGroupAll: '全部', packsGroupEcom: '电商', packsGroupMedia: '自媒体', packsGroupOps: '数据分析',
     packsBadgeShelf: '可买', packsBadgeSoon: '即将推出',
-    packsPriceTbd: '价格公布中', packsOpen: '查看详情', packsBuy: '购买此包',
-    packsBuyLocked: '登录后购买', packsBuySoon: '购买开通后会通知你',
-    packsBuyNeedSite: '请到 skillfeeder.cn 购买',
+    packsPriceTbd: '价格公布中', packsOpen: '查看详情', packsBuy: '连续包月开通',
+    packsBuyLocked: '登录后订阅', packsBuySoon: '即将推出',
+    packsBuyNeedSite: '请到 skillfeeder.cn 订阅',
+    packsOwned: '使用中', packsBuyOk: '已开通，手册已解锁', packsBuyFail: '开通没有完成',
+    packsSeatsFull: '席位已满，请升级套餐',
+    packsEntryPrice: '连续包月 ¥29 起',
+    packsMonthHint: '1 个场景。按你电脑里已有的技能推荐，并持续更新',
+    packsInstallHint: '装到本机后，推荐会按你的上下文更新',
+    packsMine: '我的场景席位', packsNoneOwned: '还没有选用场景',
+    subPlanTitle: '场景订阅',
+    subHero1: '按你电脑里已有的技能推荐',
+    subHero2: '你选的场景，持续更新',
+    subTrackCont: '连续续费',
+    subTrackOnce: '单独买',
+    subMonthCont: '连续包月 ¥29 · 1 个场景',
+    subQuarterCont: '连续包季 ¥78 · 2 个场景',
+    subYearCont: '连续包年 ¥228 · 3 个场景',
+    subMonthOnce: '月 ¥39',
+    subQuarterOnce: '季 ¥105',
+    subYearOnce: '年 ¥299',
+    subPlanActive: '有效至 {{d}} · {{n}} 个席位',
+    subPlanFree: '未订阅',
+    subUpgradeQuarter: '升到连续包季 ¥78',
+    subUpgradeYear: '升到连续包年 ¥228',
+    packsUnlockedHint: '手册、技能排序、应用介绍和知识库都在下面。',
     packsBack: '← 返回货架',
     packsSecFlow: '包含哪些环节？',
     packsSecWhy: '亮点',
-    packsSecLocked: '购买后解锁',
+    packsSecLocked: '订阅后交付',
     packsSecHowto: '操作手册',
-    packsLockedHint: '付款后解锁手册、默认清单和三份练习。',
+    packsLockedHint: '订阅后给你手册、技能排序、应用介绍和知识库。',
+    packsDeliverMd: '手册', packsDeliverSkills: '技能排序',
+    packsDeliverApps: '应用介绍', packsDeliverKb: '知识库',
+    packsCopyMd: '复制手册', packsCopied: '手册已复制',
+    packsDeliverEmpty: '这一包还没有手册。',
     packsMetaNamed: '含 {{n}} 个技能',
     packsHighlightSafeTitle: '安全',
     packsHighlightSafeBody: '只上架已验证技能',
@@ -2448,14 +2524,40 @@ const I18N = {{
     packsLead: 'Growing continuously',
     packsGroupAll: 'All', packsGroupEcom: 'Commerce', packsGroupMedia: 'Media', packsGroupOps: 'Data analytics',
     packsBadgeShelf: 'Available', packsBadgeSoon: 'Coming soon',
-    packsPriceTbd: 'Price soon', packsOpen: 'View details', packsBuy: 'Buy pack',
-    packsBuyLocked: 'Sign in to buy', packsBuySoon: "We'll notify you when checkout opens",
-    packsBuyNeedSite: 'Buy on skillfeeder.cn',
+    packsPriceTbd: 'Price soon', packsOpen: 'View details', packsBuy: 'Start monthly',
+    packsBuyLocked: 'Sign in to subscribe', packsBuySoon: 'Coming soon',
+    packsBuyNeedSite: 'Subscribe on skillfeeder.cn',
+    packsOwned: 'In use', packsBuyOk: 'Subscribed. The guide is open.', packsBuyFail: 'Checkout did not finish',
+    packsSeatsFull: 'Seats full — upgrade your plan',
+    packsEntryPrice: 'From ¥29 / month',
+    packsMonthHint: '1 scene. Picks follow skills on your computer, and keep updating',
+    packsInstallHint: 'Install on your computer for context-aware picks',
+    packsUnlockedHint: 'Guide, skill order, descriptions, and knowledge base are below.',
+    packsMine: 'My scene seats', packsNoneOwned: 'No scenes selected yet',
+    subPlanTitle: 'Scene subscription',
+    subHero1: 'Picks follow skills already on your computer',
+    subHero2: 'Scenes you choose keep updating',
+    subTrackCont: 'Auto-renew',
+    subTrackOnce: 'One period',
+    subMonthCont: 'Monthly ¥29 · 1 scene',
+    subQuarterCont: 'Quarterly ¥78 · 2 scenes',
+    subYearCont: 'Yearly ¥228 · 3 scenes',
+    subMonthOnce: 'Month ¥39',
+    subQuarterOnce: 'Quarter ¥105',
+    subYearOnce: 'Year ¥299',
+    subPlanActive: 'Active until {{d}} · {{n}} seats',
+    subPlanFree: 'Not subscribed',
+    subUpgradeQuarter: 'Upgrade to quarterly ¥78',
+    subUpgradeYear: 'Upgrade to yearly ¥228',
     packsBack: '← Back to shelf',
     packsSecFlow: "What's included?", packsSecWhy: 'Highlights',
-    packsSecLocked: 'Unlocked after purchase',
+    packsSecLocked: 'What you get',
     packsSecHowto: 'How-to guide',
-    packsLockedHint: 'Payment unlocks the guide, default skill list, and three drills.',
+    packsLockedHint: 'Subscribe to unlock the guide, skill order, what each one does, and the knowledge base.',
+    packsDeliverMd: 'Guide', packsDeliverSkills: 'Skill order',
+    packsDeliverApps: 'What each one does', packsDeliverKb: 'Knowledge base',
+    packsCopyMd: 'Copy guide', packsCopied: 'Guide copied',
+    packsDeliverEmpty: 'This pack has no guide yet.',
     packsMetaNamed: '{{n}} skills included',
     packsHighlightSafeTitle: 'Safe',
     packsHighlightSafeBody: 'Only verified skills ship',
@@ -4481,11 +4583,31 @@ function packsGroupsHtml() {{
     }}).join('') + `</div>`;
 }}
 
+function packPriceText(p) {{
+  if (!p || p.status !== 'shelf') return '';
+  return tr('packsEntryPrice');
+}}
+
+function ownsPack(id) {{
+  return (ACCT.packs || []).indexOf(id) >= 0;
+}}
+
+function isSubscriber() {{
+  return !!(ACCT.user && ACCT.user.subscriber);
+}}
+
+function seatLimit() {{
+  const n = Number(ACCT.user && ACCT.user.seat_limit);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}}
+
 function packCardHtml(p) {{
   const shelf = p.status === 'shelf';
-  const badge = shelf ? tr('packsBadgeShelf') : tr('packsBadgeSoon');
-  const badgeCls = shelf ? '' : ' soon';
+  const owned = ownsPack(p.id);
+  const badge = owned ? tr('packsOwned') : (shelf ? tr('packsBadgeShelf') : tr('packsBadgeSoon'));
+  const badgeCls = (shelf || owned) ? '' : ' soon';
   const flow = packFlow(p).map(s => `<li>${{escapeHtml(s)}}</li>`).join('');
+  const price = packPriceText(p);
   return `<article class="pack-card" data-pack="${{escapeHtml(p.id)}}">
     <button type="button" class="pack-open js-pack-open" data-pack="${{escapeHtml(p.id)}}">
       <div class="pack-top">
@@ -4497,10 +4619,45 @@ function packCardHtml(p) {{
       <p class="who">${{escapeHtml(packBlurb(p))}}</p>
     </button>
     <div class="pack-foot">
-      <span class="price">${{escapeHtml(tr('packsPriceTbd'))}}</span>
+      <span class="price">${{price ? escapeHtml(price) : ''}}</span>
       <button type="button" class="go js-pack-open" data-pack="${{escapeHtml(p.id)}}">${{escapeHtml(tr('packsOpen'))}}</button>
     </div>
   </article>`;
+}}
+
+function packsSubHeroHtml() {{
+  const points = ['subHero1', 'subHero2'].map(key =>
+    `<li>${{escapeHtml(tr(key))}}</li>`
+  ).join('');
+  let status = '';
+  if (isSubscriber()) {{
+    const until = String((ACCT.user && ACCT.user.plan_until) || '').slice(0, 10);
+    status = `<p class="lead">${{escapeHtml(trn('subPlanActive', {{ d: until || '—', n: seatLimit() }}))}}</p>`;
+  }}
+  const planBtn = (sku, key) =>
+    `<button type="button" class="js-sub-plan" data-sku="${{sku}}">${{escapeHtml(tr(key))}}</button>`;
+  const cont = [
+    ['subscriber_month_cont', 'subMonthCont'],
+    ['subscriber_quarter_cont', 'subQuarterCont'],
+    ['subscriber_year_cont', 'subYearCont'],
+  ].map(([sku, key]) => planBtn(sku, key)).join('');
+  const once = [
+    ['subscriber_month_once', 'subMonthOnce'],
+    ['subscriber_quarter_once', 'subQuarterOnce'],
+    ['subscriber_year_once', 'subYearOnce'],
+  ].map(([sku, key]) => planBtn(sku, key)).join('');
+  return `<section class="sub-hero" aria-label="${{escapeHtml(tr('subPlanTitle'))}}">
+    <div class="sub-hero-top">
+      <b>${{escapeHtml(tr('subPlanTitle'))}}</b>
+      <span class="pack-badge">${{escapeHtml(tr('packsBadgeShelf'))}}</span>
+    </div>
+    <ul class="sub-points">${{points}}</ul>
+    ${{status}}
+    <p class="sub-kicker">${{escapeHtml(tr('subTrackCont'))}}</p>
+    <div class="sub-plans">${{cont}}</div>
+    <p class="sub-kicker">${{escapeHtml(tr('subTrackOnce'))}}</p>
+    <div class="sub-plans once">${{once}}</div>
+  </section>`;
 }}
 
 function packsShelfHtml() {{
@@ -4510,6 +4667,7 @@ function packsShelfHtml() {{
     : `<p class="lead">${{escapeHtml(tr('packsEmpty'))}}</p>`;
   return `<div class="packs-panel">
     <h2>${{escapeHtml(tr('packsTitle'))}}</h2>
+    ${{packsSubHeroHtml()}}
     <p class="lead">${{escapeHtml(tr('packsLead'))}}</p>
     ${{packsGroupsHtml()}}
     ${{cards}}
@@ -4541,9 +4699,14 @@ function packDetailHtml(p) {{
       <div class="body"><b>${{escapeHtml(s)}}</b>${{hint}}</div>
     </li>`;
   }}).join('');
-  const locked = PACK_HOWTO_LOCKED.map((key, i) =>
-    `<li><em>${{i + 1}}.</em>${{escapeHtml(tr(key))}}<i>🔒</i></li>`).join('');
-  const buyLabel = ACCT.user ? tr('packsBuy') : tr('packsBuyLocked');
+  const owned = ownsPack(p.id);
+  if (owned) loadPackDelivery(p.id);
+  const canBuy = p.status === 'shelf' && !owned;
+  const locked = PACK_DELIVER_LOCKED.map(key =>
+    `<li>${{escapeHtml(tr(key))}}<i>🔒</i></li>`).join('');
+  const buyLabel = owned
+    ? tr('packsOwned')
+    : (canBuy ? (ACCT.user ? tr('packsBuy') : tr('packsBuyLocked')) : tr('packsBadgeSoon'));
   const metaBits = [];
   const namedN = parseInt(String(p.namedCount || '').replace(/[^\d].*$/, ''), 10);
   if (Number.isFinite(namedN) && namedN > 0) {{
@@ -4562,14 +4725,59 @@ function packDetailHtml(p) {{
     </section>
     <div class="sec">${{escapeHtml(tr('packsSecWhy'))}}</div>
     <ul class="pack-why-list">${{highlights}}</ul>
-    <div class="sec">${{escapeHtml(tr('packsSecLocked'))}}</div>
-    <p class="lead">${{escapeHtml(tr('packsLockedHint'))}}</p>
-    <ul class="howto-skel locked">${{locked}}</ul>
+    <div class="sec">${{escapeHtml(tr(owned ? 'packsSecHowto' : 'packsSecLocked'))}}</div>
+    ${{owned ? packDeliverHtml(p) : `<p class="lead">${{escapeHtml(tr('packsLockedHint'))}}</p><ul class="howto-skel locked">${{locked}}</ul>`}}
+    ${{owned ? `<p class="lead">${{escapeHtml(tr('packsInstallHint'))}}</p>` : ''}}
     <div class="pack-buy-bar">
-      <div class="price">${{escapeHtml(tr('packsPriceTbd'))}}<span>${{escapeHtml(p.status === 'shelf' ? tr('packsBadgeShelf') : tr('packsBadgeSoon'))}}</span></div>
-      <button type="button" class="js-pack-buy" data-pack="${{escapeHtml(p.id)}}">${{escapeHtml(buyLabel)}}</button>
+      <div class="price">${{escapeHtml(packPriceText(p) || tr('packsBadgeSoon'))}}<span>${{escapeHtml(owned ? tr('packsOwned') : (p.status === 'shelf' ? tr('packsMonthHint') : tr('packsBadgeSoon')))}}</span></div>
+      <button type="button" class="js-pack-buy" data-pack="${{escapeHtml(p.id)}}"${{canBuy ? '' : ' disabled'}}>${{escapeHtml(buyLabel)}}</button>
     </div>
   </div>`;
+}}
+
+function packDeliverHtml(p) {{
+  const doc = packDelivery[p.id];
+  if (!doc || doc.pending) return `<p class="lead">${{escapeHtml(tr('packsUnlockedHint'))}}</p>`;
+  if (doc.empty) return `<p class="lead">${{escapeHtml(tr('packsDeliverEmpty'))}}</p>`;
+  const skills = (doc.skills || []).map(s =>
+    `<li><b>${{escapeHtml(String(s.order) + '. ' + (s.name || ''))}}</b><span>${{escapeHtml(s.step || '')}}</span></li>`
+  ).join('');
+  const apps = (doc.apps || []).map(s =>
+    `<li><b>${{escapeHtml(s.name || '')}}</b><p>${{escapeHtml(s.intro || '')}}</p></li>`
+  ).join('');
+  const kb = (doc.kb || []).map(k => {{
+    const href = safeUrl(k.url);
+    const title = escapeHtml(k.source || '');
+    const link = href && href !== 'about:blank'
+      ? `<a href="${{escapeHtml(href)}}" target="_blank" rel="noopener">${{title}}</a>`
+      : `<b>${{title}}</b>`;
+    const topics = (k.topics || []).filter(Boolean).join('、');
+    return `<li>${{link}}${{topics ? `<span>${{escapeHtml(topics)}}</span>` : ''}}</li>`;
+  }}).join('');
+  return `<div class="pack-deliver" data-pack="${{escapeHtml(p.id)}}">
+    <h3>${{escapeHtml(tr('packsDeliverMd'))}}</h3>
+    <button type="button" class="pack-copy js-pack-copy" data-pack="${{escapeHtml(p.id)}}">${{escapeHtml(tr('packsCopyMd'))}}</button>
+    <h3>${{escapeHtml(tr('packsDeliverSkills'))}}</h3>
+    <ol>${{skills}}</ol>
+    <h3>${{escapeHtml(tr('packsDeliverApps'))}}</h3>
+    <ul>${{apps}}</ul>
+    <h3>${{escapeHtml(tr('packsDeliverKb'))}}</h3>
+    <ul>${{kb}}</ul>
+  </div>`;
+}}
+
+function loadPackDelivery(id) {{
+  if (!id || packDelivery[id] || !ownsPack(id) || accountMode() !== 'live') return;
+  packDelivery[id] = {{ pending: true }};
+  acctFetch('/api/packs/' + encodeURIComponent(id) + '/delivery', {{
+    headers: {{ 'Accept': 'application/json' }},
+  }}).then(resp => resp.ok ? resp.json() : null).then(data => {{
+    packDelivery[id] = (data && data.md) ? data : {{ empty: true }};
+    if (state.mode === 'packs' && state.packId === id) render(false);
+  }}).catch(() => {{
+    packDelivery[id] = {{ empty: true }};
+    if (state.mode === 'packs' && state.packId === id) render(false);
+  }});
 }}
 
 function packsPanelHtml() {{
@@ -4602,11 +4810,19 @@ function setPackGroup(group) {{
   syncTabUrl();
 }}
 
-function buyPack(packId) {{
+async function buyPack(packId) {{
   const p = packById(packId);
   if (!p) return;
   track('pack_buy_click', {{ item_key: p.id, source: 'detail' }});
-  if (!API_BASE || accountMode() === 'local' || accountMode() === 'linked') {{
+  if (p.status !== 'shelf') {{
+    toast(tr('packsBuySoon'));
+    return;
+  }}
+  if (ownsPack(p.id)) {{
+    toast(tr('packsOwned'));
+    return;
+  }}
+  if (!API_BASE || accountMode() !== 'live') {{
     toast(tr('packsBuyNeedSite'));
     return;
   }}
@@ -4620,7 +4836,55 @@ function buyPack(packId) {{
     location.href = login + (login.includes('?') ? '&' : '?') + 'next=' + next;
     return;
   }}
-  toast(tr('packsBuySoon'));
+  if (state.packBuying) return;
+  state.packBuying = true;
+  try {{
+    let resp;
+    if (isSubscriber()) {{
+      if ((ACCT.packs || []).length >= seatLimit()) {{
+        toast(tr('packsSeatsFull'));
+        return;
+      }}
+      resp = await acctFetch('/api/me/seats/assign', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json', 'Accept': 'application/json' }},
+        body: JSON.stringify({{ assign_pack: p.id }}),
+      }});
+    }} else {{
+      resp = await acctFetch('/api/pay/checkout', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json', 'Accept': 'application/json' }},
+        body: JSON.stringify({{
+          sku: 'subscriber_month_cont',
+          assign_pack: p.id,
+        }}),
+      }});
+    }}
+    let data = null;
+    try {{ data = await resp.json(); }} catch (e) {{ data = null; }}
+    if (resp.status === 409) {{
+      const detail = data && (typeof data.detail === 'string' ? data.detail : '');
+      toast(detail || tr('packsSeatsFull'));
+      return;
+    }}
+    if (!resp.ok || !data || !data.ok) {{
+      const detail = data && (typeof data.detail === 'string' ? data.detail : '');
+      toast(detail || tr('packsBuyFail'));
+      return;
+    }}
+    if (data.paid === false) {{
+      toast(tr('packsBuyFail'));
+      return;
+    }}
+    ACCT.packs = Array.isArray(data.packs) ? data.packs : (ACCT.packs || []).concat([p.id]);
+    if (data.user) ACCT.user = data.user;
+    toast(tr('packsBuyOk'));
+    if (state.mode === 'packs' || state.mode === 'me') render(false);
+  }} catch (e) {{
+    toast(tr('packsBuyFail'));
+  }} finally {{
+    state.packBuying = false;
+  }}
 }}
 
 function goTopic(sceneId, l2Id) {{
@@ -4918,6 +5182,7 @@ async function loadAccount() {{
     ACCT.wechat = !!(data && data.wechat);
     ACCT.sms = !!(data && data.sms);
     ACCT.oauth = !!(data && data.oauth);
+    ACCT.packs = (data && Array.isArray(data.packs)) ? data.packs : [];
     // 账号收藏/点赞的 full_name 数组（跨设备聚合，见 server db.user_saved_full_names）。
     // 没登录或后端旧版没返这俩字段时为 null，前端退回本机 Set。
     ACCT.savedNames = (data && data.user && Array.isArray(data.saved)) ? data.saved : null;
@@ -4928,6 +5193,7 @@ async function loadAccount() {{
     ACCT.devAuth = false;
     ACCT.savedNames = null;
     ACCT.likedNames = null;
+    ACCT.packs = [];
   }}
   if (ACCT.user) {{
     try {{ await claimGuestDevice(); }} catch (e) {{}}
@@ -4961,7 +5227,7 @@ async function loadAccount() {{
   }} catch (e) {{ /* 赞藏读不到就退回本机计数 */ }}
   ACCT.loading = false;
   ACCT.loaded = true;
-  if (state.mode === 'me' || state.mode === 'publish') render(false);
+  if (state.mode === 'me' || state.mode === 'publish' || state.mode === 'packs') render(false);
 }}
 
 function parseGithubPreview(url) {{
@@ -5048,6 +5314,8 @@ async function logoutAccount() {{
   }} catch (e) {{ /* 服务端不在也要把本地态清掉 */ }}
   ACCT.user = null;
   ACCT.posts = null;
+  ACCT.packs = [];
+  Object.keys(packDelivery).forEach(k => {{ delete packDelivery[k]; }});
   ACCT.loaded = true;
   toast(tr('acctLoggedOut'));
   render(false);
@@ -5236,6 +5504,27 @@ function recallSavedHtml() {{
   </div>`;
 }}
 
+function acctPacksHtml() {{
+  if (accountMode() !== 'live' || !ACCT.user) return '';
+  const ids = ACCT.packs || [];
+  const lim = seatLimit();
+  const rows = ids.length
+    ? ids.map(id => {{
+        const p = packById(id);
+        const title = p ? packTitle(p) : id;
+        return `<button type="button" class="js-pack-open" data-pack="${{escapeHtml(id)}}">${{escapeHtml(title)}}</button>`;
+      }}).join('')
+    : `<p>${{escapeHtml(tr('packsNoneOwned'))}}</p>`;
+  const seatNote = lim
+    ? `<p class="lead" style="margin-top:6px">${{escapeHtml(ids.length + ' / ' + lim)}}</p>`
+    : '';
+  return `<div class="me-card">
+    <strong>${{escapeHtml(tr('packsMine'))}}</strong>
+    ${{seatNote}}
+    <div class="me-actions" style="margin-top:8px">${{rows}}</div>
+  </div>`;
+}}
+
 function acctPostsHtml() {{
   const mode = accountMode();
   if (mode !== 'live') return '';
@@ -5261,15 +5550,36 @@ function acctPostsHtml() {{
 }}
 
 function acctPlanHtml() {{
-  // 发现流全量免费：不再在「我的」挂每天 N 条。激活码留给内部测试开通。
-  if (!ACCT.devAuth) return '';
-  let body = `<p>${{escapeHtml(tr('valueLine'))}}</p>`;
+  if (accountMode() !== 'live' || !ACCT.user) {{
+    if (!ACCT.devAuth) return '';
+  }}
+  const u = ACCT.user || {{}};
+  let body = '';
+  if (u.subscriber) {{
+    const until = String(u.plan_until || '').slice(0, 10);
+    body += `<p>${{escapeHtml(trn('subPlanActive', {{ d: until || '—', n: seatLimit() }}))}}</p>`;
+    if (seatLimit() < 2) {{
+      body += `<div class="me-actions" style="margin-top:8px">
+        <button type="button" class="js-sub-upgrade" data-sku="subscriber_quarter_cont">${{escapeHtml(tr('subUpgradeQuarter'))}}</button>
+      </div>`;
+    }}
+    if (seatLimit() < 3) {{
+      body += `<div class="me-actions" style="margin-top:8px">
+        <button type="button" class="js-sub-upgrade" data-sku="subscriber_year_cont">${{escapeHtml(tr('subUpgradeYear'))}}</button>
+      </div>`;
+    }}
+  }} else if (ACCT.user) {{
+    body += `<p>${{escapeHtml(tr('subPlanFree'))}}</p>
+      <p class="lead">${{escapeHtml(tr('packsEntryPrice'))}}</p>`;
+  }} else {{
+    body += `<p>${{escapeHtml(tr('valueLine'))}}</p>`;
+  }}
   if (ACCT.devAuth) {{
     body += `<div class="me-actions" style="margin-top:8px">
       <button type="button" class="js-pay-dev">${{escapeHtml(tr('payDevBtn'))}}</button>
     </div>`;
   }}
-  return `<div class="me-card"><strong>${{escapeHtml(tr('quotaTitle'))}}</strong>${{body}}</div>`;
+  return `<div class="me-card"><strong>${{escapeHtml(tr('subPlanTitle'))}}</strong>${{body}}</div>`;
 }}
 
 async function activateSubscription(form) {{
@@ -5309,7 +5619,7 @@ async function payDevCheckout() {{
     const created = await acctFetch('/api/pay/create', {{
       method: 'POST',
       headers: {{ 'Content-Type': 'application/json', 'Accept': 'application/json' }},
-      body: JSON.stringify({{ sku: 'subscriber_year' }}),
+      body: JSON.stringify({{ sku: 'subscriber_month_cont' }}),
     }});
     const createdData = created.ok ? await created.json() : null;
     const tradeNo = createdData && createdData.order && createdData.order.out_trade_no;
@@ -5336,6 +5646,53 @@ async function payDevCheckout() {{
     if (state.mode === 'me') render(false);
   }} catch (e) {{
     if (msg) {{ msg.className = 'pub-msg err'; msg.textContent = tr('payDevFail'); }}
+  }}
+}}
+
+async function startSubscription(sku) {{
+  if (!sku) return;
+  if (!API_BASE || accountMode() !== 'live') {{
+    toast(tr('packsBuyNeedSite'));
+    return;
+  }}
+  if (!ACCT.user) {{
+    const login = loginUrl();
+    if (!login) {{
+      toast(tr('packsBuyNeedSite'));
+      return;
+    }}
+    const next = encodeURIComponent('/?tab=packs');
+    location.href = login + (login.includes('?') ? '&' : '?') + 'next=' + next;
+    return;
+  }}
+  await upgradeSubscription(sku);
+}}
+
+async function upgradeSubscription(sku) {{
+  if (!sku || !ACCT.user || accountMode() !== 'live') return;
+  if (state.packBuying) return;
+  state.packBuying = true;
+  try {{
+    const resp = await acctFetch('/api/pay/checkout', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json', 'Accept': 'application/json' }},
+      body: JSON.stringify({{ sku }}),
+    }});
+    let data = null;
+    try {{ data = await resp.json(); }} catch (e) {{ data = null; }}
+    if (!resp.ok || !data || !data.ok || data.paid === false) {{
+      const detail = data && (typeof data.detail === 'string' ? data.detail : '');
+      toast(detail || tr('packsBuyFail'));
+      return;
+    }}
+    if (data.user) ACCT.user = data.user;
+    if (Array.isArray(data.packs)) ACCT.packs = data.packs;
+    toast(tr('packsBuyOk'));
+    if (state.mode === 'me' || state.mode === 'packs') render(false);
+  }} catch (e) {{
+    toast(tr('packsBuyFail'));
+  }} finally {{
+    state.packBuying = false;
   }}
 }}
 
@@ -5515,6 +5872,7 @@ function mePanelHtml() {{
     <p class="lead">${{tr('meLead')}}</p>
     ${{acctIdentityHtml()}}
     ${{acctPlanHtml()}}
+    ${{acctPacksHtml()}}
     ${{acctPostsHtml()}}
     <div class="me-card">
       <strong>${{escapeHtml(tr('meLocalTitle'))}}</strong>
@@ -6047,7 +6405,7 @@ document.getElementById('tabBar').addEventListener('click', (e) => {{
   const nav = e.target.closest('.nav');
   if (!nav) return;
   switchTab(nav.dataset.mode || 'all');
-  if (state.mode === 'me' || state.mode === 'publish') loadAccount();
+  if (state.mode === 'me' || state.mode === 'publish' || state.mode === 'packs') loadAccount();
 }});
 
 document.getElementById('tabBar').addEventListener('keydown', (e) => {{
@@ -6055,7 +6413,7 @@ document.getElementById('tabBar').addEventListener('keydown', (e) => {{
   if (!next) return;
   e.preventDefault();
   switchTab(next);
-  if (state.mode === 'me' || state.mode === 'publish') loadAccount();
+  if (state.mode === 'me' || state.mode === 'publish' || state.mode === 'packs') loadAccount();
   const btn = tabButtons().find(b => (b.dataset.mode || '') === next);
   if (btn && btn.focus) btn.focus();
 }});
@@ -6173,12 +6531,28 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     buyPack(packBuy.dataset.pack || '');
     return;
   }}
+  const packCopy = t.closest('.js-pack-copy');
+  if (packCopy) {{
+    const doc = packDelivery[packCopy.dataset.pack || ''];
+    const text = doc && doc.md ? String(doc.md) : '';
+    if (!text) return;
+    const done = () => toast(tr('packsCopied'));
+    if (navigator.clipboard && navigator.clipboard.writeText) {{
+      navigator.clipboard.writeText(text).then(done).catch(done);
+    }} else done();
+    return;
+  }}
   if (t.closest('.js-acct-logout')) {{
     logoutAccount();
     return;
   }}
   if (t.closest('.js-pay-dev')) {{
     payDevCheckout();
+    return;
+  }}
+  const subUp = t.closest('.js-sub-upgrade, .js-sub-plan');
+  if (subUp) {{
+    startSubscription(subUp.dataset.sku || '');
     return;
   }}
   if (t.closest('.js-me-saved')) {{
@@ -6423,7 +6797,7 @@ hydrateLiveFeed().then(() => {{
   }}
 }});
 syncToTop();
-if (state.mode === 'me' || state.mode === 'publish') loadAccount();
+if (state.mode === 'me' || state.mode === 'publish' || state.mode === 'packs') loadAccount();
 const previewClose = document.getElementById('cardPreviewClose');
 if (previewClose) previewClose.addEventListener('click', closeCardPreview);
 const previewHost = document.getElementById('cardPreview');
@@ -6447,6 +6821,9 @@ function coachShouldStart() {{
   const params = new URLSearchParams(location.search);
   if (params.get('onboard') === '1') return true;
   if (params.get('demo') === '1') return false;
+  // 购买回跳、直接打开技能包时不能被引导拽回发现，否则 ?tab= 会被改掉
+  const tab = (params.get('tab') || '').trim().toLowerCase();
+  if (tab && tab !== 'all') return false;
   try {{ return localStorage.getItem(COACH_KEY) !== '1'; }} catch (e) {{ return true; }}
 }}
 

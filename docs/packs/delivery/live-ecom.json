@@ -1,0 +1,48 @@
+{
+  "id": "live-ecom",
+  "title": "直播电商",
+  "md": "# 直播电商\n\n话术、场控、货盘复盘\n\n## 技能排序\n\n1. dbs-hook · 开场留人\n2. nuwa-skill · 拆对标主播\n\n## 应用介绍\n\n### dbs-hook\n优化前三秒 Hook，直播开场可借用\n\n### nuwa-skill\n拆带货达人，直播对标可借用\n\n## 知识库\n\n- 飞碟啾AI（内容电商材料）：开场留人、拆对标主播\n  https://www.xiaohongshu.com/discovery/item/6a734b240000000008011b2c\n- 本批评论尚未点名：直播话术、场控复盘、直播选品上架\n  https://www.xiaohongshu.com/discovery/item/6a0ad006000000000702564f\n",
+  "skills": [
+    {
+      "order": 1,
+      "name": "dbs-hook",
+      "step": "开场留人",
+      "intro": "优化前三秒 Hook，直播开场可借用"
+    },
+    {
+      "order": 2,
+      "name": "nuwa-skill",
+      "step": "拆对标主播",
+      "intro": "拆带货达人，直播对标可借用"
+    }
+  ],
+  "apps": [
+    {
+      "name": "dbs-hook",
+      "intro": "优化前三秒 Hook，直播开场可借用"
+    },
+    {
+      "name": "nuwa-skill",
+      "intro": "拆带货达人，直播对标可借用"
+    }
+  ],
+  "kb": [
+    {
+      "source": "飞碟啾AI（内容电商材料）",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a734b240000000008011b2c",
+      "topics": [
+        "开场留人",
+        "拆对标主播"
+      ]
+    },
+    {
+      "source": "本批评论尚未点名",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a0ad006000000000702564f",
+      "topics": [
+        "直播话术",
+        "场控复盘",
+        "直播选品上架"
+      ]
+    }
+  ]
+}

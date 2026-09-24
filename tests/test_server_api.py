@@ -48,7 +48,13 @@ def _settings(tmpdir: str, **over) -> "Settings":
     s.free_daily_feed_items = 8
     s.subscriber_days = 365
     s.activation_codes = frozenset()
-    s.sku_year_fen = 9900
+    s.sku_month_cont_fen = 2900
+    s.sku_quarter_cont_fen = 7800
+    s.sku_year_cont_fen = 22800
+    s.sku_month_once_fen = 3900
+    s.sku_quarter_once_fen = 10500
+    s.sku_year_once_fen = 29900
+    s.sku_year_fen = 22800
     s.wechat_pay_mchid = ""
     s.wechat_pay_api_v3_key = ""
     s.wechat_pay_serial = ""
@@ -117,6 +123,13 @@ class TestLoginGate(unittest.TestCase):
         """豁免路径必须真的不被拦，否则登录页自己会无限重定向。"""
         self.assertEqual(self.client.get("/health").status_code, 200)
         self.assertEqual(self.client.get("/login").status_code, 200)
+
+    def test_login_next_keeps_pack_query(self):
+        """购买回跳带 &，写进 script 后不能变成 &amp;，否则回不到技能包。"""
+        r = self.client.get("/login", params={"next": "/?tab=packs&pack=shelf-ecom"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('const NEXT = "/?tab=packs&pack=shelf-ecom";', r.text)
+        self.assertNotIn("&amp;pack", r.text)
         self.assertEqual(self.client.get("/api/feed").status_code, 200)
         self.assertEqual(self.client.get("/api/site-config").status_code, 200)
         posted = self.client.post("/api/events", json={
@@ -877,6 +890,12 @@ class TestServerAPI(unittest.TestCase):
 
         r = self.client.get("/auth/dev-login", follow_redirects=False)
         self.assertIn(r.status_code, (302, 303))
+        back = self.client.get(
+            "/auth/dev-login",
+            params={"next": "/?tab=packs&pack=shelf-ecom"},
+            follow_redirects=False,
+        )
+        self.assertEqual(back.headers["location"], "/?tab=packs&pack=shelf-ecom")
 
         me = self.client.get("/auth/me")
         self.assertEqual(me.status_code, 200)
@@ -1059,7 +1078,7 @@ class TestPayOrders(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.settings = _settings(
-            self.tmp.name, dev_mode=True, dev_auth=True, sku_year_fen=9900,
+            self.tmp.name, dev_mode=True, dev_auth=True,
         )
         self.client = TestClient(server_app.create_app(self.settings))
         self.client.get("/auth/dev-login")
@@ -1075,17 +1094,22 @@ class TestPayOrders(unittest.TestCase):
         self.assertEqual(catalog.status_code, 200)
         self.assertTrue(catalog.json()["dev_notify"])
         self.assertFalse(catalog.json()["wechat_pay"])
-        created = self.client.post("/api/pay/create", json={"sku": "subscriber_year"})
+        self.assertEqual(catalog.json()["entry_sku"], "subscriber_month_cont")
+        ids = [row["id"] for row in catalog.json()["items"]]
+        self.assertIn("subscriber_month_cont", ids)
+        self.assertNotIn("shelf-ecom", ids)
+        created = self.client.post("/api/pay/create", json={"sku": "subscriber_year_cont"})
         self.assertEqual(created.status_code, 200, created.text)
         order = created.json()["order"]
         self.assertEqual(order["status"], "pending")
-        self.assertEqual(order["amount_fen"], 9900)
+        self.assertEqual(order["amount_fen"], 22800)
         paid = self.client.post(
             "/api/pay/dev-notify", json={"out_trade_no": order["out_trade_no"]},
         )
         self.assertEqual(paid.status_code, 200, paid.text)
         self.assertFalse(paid.json()["replay"])
         self.assertTrue(paid.json()["user"]["subscriber"])
+        self.assertEqual(paid.json()["user"]["seat_limit"], 3)
         again = self.client.post(
             "/api/pay/dev-notify", json={"out_trade_no": order["out_trade_no"]},
         )
@@ -1102,6 +1126,66 @@ class TestPayOrders(unittest.TestCase):
         client = TestClient(server_app.create_app(s), follow_redirects=False)
         r = client.post("/api/pay/dev-notify", json={"out_trade_no": "SF1"})
         self.assertEqual(r.status_code, 404)
+
+    def test_subscribe_checkout_assigns_pack(self):
+        bought = self.client.post("/api/pay/checkout", json={
+            "sku": "subscriber_month_cont",
+            "assign_pack": "shelf-ecom",
+        })
+        self.assertEqual(bought.status_code, 200, bought.text)
+        body = bought.json()
+        self.assertTrue(body["paid"])
+        self.assertEqual(body["order"]["amount_fen"], 2900)
+        self.assertEqual(body["order"]["sku"], "subscriber_month_cont")
+        self.assertIn("shelf-ecom", body["packs"])
+        self.assertTrue(body["user"]["subscriber"])
+        self.assertEqual(body["user"]["seat_limit"], 1)
+        me = self.client.get("/auth/me")
+        self.assertIn("shelf-ecom", me.json()["packs"])
+        self.assertTrue(me.json()["user"]["subscriber"])
+        full = self.client.post("/api/me/seats/assign", json={"assign_pack": "cross-border"})
+        self.assertEqual(full.status_code, 409)
+        soon = self.client.post("/api/pay/checkout", json={
+            "sku": "subscriber_month_cont",
+            "assign_pack": "live-ecom",
+        })
+        self.assertEqual(soon.status_code, 400)
+
+    def test_pack_delivery_only_after_subscribe_seat(self):
+        hidden = self.client.get("/api/packs/shelf-ecom/delivery")
+        self.assertEqual(hidden.status_code, 403)
+        self.assertNotIn("ecommerce-visual-copywriting-skill", hidden.text)
+        bought = self.client.post("/api/pay/checkout", json={
+            "sku": "subscriber_month_cont",
+            "assign_pack": "shelf-ecom",
+        })
+        self.assertEqual(bought.status_code, 200, bought.text)
+        opened = self.client.get("/api/packs/shelf-ecom/delivery")
+        self.assertEqual(opened.status_code, 200, opened.text)
+        body = opened.json()
+        names = [row["name"] for row in body["skills"]]
+        self.assertEqual(names[0], "ecommerce-visual-copywriting-skill")
+        self.assertEqual(len(names), len(body["apps"]))
+        self.assertGreaterEqual(len(body["kb"]), 1)
+        self.assertIn("## 技能排序", body["md"])
+        self.assertIn("## 知识库", body["md"])
+        self.assertNotIn("待补采", opened.text)
+        self.assertNotIn("xsec_token", opened.text)
+        # 有交付材料的包才 200；数据分析包无手册仍 404
+        year = self.client.post("/api/pay/checkout", json={
+            "sku": "subscriber_year_cont",
+        })
+        self.assertEqual(year.status_code, 200, year.text)
+        seats = self.client.put("/api/me/seats", json={
+            "pack_ids": ["shelf-ecom", "data-analytics"],
+        })
+        self.assertEqual(seats.status_code, 200, seats.text)
+        missing = self.client.get("/api/packs/data-analytics/delivery")
+        self.assertEqual(missing.status_code, 404)
+        other = TestClient(server_app.create_app(self.settings))
+        other.get("/auth/dev-login?login=other-user")
+        denied = other.get("/api/packs/shelf-ecom/delivery")
+        self.assertEqual(denied.status_code, 403)
 
     def test_cannot_notify_someone_elses_order(self):
         created = self.client.post("/api/pay/create", json={})

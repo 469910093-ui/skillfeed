@@ -1,0 +1,205 @@
+{
+  "id": "cross-border",
+  "title": "跨境电商",
+  "md": "# 跨境电商\n\n从选品做到利润复盘，不是散装工具清单\n\n## 技能排序\n\n1. LinkFox Agent · 运营总控\n2. LinkFox AI · 跨境视觉产能\n3. Amazon Reviews · 评论挖痛点\n4. SellerSprite · 选品研究\n5. 亚马逊-前端商品搜索 · 亚马逊商品搜索\n6. 亚马逊-前端商品详情 · 拆竞品Listing\n7. 亚马逊-商品评论 · 评论与差评\n8. 亚马逊-店铺listing管理 · Listing管理\n9. 亚马逊-广告管理 · 广告管理\n10. Self-Improving Agent · 经验沉淀\n11. LinkFox Skills · 垂直能力市场\n12. 亚马逊-店铺定价 · 定价带\n13. 亚马逊-店铺目录 · 店铺目录\n14. 亚马逊-最新政策资讯 · 政策避坑\n\n## 应用介绍\n\n### LinkFox Agent\n跨境运营总控台，少在分析工具之间来回切\n\n### LinkFox AI\n商品视觉生产：处理、方案、转动态视频\n\n### Amazon Reviews\n从评论提炼产品改良和 Listing 建议\n\n### SellerSprite\n市场、竞品、关键词和选品研究\n\n### 亚马逊-前端商品搜索\n搜索亚马逊前端商品，找竞品和市场\n\n### 亚马逊-前端商品详情\n查看详情页信息，拆竞品 Listing\n\n### 亚马逊-商品评论\n分析评论和反馈，提炼购买需求\n\n### 亚马逊-店铺listing管理\n管理店铺 Listing，批量检查\n\n### 亚马逊-广告管理\n管理 Amazon Ads，看投放和预算\n\n### Self-Improving Agent\n把有效经验和错误记下来，减少重复解释\n\n### LinkFox Skills\n跨境垂直 Skill 市场，按任务继续补\n\n### 亚马逊-店铺定价\n查看店铺商品定价信息\n\n### 亚马逊-店铺目录\n快速看清店铺商品和结构\n\n### 亚马逊-最新政策资讯\n查询亚马逊最新政策和资讯\n\n## 知识库\n\n- 原来是这样啊：运营总控、经验沉淀、跨境视觉产能、评论挖痛点、选品研究、垂直能力市场\n  https://www.xiaohongshu.com/discovery/item/6a5f8be4000000000f00495b\n- Yomin Ma：跨境SOP主线\n  https://www.xiaohongshu.com/discovery/item/69d50977000000002301f67a\n- 跨境常用10 Skill：亚马逊商品搜索、拆竞品Listing、评论与差评、定价带、店铺目录、Listing管理、广告管理、政策避坑\n  https://www.xiaohongshu.com/discovery/item/6a603229000000001303c1b4\n- 稳卖选手Wendy：数据接上业务\n  https://www.xiaohongshu.com/discovery/item/6a3e472b0000000007025a24\n- 亚马逊扫地僧(AI赋能）：自动化技能资产\n  https://www.xiaohongshu.com/discovery/item/69c3d2130000000023011449\n- 格林尼治要稳卖：站点选品报告\n  https://www.xiaohongshu.com/discovery/item/6a3219590000000021009f0c\n",
+  "skills": [
+    {
+      "order": 1,
+      "name": "LinkFox Agent",
+      "step": "运营总控",
+      "intro": "跨境运营总控台，少在分析工具之间来回切"
+    },
+    {
+      "order": 2,
+      "name": "LinkFox AI",
+      "step": "跨境视觉产能",
+      "intro": "商品视觉生产：处理、方案、转动态视频"
+    },
+    {
+      "order": 3,
+      "name": "Amazon Reviews",
+      "step": "评论挖痛点",
+      "intro": "从评论提炼产品改良和 Listing 建议"
+    },
+    {
+      "order": 4,
+      "name": "SellerSprite",
+      "step": "选品研究",
+      "intro": "市场、竞品、关键词和选品研究"
+    },
+    {
+      "order": 5,
+      "name": "亚马逊-前端商品搜索",
+      "step": "亚马逊商品搜索",
+      "intro": "搜索亚马逊前端商品，找竞品和市场"
+    },
+    {
+      "order": 6,
+      "name": "亚马逊-前端商品详情",
+      "step": "拆竞品Listing",
+      "intro": "查看详情页信息，拆竞品 Listing"
+    },
+    {
+      "order": 7,
+      "name": "亚马逊-商品评论",
+      "step": "评论与差评",
+      "intro": "分析评论和反馈，提炼购买需求"
+    },
+    {
+      "order": 8,
+      "name": "亚马逊-店铺listing管理",
+      "step": "Listing管理",
+      "intro": "管理店铺 Listing，批量检查"
+    },
+    {
+      "order": 9,
+      "name": "亚马逊-广告管理",
+      "step": "广告管理",
+      "intro": "管理 Amazon Ads，看投放和预算"
+    },
+    {
+      "order": 10,
+      "name": "Self-Improving Agent",
+      "step": "经验沉淀",
+      "intro": "把有效经验和错误记下来，减少重复解释"
+    },
+    {
+      "order": 11,
+      "name": "LinkFox Skills",
+      "step": "垂直能力市场",
+      "intro": "跨境垂直 Skill 市场，按任务继续补"
+    },
+    {
+      "order": 12,
+      "name": "亚马逊-店铺定价",
+      "step": "定价带",
+      "intro": "查看店铺商品定价信息"
+    },
+    {
+      "order": 13,
+      "name": "亚马逊-店铺目录",
+      "step": "店铺目录",
+      "intro": "快速看清店铺商品和结构"
+    },
+    {
+      "order": 14,
+      "name": "亚马逊-最新政策资讯",
+      "step": "政策避坑",
+      "intro": "查询亚马逊最新政策和资讯"
+    }
+  ],
+  "apps": [
+    {
+      "name": "LinkFox Agent",
+      "intro": "跨境运营总控台，少在分析工具之间来回切"
+    },
+    {
+      "name": "LinkFox AI",
+      "intro": "商品视觉生产：处理、方案、转动态视频"
+    },
+    {
+      "name": "Amazon Reviews",
+      "intro": "从评论提炼产品改良和 Listing 建议"
+    },
+    {
+      "name": "SellerSprite",
+      "intro": "市场、竞品、关键词和选品研究"
+    },
+    {
+      "name": "亚马逊-前端商品搜索",
+      "intro": "搜索亚马逊前端商品，找竞品和市场"
+    },
+    {
+      "name": "亚马逊-前端商品详情",
+      "intro": "查看详情页信息，拆竞品 Listing"
+    },
+    {
+      "name": "亚马逊-商品评论",
+      "intro": "分析评论和反馈，提炼购买需求"
+    },
+    {
+      "name": "亚马逊-店铺listing管理",
+      "intro": "管理店铺 Listing，批量检查"
+    },
+    {
+      "name": "亚马逊-广告管理",
+      "intro": "管理 Amazon Ads，看投放和预算"
+    },
+    {
+      "name": "Self-Improving Agent",
+      "intro": "把有效经验和错误记下来，减少重复解释"
+    },
+    {
+      "name": "LinkFox Skills",
+      "intro": "跨境垂直 Skill 市场，按任务继续补"
+    },
+    {
+      "name": "亚马逊-店铺定价",
+      "intro": "查看店铺商品定价信息"
+    },
+    {
+      "name": "亚马逊-店铺目录",
+      "intro": "快速看清店铺商品和结构"
+    },
+    {
+      "name": "亚马逊-最新政策资讯",
+      "intro": "查询亚马逊最新政策和资讯"
+    }
+  ],
+  "kb": [
+    {
+      "source": "原来是这样啊",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a5f8be4000000000f00495b",
+      "topics": [
+        "运营总控",
+        "经验沉淀",
+        "跨境视觉产能",
+        "评论挖痛点",
+        "选品研究",
+        "垂直能力市场"
+      ]
+    },
+    {
+      "source": "Yomin Ma",
+      "url": "https://www.xiaohongshu.com/discovery/item/69d50977000000002301f67a",
+      "topics": [
+        "跨境SOP主线"
+      ]
+    },
+    {
+      "source": "跨境常用10 Skill",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a603229000000001303c1b4",
+      "topics": [
+        "亚马逊商品搜索",
+        "拆竞品Listing",
+        "评论与差评",
+        "定价带",
+        "店铺目录",
+        "Listing管理",
+        "广告管理",
+        "政策避坑"
+      ]
+    },
+    {
+      "source": "稳卖选手Wendy",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a3e472b0000000007025a24",
+      "topics": [
+        "数据接上业务"
+      ]
+    },
+    {
+      "source": "亚马逊扫地僧(AI赋能）",
+      "url": "https://www.xiaohongshu.com/discovery/item/69c3d2130000000023011449",
+      "topics": [
+        "自动化技能资产"
+      ]
+    },
+    {
+      "source": "格林尼治要稳卖",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a3219590000000021009f0c",
+      "topics": [
+        "站点选品报告"
+      ]
+    }
+  ]
+}

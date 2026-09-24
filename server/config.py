@@ -190,8 +190,21 @@ class Settings:
         # 飞书自定义机器人 / 通用 webhook。投稿进 pending 时 POST 一条；空=不推。
         self.review_webhook = _env("SKILLFEED_REVIEW_WEBHOOK")
         self.submit_per_day = max(1, _int_env("SKILLFEED_SUBMIT_PER_DAY", 3))
-        # 年费档标价，单位分。定价未锁定，只先把订单金额钉死，方便以后对账。
-        self.sku_year_fen = max(1, _int_env("SKILLFEED_SKU_YEAR_FEN", 9900))
+        # 订阅标价（分）。连续续费更便宜；单独买同周期更贵。可用环境变量覆盖。
+        self.sku_month_cont_fen = max(1, _int_env("SKILLFEED_SKU_MONTH_CONT_FEN", 2900))
+        self.sku_quarter_cont_fen = max(1, _int_env("SKILLFEED_SKU_QUARTER_CONT_FEN", 7800))
+        self.sku_year_cont_fen = max(1, _int_env("SKILLFEED_SKU_YEAR_CONT_FEN", 22800))
+        self.sku_month_once_fen = max(1, _int_env("SKILLFEED_SKU_MONTH_ONCE_FEN", 3900))
+        self.sku_quarter_once_fen = max(1, _int_env("SKILLFEED_SKU_QUARTER_ONCE_FEN", 10500))
+        self.sku_year_once_fen = max(1, _int_env("SKILLFEED_SKU_YEAR_ONCE_FEN", 29900))
+        # 兼容旧变量名：只覆盖连续包年
+        legacy_year = _env("SKILLFEED_SKU_YEAR_FEN")
+        if legacy_year:
+            try:
+                self.sku_year_cont_fen = max(1, int(legacy_year))
+            except ValueError:
+                pass
+        self.sku_year_fen = self.sku_year_cont_fen
         # 微信支付商户。三件都空 = 未接；缺一件也不算配置好，避免半套密钥上线。
         # 验签还没写：填了也会在 notify 里 503，先用 /api/pay/dev-notify 测开通。
         self.wechat_pay_mchid = _env("SKILLFEED_WECHAT_PAY_MCHID")

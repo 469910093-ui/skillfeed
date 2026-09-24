@@ -1,0 +1,87 @@
+{
+  "id": "design-media",
+  "title": "平面设计自媒体",
+  "md": "# 平面设计自媒体\n\n封面、主图、详情页按风格批量出图\n\n## 技能排序\n\n1. GPT-Image2-Skill · 封面与海报\n2. ecommerce-image-suite · 电商主图\n3. detail-flow · 详情页设计\n4. LinkFox AI · 跨境商品视觉\n\n## 应用介绍\n\n### GPT-Image2-Skill\n小红书封面、品牌视觉、海报、配图\n\n### ecommerce-image-suite\n批量商品图/主图\n\n### detail-flow\n专门做详情页\n\n### LinkFox AI\n商品视觉生产和转视频\n\n## 知识库\n\n- 营销拆解室：封面与海报\n  https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9\n- 大厂刘饱饱：电商主图、详情页设计\n  https://www.xiaohongshu.com/discovery/item/6a50d275000000001702f721\n- 原来是这样啊：跨境商品视觉\n  https://www.xiaohongshu.com/discovery/item/6a5f8be4000000000f00495b\n- 废话老洪：主图详情套装\n  https://www.xiaohongshu.com/discovery/item/69fa869c000000003701fdea\n- YANG：8张详情直出\n  https://www.xiaohongshu.com/discovery/item/6a55b3ec00000000070296d3\n",
+  "skills": [
+    {
+      "order": 1,
+      "name": "GPT-Image2-Skill",
+      "step": "封面与海报",
+      "intro": "小红书封面、品牌视觉、海报、配图"
+    },
+    {
+      "order": 2,
+      "name": "ecommerce-image-suite",
+      "step": "电商主图",
+      "intro": "批量商品图/主图"
+    },
+    {
+      "order": 3,
+      "name": "detail-flow",
+      "step": "详情页设计",
+      "intro": "专门做详情页"
+    },
+    {
+      "order": 4,
+      "name": "LinkFox AI",
+      "step": "跨境商品视觉",
+      "intro": "商品视觉生产和转视频"
+    }
+  ],
+  "apps": [
+    {
+      "name": "GPT-Image2-Skill",
+      "intro": "小红书封面、品牌视觉、海报、配图"
+    },
+    {
+      "name": "ecommerce-image-suite",
+      "intro": "批量商品图/主图"
+    },
+    {
+      "name": "detail-flow",
+      "intro": "专门做详情页"
+    },
+    {
+      "name": "LinkFox AI",
+      "intro": "商品视觉生产和转视频"
+    }
+  ],
+  "kb": [
+    {
+      "source": "营销拆解室",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9",
+      "topics": [
+        "封面与海报"
+      ]
+    },
+    {
+      "source": "大厂刘饱饱",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a50d275000000001702f721",
+      "topics": [
+        "电商主图",
+        "详情页设计"
+      ]
+    },
+    {
+      "source": "原来是这样啊",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a5f8be4000000000f00495b",
+      "topics": [
+        "跨境商品视觉"
+      ]
+    },
+    {
+      "source": "废话老洪",
+      "url": "https://www.xiaohongshu.com/discovery/item/69fa869c000000003701fdea",
+      "topics": [
+        "主图详情套装"
+      ]
+    },
+    {
+      "source": "YANG",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a55b3ec00000000070296d3",
+      "topics": [
+        "8张详情直出"
+      ]
+    }
+  ]
+}

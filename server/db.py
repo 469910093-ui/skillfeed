@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS {name} (
   name TEXT,
   plan TEXT DEFAULT 'free',
   plan_until TEXT,
+  seat_limit INTEGER NOT NULL DEFAULT 0,
+  billing TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 );
 """
@@ -51,6 +53,8 @@ USERS_COLUMNS: tuple[tuple[str, str], ...] = (
     ("name", "TEXT"),
     ("plan", "TEXT DEFAULT 'free'"),
     ("plan_until", "TEXT"),
+    ("seat_limit", "INTEGER NOT NULL DEFAULT 0"),
+    ("billing", "TEXT NOT NULL DEFAULT ''"),
     ("created_at", "TEXT"),
 )
 
@@ -247,6 +251,16 @@ CREATE TABLE IF NOT EXISTS orders (
 
 CREATE INDEX IF NOT EXISTS idx_orders_user_created
   ON orders(user_id, created_at DESC);
+
+-- 场景席位占用。无买断：只在订阅有效期内可访问交付；过期后行可留，访问门禁会挡。
+CREATE TABLE IF NOT EXISTS pack_grants (
+  user_id INTEGER NOT NULL,
+  pack_id TEXT NOT NULL,
+  order_id INTEGER NOT NULL,
+  granted_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, pack_id),
+  FOREIGN KEY(user_id) REFERENCES users(id)
+);
 
 CREATE TABLE IF NOT EXISTS site_settings (
   key TEXT PRIMARY KEY,
@@ -1051,6 +1065,8 @@ def user_public(u: dict[str, Any]) -> dict[str, Any]:
         "plan": (u.get("plan") or "free") or "free",
         "plan_until": u.get("plan_until") or "",
         "subscriber": _user_is_subscriber(u),
+        "seat_limit": int(u.get("seat_limit") or 0),
+        "billing": (u.get("billing") or "") or "",
         "trust_level": u.get("trust_level") or "new",
         "approved_count": int(u.get("approved_count") or 0),
     }
@@ -1062,15 +1078,36 @@ def _user_is_subscriber(u: dict[str, Any]) -> bool:
     return is_subscriber(u)
 
 
+class SeatError(Exception):
+    def __init__(self, status: int, detail: str):
+        self.status = status
+        self.detail = detail
+        super().__init__(detail)
+
+
 def set_user_plan(
     conn: sqlite3.Connection,
     user_id: int,
     plan: str,
     plan_until: Optional[str] = None,
+    *,
+    seat_limit: Optional[int] = None,
+    billing: Optional[str] = None,
 ) -> None:
+    if seat_limit is None and billing is None:
+        conn.execute(
+            "UPDATE users SET plan=?, plan_until=? WHERE id=?",
+            (plan, plan_until, user_id),
+        )
+        return
+    user = get_user(conn, int(user_id)) or {}
+    # 付费开通：席位取「当前与本档」较大值，避免年中再买月把 3 席砍成 1。
+    cur_seats = int(user.get("seat_limit") or 0)
+    seats = max(cur_seats, int(seat_limit)) if seat_limit is not None else cur_seats
+    bill = billing if billing is not None else str(user.get("billing") or "")
     conn.execute(
-        "UPDATE users SET plan=?, plan_until=? WHERE id=?",
-        (plan, plan_until, user_id),
+        "UPDATE users SET plan=?, plan_until=?, seat_limit=?, billing=? WHERE id=?",
+        (plan, plan_until, max(0, seats), bill, user_id),
     )
 
 
@@ -1122,6 +1159,173 @@ def list_orders_for_user(
         (int(user_id), max(1, min(100, int(limit)))),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def user_has_pack(conn: sqlite3.Connection, user_id: int, pack_id: str) -> bool:
+    """是否占了这个席位行（不论订阅是否过期）。访问交付请用 user_can_access_pack。"""
+    row = conn.execute(
+        "SELECT 1 FROM pack_grants WHERE user_id=? AND pack_id=?",
+        (int(user_id), pack_id),
+    ).fetchone()
+    return row is not None
+
+
+def user_can_access_pack(conn: sqlite3.Connection, user_id: int, pack_id: str) -> bool:
+    """订阅有效且席位里有这个包，才能读手册。"""
+    return (pack_id or "").strip() in list_active_pack_ids(conn, int(user_id))
+
+
+def grant_pack(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    pack_id: str,
+    order_id: int,
+    granted_at: str,
+) -> None:
+    """重复到账不另开一行：主键挡住第二次，调用方仍把那笔订单标成已付。"""
+    conn.execute(
+        """
+        INSERT INTO pack_grants (user_id, pack_id, order_id, granted_at)
+        VALUES (?,?,?,?)
+        ON CONFLICT(user_id, pack_id) DO NOTHING
+        """,
+        (int(user_id), pack_id, int(order_id), granted_at),
+    )
+
+
+def assign_pack_seat(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    pack_id: str,
+    order_id: int = 0,
+    granted_at: Optional[str] = None,
+) -> list[str]:
+    """在订阅有效期内占用一个场景席位。已占用则原样返回。"""
+    pid = (pack_id or "").strip()
+    if not pid or "/" in pid or ".." in pid:
+        raise SeatError(400, "未知场景包")
+    user = get_user(conn, int(user_id))
+    if not user or not _user_is_subscriber(user):
+        raise SeatError(403, "需要有效订阅")
+    limit = int(user.get("seat_limit") or 0)
+    if limit < 1:
+        raise SeatError(403, "当前套餐没有场景席位")
+    current = list_user_pack_ids(conn, int(user_id))
+    if pid in current:
+        return trim_pack_seats(conn, int(user_id), keep=pid)
+    if len(current) >= limit:
+        raise SeatError(409, "席位已满，请升级套餐或换掉一个场景")
+    grant_pack(
+        conn,
+        user_id=int(user_id),
+        pack_id=pid,
+        order_id=int(order_id),
+        granted_at=granted_at or _now(),
+    )
+    return list_user_pack_ids(conn, int(user_id))
+
+
+def set_user_seats(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    pack_ids: list[str],
+) -> list[str]:
+    """整表替换席位占用。数量不得超过 seat_limit。"""
+    user = get_user(conn, int(user_id))
+    if not user or not _user_is_subscriber(user):
+        raise SeatError(403, "需要有效订阅")
+    limit = int(user.get("seat_limit") or 0)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in pack_ids:
+        pid = str(raw or "").strip()
+        if not pid or pid in seen:
+            continue
+        if "/" in pid or ".." in pid:
+            raise SeatError(400, "未知场景包")
+        seen.add(pid)
+        cleaned.append(pid)
+    if len(cleaned) > limit:
+        raise SeatError(409, f"最多选用 {limit} 个场景")
+    conn.execute("DELETE FROM pack_grants WHERE user_id=?", (int(user_id),))
+    stamp = _now()
+    for pid in cleaned:
+        grant_pack(
+            conn,
+            user_id=int(user_id),
+            pack_id=pid,
+            order_id=0,
+            granted_at=stamp,
+        )
+    return list_user_pack_ids(conn, int(user_id))
+
+
+def list_user_pack_ids(conn: sqlite3.Connection, user_id: int) -> list[str]:
+    rows = conn.execute(
+        "SELECT pack_id FROM pack_grants WHERE user_id=? ORDER BY granted_at, pack_id",
+        (int(user_id),),
+    ).fetchall()
+    return [str(r["pack_id"]) for r in rows]
+
+
+def trim_pack_seats(
+    conn: sqlite3.Connection,
+    user_id: int,
+    *,
+    keep: str = "",
+    reserve_for: str = "",
+) -> list[str]:
+    """订阅席位多于上限时，保留最近占用（keep 优先），其余删掉。
+
+    reserve_for：即将占用、但还没写入的场景。先给它留一个空位，避免旧占用把新开通挡在外面。
+    """
+    user = get_user(conn, int(user_id))
+    if not user or not _user_is_subscriber(user):
+        return []
+    limit = int(user.get("seat_limit") or 0)
+    rows = conn.execute(
+        """
+        SELECT pack_id FROM pack_grants
+        WHERE user_id=?
+        ORDER BY granted_at DESC, pack_id
+        """,
+        (int(user_id),),
+    ).fetchall()
+    ids = [str(r["pack_id"]) for r in rows]
+    if limit < 1:
+        if ids:
+            conn.execute("DELETE FROM pack_grants WHERE user_id=?", (int(user_id),))
+        return []
+    slots = limit
+    reserve = (reserve_for or "").strip()
+    if reserve and reserve not in ids and slots > 0:
+        slots -= 1
+    chosen: list[str] = []
+    prefer = (keep or "").strip()
+    if prefer and prefer in ids:
+        chosen.append(prefer)
+    for pid in ids:
+        if pid in chosen:
+            continue
+        if len(chosen) >= slots:
+            break
+        chosen.append(pid)
+    drop = [pid for pid in ids if pid not in chosen]
+    if drop:
+        marks = ",".join("?" for _ in drop)
+        conn.execute(
+            f"DELETE FROM pack_grants WHERE user_id=? AND pack_id IN ({marks})",
+            (int(user_id), *drop),
+        )
+    return list_user_pack_ids(conn, int(user_id))
+
+
+def list_active_pack_ids(conn: sqlite3.Connection, user_id: int) -> list[str]:
+    """仅订阅有效时返回席位包，并按席位上限收掉多出来的占用。"""
+    return trim_pack_seats(conn, int(user_id))
 
 
 def mark_order_paid(

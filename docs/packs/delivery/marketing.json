@@ -1,0 +1,150 @@
+{
+  "id": "marketing",
+  "title": "营销广告",
+  "md": "# 营销广告\n\n从产品地基到文案、广告、SEO、邮件、CRO\n\n## 技能排序\n\n1. Agent-Reach · 调研选题\n2. claude-seo · 搜索与GEO\n3. GPT-Image2-Skill · 封面海报\n4. ai-marketing-claude · 市场部流程\n5. product-marketing · 营销地基文档\n6. Copywriting / emails · 文案专项\n7. Ad Creative · 广告创意\n8. Page CRO · 落地页转化\n9. social-ai-team · 社媒持续运营\n10. SEO+AEO · SEO+AEO\n11. Email Sequence · 邮件序列\n\n## 应用介绍\n\n### Agent-Reach\n内容收集、评论区痛点、竞品研究\n\n### claude-seo\n官网、公众号、博客、长笔记的SEO\n\n### GPT-Image2-Skill\n封面、品牌视觉、海报、图文配图\n\n### ai-marketing-claude\nAI市场部工具包，把营销动作串起来\n\n### product-marketing\n一次沉淀产品/用户/定位，后面所有营销Skill共用\n\n### Copywriting / emails\n按营销框架写文案和邮件序列\n\n### Ad Creative\n广告创意专项，不和文案模块搅在一起\n\n### Page CRO\n转化优化，专治有流量不成交\n\n### social-ai-team\n账号持续运营，避免只靠单次投放\n\n### SEO+AEO\nSEO 与 AEO，减少纯付费依赖\n\n### Email Sequence\n邮件序列，而不是单封推销\n\n## 知识库\n\n- 营销拆解室：调研选题、搜索与GEO、封面海报、市场部流程、社媒持续运营\n  https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9\n- 马特MT：营销地基文档、文案专项\n  https://www.xiaohongshu.com/discovery/item/6a3fcb30000000001101a2ef\n- 5个落地营销Skills：广告创意、SEO+AEO、邮件序列、落地页转化\n  https://www.xiaohongshu.com/discovery/item/69ff34730000000023017de6\n",
+  "skills": [
+    {
+      "order": 1,
+      "name": "Agent-Reach",
+      "step": "调研选题",
+      "intro": "内容收集、评论区痛点、竞品研究"
+    },
+    {
+      "order": 2,
+      "name": "claude-seo",
+      "step": "搜索与GEO",
+      "intro": "官网、公众号、博客、长笔记的SEO"
+    },
+    {
+      "order": 3,
+      "name": "GPT-Image2-Skill",
+      "step": "封面海报",
+      "intro": "封面、品牌视觉、海报、图文配图"
+    },
+    {
+      "order": 4,
+      "name": "ai-marketing-claude",
+      "step": "市场部流程",
+      "intro": "AI市场部工具包，把营销动作串起来"
+    },
+    {
+      "order": 5,
+      "name": "product-marketing",
+      "step": "营销地基文档",
+      "intro": "一次沉淀产品/用户/定位，后面所有营销Skill共用"
+    },
+    {
+      "order": 6,
+      "name": "Copywriting / emails",
+      "step": "文案专项",
+      "intro": "按营销框架写文案和邮件序列"
+    },
+    {
+      "order": 7,
+      "name": "Ad Creative",
+      "step": "广告创意",
+      "intro": "广告创意专项，不和文案模块搅在一起"
+    },
+    {
+      "order": 8,
+      "name": "Page CRO",
+      "step": "落地页转化",
+      "intro": "转化优化，专治有流量不成交"
+    },
+    {
+      "order": 9,
+      "name": "social-ai-team",
+      "step": "社媒持续运营",
+      "intro": "账号持续运营，避免只靠单次投放"
+    },
+    {
+      "order": 10,
+      "name": "SEO+AEO",
+      "step": "SEO+AEO",
+      "intro": "SEO 与 AEO，减少纯付费依赖"
+    },
+    {
+      "order": 11,
+      "name": "Email Sequence",
+      "step": "邮件序列",
+      "intro": "邮件序列，而不是单封推销"
+    }
+  ],
+  "apps": [
+    {
+      "name": "Agent-Reach",
+      "intro": "内容收集、评论区痛点、竞品研究"
+    },
+    {
+      "name": "claude-seo",
+      "intro": "官网、公众号、博客、长笔记的SEO"
+    },
+    {
+      "name": "GPT-Image2-Skill",
+      "intro": "封面、品牌视觉、海报、图文配图"
+    },
+    {
+      "name": "ai-marketing-claude",
+      "intro": "AI市场部工具包，把营销动作串起来"
+    },
+    {
+      "name": "product-marketing",
+      "intro": "一次沉淀产品/用户/定位，后面所有营销Skill共用"
+    },
+    {
+      "name": "Copywriting / emails",
+      "intro": "按营销框架写文案和邮件序列"
+    },
+    {
+      "name": "Ad Creative",
+      "intro": "广告创意专项，不和文案模块搅在一起"
+    },
+    {
+      "name": "Page CRO",
+      "intro": "转化优化，专治有流量不成交"
+    },
+    {
+      "name": "social-ai-team",
+      "intro": "账号持续运营，避免只靠单次投放"
+    },
+    {
+      "name": "SEO+AEO",
+      "intro": "SEO 与 AEO，减少纯付费依赖"
+    },
+    {
+      "name": "Email Sequence",
+      "intro": "邮件序列，而不是单封推销"
+    }
+  ],
+  "kb": [
+    {
+      "source": "营销拆解室",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9",
+      "topics": [
+        "调研选题",
+        "搜索与GEO",
+        "封面海报",
+        "市场部流程",
+        "社媒持续运营"
+      ]
+    },
+    {
+      "source": "马特MT",
+      "url": "https://www.xiaohongshu.com/discovery/item/6a3fcb30000000001101a2ef",
+      "topics": [
+        "营销地基文档",
+        "文案专项"
+      ]
+    },
+    {
+      "source": "5个落地营销Skills",
+      "url": "https://www.xiaohongshu.com/discovery/item/69ff34730000000023017de6",
+      "topics": [
+        "广告创意",
+        "SEO+AEO",
+        "邮件序列",
+        "落地页转化"
+      ]
+    }
+  ]
+}

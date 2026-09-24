@@ -151,7 +151,7 @@ const WECHAT_ON = "{{wechat_enabled}}" === "1";
 const SMS_ON = "{{sms_enabled}}" === "1";
 const GITHUB_ON = "{{github_enabled}}" === "1";
 const DEV_ON = "{{dev_login}}" === "1";
-const NEXT = "{{next}}";
+const NEXT = {{next_js}};
 const COOLDOWN = parseInt("{{sms_cooldown}}", 10) || 60;
 
 const $ = (id) => document.getElementById(id);
@@ -226,7 +226,11 @@ if (githubOnly) {
   if (SMS_ON) $("smsBlock").classList.remove("hide");
   else $("smsOff").classList.remove("hide");
 }
-if (DEV_ON) $("devBlock").classList.remove("hide");
+if (DEV_ON) {
+  $("devBlock").classList.remove("hide");
+  const dev = $("devBlock").querySelector("a");
+  if (dev) dev.href = "/auth/dev-login?next=" + encodeURIComponent(NEXT || "/");
+}
 
 fetch("/auth/me", { credentials: "include" }).then(r => r.json()).then(data => {
   if (!data || !data.user) return;
