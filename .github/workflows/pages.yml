@@ -252,7 +252,7 @@ jobs:
           tar -czf nginx-site/seo-pages.tgz -C site-full s scene
 
       - name: Keep a copy for the Aliyun Nginx job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nginx-index
           path: nginx-site
