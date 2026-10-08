@@ -244,11 +244,12 @@ jobs:
             test -s "site-full/$f"
             cp "site-full/$f" nginx-site/
           done
-          # SEO 落地页：Skill 详情 + 场景页，整目录随首页一起换
+          # SEO 落地页：Skill 详情 + 场景页。几百个小文件逐个 scp 到阿里云要好几分钟，
+          # 打成一个包传过去再解
           for d in s scene; do
             test -n "$(ls -A "site-full/$d")"
-            cp -r "site-full/$d" nginx-site/
           done
+          tar -czf nginx-site/seo-pages.tgz -C site-full s scene
 
       - name: Keep a copy for the Aliyun Nginx job
         uses: actions/upload-artifact@v4
@@ -309,8 +310,8 @@ jobs:
           fi
           ssh -o ConnectTimeout=15 "$ALIYUN_USER@$ALIYUN_HOST" \
             'rm -rf /tmp/skillfeed-nginx && mkdir -p /tmp/skillfeed-nginx'
-          scp -r -o ConnectTimeout=15 nginx-index/index.html \
-            nginx-index/skills.html nginx-index/s nginx-index/scene \
+          scp -o ConnectTimeout=15 nginx-index/index.html \
+            nginx-index/skills.html nginx-index/seo-pages.tgz \
             nginx-index/llms.txt nginx-index/llms-full.txt \
             nginx-index/robots.txt nginx-index/sitemap.xml \
             nginx-index/about.md nginx-index/about.html \
@@ -340,8 +341,7 @@ jobs:
              sudo mv /tmp/skillfeed-nginx/skills.html /var/www/html/skills.html &&
              sudo chown admin:admin /var/www/html/skills.html && sudo chmod 644 /var/www/html/skills.html &&
              sudo rm -rf /var/www/html/s /var/www/html/scene &&
-             sudo mv /tmp/skillfeed-nginx/s /var/www/html/s &&
-             sudo mv /tmp/skillfeed-nginx/scene /var/www/html/scene &&
+             sudo tar -xzf /tmp/skillfeed-nginx/seo-pages.tgz --no-same-owner -C /var/www/html &&
              sudo chown -R admin:admin /var/www/html/s /var/www/html/scene &&
              sudo find /var/www/html/s /var/www/html/scene -type d -exec chmod 755 {} + &&
              sudo find /var/www/html/s /var/www/html/scene -type f -exec chmod 644 {} + &&

@@ -32,13 +32,15 @@ foreach ($name in $geoFiles) {
     scp -i $key -o ConnectTimeout=15 $src "${user}@${hostName}:/tmp/skillfeed-$name"
     ssh -i $key -o ConnectTimeout=15 "${user}@${hostName}" "sudo mv /tmp/skillfeed-$name /var/www/html/$name && sudo chown admin:admin /var/www/html/$name && sudo chmod 644 /var/www/html/$name"
 }
-# SEO 落地页整目录替换，下架的条目不留死页
+# SEO 落地页整目录替换，下架的条目不留死页。几百个小文件逐个 scp 很慢，打包传
 foreach ($dir in @("s", "scene")) {
     $src = Join-Path $site $dir
     if (-not (Test-Path $src)) { throw "missing $src — run: python skillfeed.py publish-site --out site --full" }
-    ssh -i $key -o ConnectTimeout=15 "${user}@${hostName}" "rm -rf /tmp/skillfeed-$dir"
-    scp -r -i $key -o ConnectTimeout=15 $src "${user}@${hostName}:/tmp/skillfeed-$dir"
-    ssh -i $key -o ConnectTimeout=15 "${user}@${hostName}" "sudo rm -rf /var/www/html/$dir && sudo mv /tmp/skillfeed-$dir /var/www/html/$dir && sudo chown -R admin:admin /var/www/html/$dir && sudo find /var/www/html/$dir -type d -exec chmod 755 {} + && sudo find /var/www/html/$dir -type f -exec chmod 644 {} +"
 }
+$tgz = Join-Path $env:TEMP "skillfeed-seo-pages.tgz"
+tar -czf $tgz -C $site s scene
+if ($LASTEXITCODE -ne 0) { throw "tar failed: $tgz" }
+scp -i $key -o ConnectTimeout=15 $tgz "${user}@${hostName}:/tmp/skillfeed-seo-pages.tgz"
+ssh -i $key -o ConnectTimeout=15 "${user}@${hostName}" "sudo rm -rf /var/www/html/s /var/www/html/scene && sudo tar -xzf /tmp/skillfeed-seo-pages.tgz --no-same-owner -C /var/www/html && rm -f /tmp/skillfeed-seo-pages.tgz && sudo chown -R admin:admin /var/www/html/s /var/www/html/scene && sudo find /var/www/html/s /var/www/html/scene -type d -exec chmod 755 {} + && sudo find /var/www/html/s /var/www/html/scene -type f -exec chmod 644 {} +"
 ssh -i $key -o ConnectTimeout=15 "${user}@${hostName}" "grep -o '<title>.*</title>' /var/www/html/index.html && ls -lh /var/www/html/index.html /var/www/html/llms.txt /var/www/html/catalog.json"
 Write-Host "ok https://skillfeeder.cn/  https://skillfeeder.cn/llms.txt"
