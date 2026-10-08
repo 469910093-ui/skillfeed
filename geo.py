@@ -6,8 +6,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import shutil
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -25,6 +28,7 @@ PUBLIC_ITEM_KEYS = (
     "scene", "scene_label", "scene_l2", "scene_l2_label", "owner",
     "cover_url", "skill_url", "skill_path", "one_liner", "highlights",
     "problem", "stars", "soft",
+    "one_liner_zh", "highlights_zh", "who_for_zh",
 )
 
 SECRET_KEYS = frozenset({
@@ -127,7 +131,7 @@ def sanitize_item(item: dict[str, Any] | None) -> dict[str, Any]:
         if key not in item:
             continue
         value = item[key]
-        if key == "highlights" and isinstance(value, list):
+        if key in ("highlights", "highlights_zh") and isinstance(value, list):
             out[key] = [str(v) for v in value[:8] if str(v).strip()]
         elif key == "stars":
             try:
@@ -653,9 +657,10 @@ Sitemap: {CANONICAL}/sitemap.xml
 """
 
 
-def render_sitemap_xml() -> str:
+def render_sitemap_xml(extra_paths: Iterable[str] = ()) -> str:
     pages = (
         ("/", "weekly"),
+        *((path, "weekly") for path in extra_paths),
         ("/about.html", "monthly"),
         ("/faq.html", "monthly"),
         ("/compare.html", "monthly"),
@@ -1013,6 +1018,7 @@ def noscript_html() -> str:
     <p>可靠的流量推荐渠道，帮你的产品更好地找到用户。过审后进入发现流和 Agent 目录。</p>
     <p>{_DESCRIPTION_EN}</p>
     <ul>
+      <li><a href="{CANONICAL}{SKILLS_INDEX_PATH}">全部 Skill</a></li>
       <li><a href="{CANONICAL}/llms.txt">llms.txt</a></li>
       <li><a href="{CANONICAL}/about.html">关于</a></li>
       <li><a href="{CANONICAL}/faq.html">常见问题</a></li>
@@ -1145,19 +1151,81 @@ def _page_json_ld(title: str, description: str, path: str, *, faq: bool = False)
     return page
 
 
-def render_geo_html_page(
+_PAGE_STYLE = """<style>
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem 3rem; line-height: 1.65; color: #0a1848; }
+  nav { font-size: .9rem; margin-bottom: 1.5rem; }
+  nav a { margin-right: .85rem; color: #0d7377; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; }
+  th, td { border: 1px solid #cfd6ea; padding: .4rem .55rem; text-align: left; vertical-align: top; }
+  blockquote { border-left: 3px solid #9860e7; margin: 1rem 0; padding-left: 1rem; color: #414141; }
+  .crumb { font-size: .85rem; color: #5a6485; margin-bottom: 1rem; }
+  .crumb a { color: #0d7377; margin-right: 0; }
+  .lead { font-size: 1.08rem; }
+  .cta { display: inline-block; padding: .55rem 1.2rem; border-radius: 999px; background: #0a1848; color: #fff; text-decoration: none; font-weight: 600; }
+  dl.meta { display: grid; grid-template-columns: 4.5rem 1fr; gap: .3rem .8rem; margin: 1.2rem 0; font-size: .95rem; }
+  dl.meta dt { color: #5a6485; }
+  dl.meta dd { margin: 0; }
+  ul.skills { list-style: none; padding: 0; }
+  ul.skills li { padding: .55rem 0; border-bottom: 1px solid #e6eaf5; }
+  ul.skills .stars { color: #5a6485; font-size: .85rem; margin-left: .4rem; }
+  ul.skills .line { display: block; color: #414141; font-size: .92rem; }
+</style>"""
+
+# 搜索用户多半从这些静态页落地。键名与首页 feed_dashboard 的埋点一致，
+# 同一标签页再点进首页时仍是同一个会话，渠道按第一条 session_start 算。
+# device_token 只在设备首次注册时下发一次，这里拿到也要存下，否则首页并档会失败。
+_LANDING_BEACON = """<script>
+(function () {
+  try {
+    var rnd = function () { return Math.random().toString(36).slice(2); };
+    var did = localStorage.getItem('sf_device_id');
+    if (!did) { did = 'web-' + rnd() + Date.now().toString(36); localStorage.setItem('sf_device_id', did); }
+    var sid = sessionStorage.getItem('sf_session_id');
+    if (!sid) { sid = 's-' + rnd() + Date.now().toString(36); sessionStorage.setItem('sf_session_id', sid); }
+    var q = new URLSearchParams(location.search || '');
+    var ref = '';
+    try { if (document.referrer) ref = new URL(document.referrer).hostname.replace(/^www\\./, ''); } catch (e) {}
+    var ev = {
+      action: 'session_start',
+      source: 'landing',
+      channel: String(q.get('ch') || q.get('channel') || '').slice(0, 40),
+      referrer: ref.slice(0, 120),
+      landing: String(location.pathname + location.search).slice(0, 200),
+      utm_source: String(q.get('utm_source') || q.get('sf_from') || q.get('from') || '').slice(0, 80),
+      utm_medium: String(q.get('utm_medium') || '').slice(0, 40),
+      utm_campaign: String(q.get('utm_campaign') || '').slice(0, 80),
+      client_ts: Date.now() + '-' + rnd().slice(0, 6)
+    };
+    fetch('/api/events', {
+      method: 'POST',
+      credentials: 'include',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', 'X-Device-Id': did },
+      body: JSON.stringify({ device_id: did, session_id: sid, events: [ev] })
+    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+      if (data && data.device_token) localStorage.setItem('sf_device_token', data.device_token);
+    }).catch(function () {});
+  } catch (e) {}
+})();
+</script>"""
+
+
+def _json_ld_script(payload: dict[str, Any]) -> str:
+    dumped = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    dumped = dumped.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    return f'<script type="application/ld+json">{dumped}</script>'
+
+
+def _static_html(
     *,
     title: str,
     description: str,
     path: str,
-    markdown: str,
-    faq: bool = False,
+    json_ld: dict[str, Any],
+    body: str,
+    head_extra: str = "",
 ) -> str:
-    """给爬虫看的独立 HTML，不依赖 Feed JS。"""
-    payload = _page_json_ld(title, description, path, faq=faq)
-    dumped = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    dumped = dumped.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
-    body = _md_to_html(markdown)
+    """独立 HTML 外壳：说明页、Skill 详情、场景页共用，不依赖 Feed JS。"""
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1165,20 +1233,13 @@ def render_geo_html_page(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_attr(title)}</title>
 {seo_meta_tags(title=title, description=description, path=path)}<link rel="describedby" href="{CANONICAL}/llms.txt">
-<link rel="alternate" type="text/markdown" href="{CANONICAL}{path.replace('.html', '.md')}">
-<script type="application/ld+json">{dumped}</script>
-<style>
-  body {{ font-family: "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem 3rem; line-height: 1.65; color: #0a1848; }}
-  nav {{ font-size: .9rem; margin-bottom: 1.5rem; }}
-  nav a {{ margin-right: .85rem; color: #0d7377; }}
-  table {{ border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; }}
-  th, td {{ border: 1px solid #cfd6ea; padding: .4rem .55rem; text-align: left; vertical-align: top; }}
-  blockquote {{ border-left: 3px solid #9860e7; margin: 1rem 0; padding-left: 1rem; color: #414141; }}
-</style>
+{head_extra}{_json_ld_script(json_ld)}
+{_PAGE_STYLE}
 </head>
 <body>
 <nav>
   <a href="{CANONICAL}/">{BRAND}</a>
+  <a href="{CANONICAL}{SKILLS_INDEX_PATH}">全部 Skill</a>
   <a href="{CANONICAL}/about.html">关于</a>
   <a href="{CANONICAL}/faq.html">常见问题</a>
   <a href="{CANONICAL}/compare.html">对比</a>
@@ -1188,9 +1249,408 @@ def render_geo_html_page(
 <article>
 {body}
 </article>
+{_LANDING_BEACON}
 </body>
 </html>
 """
+
+
+def render_geo_html_page(
+    *,
+    title: str,
+    description: str,
+    path: str,
+    markdown: str,
+    faq: bool = False,
+) -> str:
+    """给爬虫看的独立 HTML，不依赖 Feed JS。"""
+    return _static_html(
+        title=title,
+        description=description,
+        path=path,
+        json_ld=_page_json_ld(title, description, path, faq=faq),
+        body=_md_to_html(markdown),
+        head_extra=(
+            f'<link rel="alternate" type="text/markdown" '
+            f'href="{CANONICAL}{path.replace(".html", ".md")}">\n'
+        ),
+    )
+
+
+# —— SEO 落地页：Skill 详情 / 场景 / 总目录 ——
+
+SKILL_PAGE_DIR = "s"
+SCENE_PAGE_DIR = "scene"
+SKILLS_INDEX_NAME = "skills.html"
+SKILLS_INDEX_PATH = f"/{SKILLS_INDEX_NAME}"
+RELATED_LIMIT = 8
+SCENE_PREVIEW_LIMIT = 6
+ITEM_LIST_LD_LIMIT = 50
+
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slug_part(text: Any) -> str:
+    return _SLUG_RE.sub("-", str(text or "").lower()).strip("-")
+
+
+def _base_slug(item: dict[str, Any]) -> str:
+    owner, _, repo = str(item.get("full_name") or "").partition("/")
+    parts = [_slug_part(owner), _slug_part(repo)]
+    skill_path = str(item.get("skill_path") or "")
+    if skill_path:
+        # 目录名多半是 ASCII，中文 name 剥完常只剩一两个字母，容易撞名
+        folder = _slug_part(Path(skill_path).parent.name)
+        name = folder or _slug_part(item.get("name"))
+        if name and name != parts[1]:
+            parts.append(name)
+    return "-".join(p for p in parts if p)[:120].strip("-")
+
+
+def assign_skill_slugs(items: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
+    """撞名的条目一律追加 id 哈希，结果与条目顺序无关，链接跨次发布稳定。"""
+    bases = [_base_slug(it) for it in items]
+    counts = Counter(bases)
+    out: list[tuple[str, dict[str, Any]]] = []
+    for i, it in enumerate(items):
+        base = bases[i]
+        if base and counts[base] == 1:
+            out.append((base, it))
+            continue
+        key = str(it.get("id") or f"{it.get('full_name')}::{it.get('skill_path')}")
+        digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:8]
+        out.append((f"{base}-{digest}" if base else f"skill-{digest}", it))
+    return out
+
+
+def skill_page_path(slug: str) -> str:
+    return f"/{SKILL_PAGE_DIR}/{slug}.html"
+
+
+def scene_key(item: dict[str, Any]) -> str:
+    return _slug_part(item.get("scene"))
+
+
+def scene_page_path(key: str) -> str:
+    return f"/{SCENE_PAGE_DIR}/{key}.html"
+
+
+def _clip(text: str, limit: int) -> str:
+    text = re.sub(r"\s+", " ", text or "").strip()
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _display_name(item: dict[str, Any]) -> str:
+    return str(item.get("name") or item.get("full_name") or "").strip()
+
+
+def _zh_line(item: dict[str, Any]) -> str:
+    for key in ("one_liner_zh", "one_liner", "problem", "description"):
+        value = str(item.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _zh_highlights(item: dict[str, Any]) -> list[str]:
+    raw = item.get("highlights_zh") or item.get("highlights") or []
+    return [str(h).strip() for h in raw if str(h).strip()] if isinstance(raw, list) else []
+
+
+def _stars(item: dict[str, Any]) -> int:
+    try:
+        return int(item.get("stars") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _stars_text(item: dict[str, Any]) -> str:
+    n = _stars(item)
+    return f"★ {n:,}" if n > 0 else ""
+
+
+def _breadcrumb_ld(trail: list[tuple[str, str]]) -> dict[str, Any]:
+    return {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": i, "name": name, "item": f"{CANONICAL}{path}"}
+            for i, (name, path) in enumerate(trail, start=1)
+        ],
+    }
+
+
+def _breadcrumb_html(trail: list[tuple[str, str]]) -> str:
+    links = [f'<a href="{CANONICAL}{_attr(path)}">{_attr(name)}</a>' for name, path in trail[:-1]]
+    links.append(_attr(trail[-1][0]))
+    return f'<p class="crumb">{" › ".join(links)}</p>'
+
+
+def _skill_list_html(rows: list[tuple[str, dict[str, Any]]]) -> str:
+    lis = []
+    for slug, it in rows:
+        stars = _stars_text(it)
+        star_html = f'<span class="stars">{_attr(stars)}</span>' if stars else ""
+        line = _clip(_zh_line(it), 80)
+        line_html = f'<span class="line">{_attr(line)}</span>' if line else ""
+        lis.append(
+            f'<li><a href="{CANONICAL}{skill_page_path(slug)}">{_attr(_display_name(it))}</a>'
+            f"{star_html}{line_html}</li>"
+        )
+    return '<ul class="skills">' + "".join(lis) + "</ul>"
+
+
+def _item_list_ld(name: str, rows: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    return {
+        "@type": "ItemList",
+        "name": name,
+        "numberOfItems": len(rows),
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": i,
+                "name": _display_name(it),
+                "url": f"{CANONICAL}{skill_page_path(slug)}",
+            }
+            for i, (slug, it) in enumerate(rows[:ITEM_LIST_LD_LIMIT], start=1)
+        ],
+    }
+
+
+def render_skill_page(
+    slug: str,
+    item: dict[str, Any],
+    related: list[tuple[str, dict[str, Any]]],
+) -> str:
+    name = _display_name(item)
+    path = skill_page_path(slug)
+    line = _zh_line(item)
+    scene_label = str(item.get("scene_label") or "").strip()
+    l2_label = str(item.get("scene_l2_label") or "").strip()
+    who = str(item.get("who_for_zh") or "").strip()
+    full_name = str(item.get("full_name") or "").strip()
+    repo_url = str(item.get("url") or "").strip()
+    cta_url = str(item.get("skill_url") or repo_url).strip()
+    kind = "MCP" if str(item.get("kind") or "").lower() == "mcp" else "Skill"
+    stars = _stars_text(item)
+
+    if line:
+        title = f"{name}：{_clip(line, 30)}｜{BRAND}"
+    else:
+        title = f"{name} · {l2_label or scene_label or 'Agent ' + kind}｜{BRAND}"
+    lead = _clip(line, 80)
+    if lead and lead[-1] not in "。！？.!?…":
+        lead += "。"
+    desc_bits = [lead] if lead else []
+    if who:
+        desc_bits.append(f"适合{who}。")
+    if full_name:
+        desc_bits.append(f"GitHub {full_name}{' ' + stars if stars else ''}。")
+    description = _clip("".join(desc_bits), 150) or PAGE_DESCRIPTION
+
+    trail = [(BRAND, "/"), ("全部 Skill", SKILLS_INDEX_PATH)]
+    key = scene_key(item)
+    if key and scene_label:
+        trail.append((scene_label, scene_page_path(key)))
+    trail.append((name, path))
+
+    meta_rows = []
+    if full_name and repo_url:
+        meta_rows.append(("仓库", f'<a href="{_attr(repo_url)}" rel="noopener">{_attr(full_name)}</a>'))
+    if stars:
+        meta_rows.append(("星标", _attr(stars)))
+    if scene_label:
+        scene_html = (
+            f'<a href="{CANONICAL}{scene_page_path(key)}">{_attr(scene_label)}</a>'
+            if key else _attr(scene_label)
+        )
+        if l2_label:
+            scene_html += f" · {_attr(l2_label)}"
+        meta_rows.append(("场景", scene_html))
+    if who:
+        meta_rows.append(("适合", _attr(who)))
+    meta_rows.append(("类型", kind))
+
+    parts = [
+        _breadcrumb_html(trail),
+        f"<h1>{_attr(name)}</h1>",
+    ]
+    if line:
+        parts.append(f'<p class="lead">{_attr(line)}</p>')
+    if cta_url:
+        parts.append(f'<p><a class="cta" href="{_attr(cta_url)}" rel="noopener">打开 GitHub</a></p>')
+    parts.append(
+        '<dl class="meta">'
+        + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in meta_rows)
+        + "</dl>"
+    )
+    highlights = _zh_highlights(item)
+    if highlights:
+        parts.append("<h2>能做什么</h2>")
+        parts.append("<ul>" + "".join(f"<li>{_attr(h)}</li>" for h in highlights) + "</ul>")
+    original = str(item.get("description") or "").strip()
+    if original and original != line:
+        parts.append("<h2>原文简介</h2>")
+        parts.append(f'<p lang="en">{_attr(_clip(original, 600))}</p>')
+    if related:
+        parts.append("<h2>同场景推荐</h2>")
+        parts.append(_skill_list_html(related))
+
+    page_url = f"{CANONICAL}{path}"
+    code: dict[str, Any] = {
+        "@type": "SoftwareSourceCode",
+        "name": name,
+        "description": description,
+        "url": page_url,
+    }
+    if repo_url:
+        code["codeRepository"] = repo_url
+    keywords = [k for k in (scene_label, l2_label, f"Agent {kind}") if k]
+    if keywords:
+        code["keywords"] = ", ".join(keywords)
+    json_ld = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "WebPage",
+                "name": title,
+                "description": description,
+                "url": page_url,
+                "inLanguage": "zh-CN",
+                "isPartOf": {"@type": "WebSite", "name": BRAND, "url": CANONICAL},
+            },
+            _breadcrumb_ld(trail),
+            code,
+        ],
+    }
+    return _static_html(
+        title=title, description=description, path=path, json_ld=json_ld, body="\n".join(parts),
+    )
+
+
+def _l2_sections(rows: list[tuple[str, dict[str, Any]]]) -> list[tuple[str, list[tuple[str, dict[str, Any]]]]]:
+    groups: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for slug, it in rows:
+        label = str(it.get("scene_l2_label") or "").strip() or "其他"
+        groups.setdefault(label, []).append((slug, it))
+    ordered = sorted(groups.items(), key=lambda kv: (kv[0] == "其他", -len(kv[1]), kv[0]))
+    return ordered
+
+
+def render_scene_page(key: str, label: str, rows: list[tuple[str, dict[str, Any]]]) -> str:
+    path = scene_page_path(key)
+    title = f"{label} Skill 推荐｜已过滤的高星 Agent Skill · {BRAND}"
+    top = "、".join(_display_name(it) for _, it in rows[:3])
+    description = _clip(f"{label}场景下已过滤的高星 Agent Skill 与 MCP，共 {len(rows)} 个：{top} 等。", 150)
+    trail = [(BRAND, "/"), ("全部 Skill", SKILLS_INDEX_PATH), (label, path)]
+    parts = [
+        _breadcrumb_html(trail),
+        f"<h1>{_attr(label)} Skill 推荐</h1>",
+        f'<p class="lead">共 {len(rows)} 个，按 GitHub 星标排序。</p>',
+    ]
+    for l2_label, group in _l2_sections(rows):
+        parts.append(f"<h2>{_attr(l2_label)}</h2>")
+        parts.append(_skill_list_html(group))
+    json_ld = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "name": title,
+                "description": description,
+                "url": f"{CANONICAL}{path}",
+                "inLanguage": "zh-CN",
+                "isPartOf": {"@type": "WebSite", "name": BRAND, "url": CANONICAL},
+            },
+            _breadcrumb_ld(trail),
+            _item_list_ld(f"{label} Skill", rows),
+        ],
+    }
+    return _static_html(
+        title=title, description=description, path=path, json_ld=json_ld, body="\n".join(parts),
+    )
+
+
+def render_skills_index(
+    scenes: list[tuple[str, str, list[tuple[str, dict[str, Any]]]]],
+    total: int,
+) -> str:
+    title = f"全部 Agent Skill｜按场景浏览已过滤的高星 Skill · {BRAND}"
+    labels = "、".join(label for _, label, _ in scenes[:6])
+    description = _clip(f"{total} 个已过滤的高星 Agent Skill 与 MCP，按场景浏览：{labels}。", 150)
+    trail = [(BRAND, "/"), ("全部 Skill", SKILLS_INDEX_PATH)]
+    parts = [
+        _breadcrumb_html(trail),
+        "<h1>全部 Skill</h1>",
+        f'<p class="lead">{total} 个已过滤的高星 Agent Skill 与 MCP，按场景浏览。</p>',
+    ]
+    for key, label, rows in scenes:
+        scene_url = f"{CANONICAL}{scene_page_path(key)}"
+        parts.append(f'<h2><a href="{scene_url}">{_attr(label)}</a>（{len(rows)}）</h2>')
+        parts.append(_skill_list_html(rows[:SCENE_PREVIEW_LIMIT]))
+        if len(rows) > SCENE_PREVIEW_LIMIT:
+            parts.append(f'<p><a href="{scene_url}">查看全部 {len(rows)} 个</a></p>')
+    json_ld = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "name": title,
+                "description": description,
+                "url": f"{CANONICAL}{SKILLS_INDEX_PATH}",
+                "inLanguage": "zh-CN",
+                "isPartOf": {"@type": "WebSite", "name": BRAND, "url": CANONICAL},
+            },
+            _breadcrumb_ld(trail),
+        ],
+    }
+    return _static_html(
+        title=title,
+        description=description,
+        path=SKILLS_INDEX_PATH,
+        json_ld=json_ld,
+        body="\n".join(parts),
+    )
+
+
+def _related(
+    slug: str,
+    item: dict[str, Any],
+    by_scene: dict[str, list[tuple[str, dict[str, Any]]]],
+) -> list[tuple[str, dict[str, Any]]]:
+    pool = [row for row in by_scene.get(scene_key(item), []) if row[0] != slug]
+    l2 = str(item.get("scene_l2") or "")
+    same_l2 = [row for row in pool if l2 and str(row[1].get("scene_l2") or "") == l2]
+    rest = [row for row in pool if row not in same_l2]
+    return (same_l2 + rest)[:RELATED_LIMIT]
+
+
+def render_seo_pages(items: list[dict[str, Any]]) -> dict[str, str]:
+    """站内相对路径 → HTML。items 须已消毒。"""
+    slugged = assign_skill_slugs(items[:CATALOG_LIMIT])
+    by_scene: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    labels: dict[str, str] = {}
+    for slug, it in slugged:
+        key = scene_key(it)
+        if not key:
+            continue
+        by_scene.setdefault(key, []).append((slug, it))
+        labels.setdefault(key, str(it.get("scene_label") or "").strip() or key)
+    for key in by_scene:
+        by_scene[key] = sorted(by_scene[key], key=lambda row: (-_stars(row[1]), row[0]))
+
+    pages: dict[str, str] = {}
+    for slug, it in slugged:
+        pages[f"{SKILL_PAGE_DIR}/{slug}.html"] = render_skill_page(
+            slug, it, _related(slug, it, by_scene),
+        )
+    scenes = sorted(
+        ((key, labels[key], rows) for key, rows in by_scene.items()),
+        key=lambda row: (-len(row[2]), row[1]),
+    )
+    for key, label, rows in scenes:
+        pages[f"{SCENE_PAGE_DIR}/{key}.html"] = render_scene_page(key, label, rows)
+    pages[SKILLS_INDEX_NAME] = render_skills_index(scenes, len(slugged))
+    return pages
 
 
 def render_about_html() -> str:
@@ -1248,11 +1708,21 @@ def write_geo_site(out: Path, feed: dict[str, Any], *, full: bool = False) -> li
     dest.mkdir(parents=True, exist_ok=True)
     raw_items = [it for it in (feed.get("items") or []) if isinstance(it, dict)]
     items = sanitize_items(raw_items) if full else []
+    for sub in (SKILL_PAGE_DIR, SCENE_PAGE_DIR):
+        shutil.rmtree(dest / sub, ignore_errors=True)
+    stale_index = dest / SKILLS_INDEX_NAME
+    if stale_index.exists():
+        stale_index.unlink()
+    seo_pages = render_seo_pages(items) if full else {}
+    if full:
+        for sub in (SKILL_PAGE_DIR, SCENE_PAGE_DIR):
+            (dest / sub).mkdir(parents=True, exist_ok=True)
+    seo_paths = sorted(seo_pages, key=lambda rel: (rel != SKILLS_INDEX_NAME, rel))
     files = {
         "llms.txt": render_llms_txt(full=full, item_count=len(raw_items)),
         "llms-full.txt": render_llms_full_txt(items, full=full),
         "robots.txt": render_robots_txt(),
-        "sitemap.xml": render_sitemap_xml(),
+        "sitemap.xml": render_sitemap_xml(f"/{rel}" for rel in seo_paths),
         "about.md": render_about_md(),
         "faq.md": render_faq_md(),
         "compare.md": render_compare_md(),
@@ -1264,6 +1734,7 @@ def write_geo_site(out: Path, feed: dict[str, Any], *, full: bool = False) -> li
             full=full,
             generated_at=str(feed.get("generated_at") or "") or None,
         ),
+        **seo_pages,
     }
     written: list[Path] = []
     for name, text in files.items():

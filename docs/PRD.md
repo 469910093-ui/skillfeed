@@ -473,13 +473,16 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 | `/llms-full.txt` | 需要目录的 Agent | 消毒后的 Top 200（星数降序）。Pages 壳不带条目 |
 | `/about.md` `/faq.md` `/compare.md` | 引用 / How-to / X vs Y | 纯 Markdown，不依赖 JS |
 | `/about.html` `/faq.html` `/compare.html` | 搜索引擎 / 不会跑 JS 的爬虫 | 与对应 `.md` 同文事实，独立 HTML，不进 Feed JS |
+| `/skills.html` | 搜索引擎 / 用户 | 全部 Skill 总目录：按一级场景分组，每组前 6 条 + 链到场景页 |
+| `/scene/{scene}.html` | 搜索引擎 / 用户 | 一级场景聚合页，按二级场景分组、星标降序，链到每条详情 |
+| `/s/{slug}.html` | 搜索引擎 / 用户 | 单条 Skill 详情：中文一句话、能做什么、适合谁、星标、场景、「打开 GitHub」、同场景推荐 8 条；JSON-LD `SoftwareSourceCode` + `BreadcrumbList` |
 | `/catalog.json` | 程序读取 | 字段白名单，与预览卡对齐 |
 | `/robots.txt` `/sitemap.xml` | 检索爬虫 | 放行 GPTBot / ClaudeBot / PerplexityBot；挡住 `/op` `/admin` `/auth` |
 | `GET /api/geo/skills?q=` | 按意图检索 | 免登录、限流、无 `rank_debug` |
 | `GET /api/geo/skills/{owner}/{repo}` | 单条 | 不在目录则 404 |
 | `GET /api/geo/openapi.json` | Agent | 只含 geo 路径。完整 `/docs` 仍登录后才开 |
 
-**公开字段白名单：** `id, full_name, name, description, url, source, kind, scene, scene_label, scene_l2, stars, one_liner, highlights, problem, skill_url, skill_path`。  
+**公开字段白名单：** `id, full_name, name, description, url, source, kind, scene, scene_label, scene_l2, stars, one_liner, highlights, problem, skill_url, skill_path`，以及中文译稿 `one_liner_zh, highlights_zh, who_for_zh`（详情页用）。  
 **禁止出门：** `personal_score` / `rank_*` / 门禁明细 / corpus / 未过审 UGC / `/op` `/admin` `/api/op`。
 
 **发布：** `publish-site` 默认（Pages）写指针文件、0 条目录；`--full`（主站）写消毒目录。Nginx 从 `/var/www/html` 直接吐这些文件，不进 FastAPI 登录中间件。本地 `python skillfeed.py api` 也会动态生成同一批路径。静态文本必须带 `Content-Type: …; charset=utf-8`，且落盘为 UTF-8 无 BOM、LF 换行：裸 `text/plain` 或 CRLF 在中文 Windows 浏览器会按 GBK 打开，看起来像乱码。
@@ -495,6 +498,14 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 - `/llms.txt` 的 `>` 一句话保持 <200 字符，并含 `## Key Facts`
 
 **首页 Agent 指针：** `<link rel="describedby" href="https://skillfeeder.cn/llms.txt">` + `hreflang` + JSON-LD + `<noscript>`。
+
+**SEO 落地页（Skill 详情 / 场景 / 总目录）：**
+- 首页卡片靠 JS 渲染，爬虫读不到条目；搜索流量由 `/s/` `/scene/` `/skills.html` 承接，全部服务端直出中文，不依赖 Feed JS
+- 只在 `publish-site --full`（主站）生成；Pages 预览壳不写，且每次发布先清空 `s/` `scene/` 再写，下架条目不留死页
+- slug：`owner-repo`，同仓多 skill 追加 skill 名；撞名时所有撞名条目统一追加 id 哈希 8 位，与条目顺序无关
+- 全部写进 `sitemap.xml`；首页 `<noscript>` 与说明页导航链到 `/skills.html`
+- 所有静态 HTML（含 about/faq/compare）带轻量 `session_start` 埋点，复用首页的 `sf_device_id` / `sf_session_id` / `sf_device_token`，搜索用户落地即按 referrer 归因，再点进首页也算同一会话
+- 部署：`pages.yml` 与 `deploy_to_aliyun.ps1` 整目录替换 `/var/www/html/s` `/var/www/html/scene`；本地 `skillfeed.py api` 不动态生成这些页
 
 **本产品自己的 skill：** 仓库根 `SKILL.md`（`name: skillfeeder`）。Agent 路由「找远程 skill」时用；不代装。
 
@@ -657,6 +668,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-10-08 | SEO 落地页：每条 Skill 出 `/s/{slug}.html` 详情、每个场景出 `/scene/{key}.html`、加 `/skills.html` 总目录，全部服务端直出中文并进 sitemap；静态页补 `session_start` 埋点，搜索落地可归因 | §6.3、`geo.py`、`skillfeed.py`、`pages.yml`、`deploy_to_aliyun.ps1` |
 | 2026-09-24 | 商详价格下小字改为包月亮点：1 个场景，按本机已有技能推荐并持续更新 | §5.1、`feed_dashboard.py` |
 | 2026-09-24 | 场景席位超出上限时只留最近占用（开通指定的场景优先），其余占用收掉 | §3.1、`server/db.py`、`server/pay.py` |
 | 2026-09-24 | 场景包改订阅制（无买断）：连续 29/78/228 · 单独 39/105/299；席位 1/2/3；checkout+assign 席位；过期停交付 | §3.1、§5.1、`pay.py`、`db.py`、`app.py`、`feed_dashboard.py` |

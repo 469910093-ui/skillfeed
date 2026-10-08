@@ -143,6 +143,132 @@ class TestWriteGeoSite(unittest.TestCase):
             self.assertNotIn("secret ranking", full_md)
 
 
+ZH_FEED = {
+    "generated_at": "2026-10-08T00:00:00+00:00",
+    "items": [
+        {
+            "id": "anthropics/skills::skills/internal-comms/SKILL.md",
+            "full_name": "anthropics/skills",
+            "name": "internal-comms",
+            "skill_path": "skills/internal-comms/SKILL.md",
+            "skill_url": "https://github.com/anthropics/skills/blob/HEAD/skills/internal-comms/SKILL.md",
+            "url": "https://github.com/anthropics/skills",
+            "description": "Write internal communications.",
+            "one_liner_zh": "按公司格式写周报、状态更新和内部通讯。",
+            "highlights_zh": ["写周报", "写项目进展"],
+            "who_for_zh": "需要定期汇报的职场人",
+            "scene": "content",
+            "scene_label": "内容创作",
+            "scene_l2": "writing",
+            "scene_l2_label": "写作润色",
+            "kind": "skill",
+            "stars": 180085,
+            "personal_score": 0.99,
+            "rank_why": "secret ranking",
+        },
+        {
+            "id": "anthropics/skills::skills/pptx/SKILL.md",
+            "full_name": "anthropics/skills",
+            "name": "pptx",
+            "skill_path": "skills/pptx/SKILL.md",
+            "url": "https://github.com/anthropics/skills",
+            "one_liner_zh": "生成和编辑 PPT。",
+            "scene": "content",
+            "scene_label": "内容创作",
+            "scene_l2": "slides",
+            "scene_l2_label": "PPT",
+            "stars": 180085,
+        },
+        {
+            "id": "acme/weekly-skill",
+            "full_name": "acme/weekly-skill",
+            "name": "weekly-skill",
+            "url": "https://github.com/acme/weekly-skill",
+            "one_liner": "weekly report helper",
+            "scene": "agent-tooling",
+            "scene_label": "Agent工具链",
+            "stars": 88,
+        },
+    ],
+}
+
+
+class TestSeoPages(unittest.TestCase):
+    def test_slugs_are_stable_and_unique(self):
+        items = geo.sanitize_items(ZH_FEED["items"])
+        slugs = [slug for slug, _ in geo.assign_skill_slugs(items)]
+        self.assertEqual(
+            slugs,
+            ["anthropics-skills-internal-comms", "anthropics-skills-pptx", "acme-weekly-skill"],
+        )
+        clash = [
+            {"id": "a", "full_name": "a-b/c", "name": "c"},
+            {"id": "b", "full_name": "a/b-c", "name": "b-c"},
+        ]
+        forward = dict((it["id"], s) for s, it in geo.assign_skill_slugs(clash))
+        backward = dict((it["id"], s) for s, it in geo.assign_skill_slugs(list(reversed(clash))))
+        self.assertEqual(forward, backward)
+        self.assertNotEqual(forward["a"], forward["b"])
+
+    def test_full_site_writes_detail_scene_and_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            geo.write_geo_site(out, ZH_FEED, full=True)
+            detail = (out / "s" / "anthropics-skills-internal-comms.html").read_text(encoding="utf-8")
+            self.assertTrue(detail.startswith("<!DOCTYPE html>"))
+            self.assertIn("<h1>internal-comms</h1>", detail)
+            self.assertIn("按公司格式写周报", detail)
+            self.assertIn("需要定期汇报的职场人", detail)
+            self.assertIn("打开 GitHub", detail)
+            self.assertIn("skills/internal-comms/SKILL.md", detail)
+            self.assertIn("SoftwareSourceCode", detail)
+            self.assertIn("BreadcrumbList", detail)
+            self.assertIn("https://skillfeeder.cn/s/anthropics-skills-internal-comms.html", detail)
+            self.assertIn("/s/anthropics-skills-pptx.html", detail)
+            self.assertIn("/scene/content.html", detail)
+            self.assertIn("session_start", detail)
+            self.assertIn("sf_device_token", detail)
+            self.assertNotIn("secret ranking", detail)
+            self.assertNotIn("personal_score", detail)
+
+            scene = (out / "scene" / "content.html").read_text(encoding="utf-8")
+            self.assertIn("内容创作 Skill 推荐", scene)
+            self.assertIn("<h2>写作润色</h2>", scene)
+            self.assertIn("<h2>PPT</h2>", scene)
+            self.assertIn("ItemList", scene)
+
+            index = (out / "skills.html").read_text(encoding="utf-8")
+            self.assertIn("/scene/content.html", index)
+            self.assertIn("/scene/agent-tooling.html", index)
+
+            sitemap = (out / "sitemap.xml").read_text(encoding="utf-8")
+            self.assertIn("https://skillfeeder.cn/skills.html", sitemap)
+            self.assertIn("https://skillfeeder.cn/s/acme-weekly-skill.html", sitemap)
+            self.assertIn("https://skillfeeder.cn/scene/content.html", sitemap)
+
+            about = (out / "about.html").read_text(encoding="utf-8")
+            self.assertIn("/skills.html", about)
+            self.assertIn("session_start", about)
+
+    def test_republish_drops_stale_pages_and_preview_writes_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            geo.write_geo_site(out, ZH_FEED, full=True)
+            smaller = {"items": ZH_FEED["items"][2:]}
+            geo.write_geo_site(out, smaller, full=True)
+            self.assertEqual(
+                sorted(p.name for p in (out / "s").iterdir()), ["acme-weekly-skill.html"],
+            )
+            self.assertFalse((out / "scene" / "content.html").exists())
+
+            geo.write_geo_site(out, ZH_FEED, full=False)
+            self.assertFalse((out / "s").exists())
+            self.assertFalse((out / "scene").exists())
+            self.assertFalse((out / "skills.html").exists())
+            sitemap = (out / "sitemap.xml").read_text(encoding="utf-8")
+            self.assertNotIn("/s/", sitemap)
+
+
 class TestPublishSiteWritesGeo(unittest.TestCase):
     def _publish(self, extra):
         tmp = tempfile.TemporaryDirectory()

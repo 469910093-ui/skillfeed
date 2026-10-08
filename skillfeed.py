@@ -817,7 +817,10 @@ def cmd_publish_site(argv: list[str]) -> int:
     print(f"[publish-site] wrote {out.resolve()}/embed.html (lite embed, {mode})")
     print(f"[publish-site] items={len(published.get('items') or [])} "
           f"corpus={len(published.get('corpus') or [])} mode={mode}")
-    print(f"[publish-site] geo={', '.join(p.name for p in geo_paths)}")
+    top = [p.name for p in geo_paths if p.parent.resolve() == out.resolve()]
+    nested = len(geo_paths) - len(top)
+    print(f"[publish-site] geo={', '.join(top)}")
+    print(f"[publish-site] seo_pages={nested} (/s/ + /scene/)")
     return 0
 
 

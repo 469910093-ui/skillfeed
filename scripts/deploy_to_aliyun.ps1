@@ -11,7 +11,7 @@ $user = "admin"
 $geoFiles = @(
     "llms.txt", "llms-full.txt", "robots.txt", "sitemap.xml",
     "about.md", "about.html", "faq.md", "faq.html", "compare.md", "compare.html",
-    "catalog.json", "og.png",
+    "catalog.json", "skills.html", "og.png",
     "favicon.ico", "favicon.png", "apple-touch-icon.png"
 )
 
@@ -31,6 +31,14 @@ foreach ($name in $geoFiles) {
     if (-not (Test-Path $src)) { throw "missing $src — publish-site should write Agent Surface files" }
     scp -i $key -o ConnectTimeout=15 $src "${user}@${hostName}:/tmp/skillfeed-$name"
     ssh -i $key -o ConnectTimeout=15 "${user}@${hostName}" "sudo mv /tmp/skillfeed-$name /var/www/html/$name && sudo chown admin:admin /var/www/html/$name && sudo chmod 644 /var/www/html/$name"
+}
+# SEO 落地页整目录替换，下架的条目不留死页
+foreach ($dir in @("s", "scene")) {
+    $src = Join-Path $site $dir
+    if (-not (Test-Path $src)) { throw "missing $src — run: python skillfeed.py publish-site --out site --full" }
+    ssh -i $key -o ConnectTimeout=15 "${user}@${hostName}" "rm -rf /tmp/skillfeed-$dir"
+    scp -r -i $key -o ConnectTimeout=15 $src "${user}@${hostName}:/tmp/skillfeed-$dir"
+    ssh -i $key -o ConnectTimeout=15 "${user}@${hostName}" "sudo rm -rf /var/www/html/$dir && sudo mv /tmp/skillfeed-$dir /var/www/html/$dir && sudo chown -R admin:admin /var/www/html/$dir && sudo find /var/www/html/$dir -type d -exec chmod 755 {} + && sudo find /var/www/html/$dir -type f -exec chmod 644 {} +"
 }
 ssh -i $key -o ConnectTimeout=15 "${user}@${hostName}" "grep -o '<title>.*</title>' /var/www/html/index.html && ls -lh /var/www/html/index.html /var/www/html/llms.txt /var/www/html/catalog.json"
 Write-Host "ok https://skillfeeder.cn/  https://skillfeeder.cn/llms.txt"
