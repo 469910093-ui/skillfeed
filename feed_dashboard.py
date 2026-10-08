@@ -2215,7 +2215,7 @@ const I18N = {{
     packsSeatsFull: '席位已满，请升级套餐',
     packsEntryPrice: '连续包月 ¥29 起',
     packsMonthHint: '1 个场景。按你电脑里已有的技能推荐，并持续更新',
-    packsInstallHint: '装到本机后，推荐会按你的上下文更新',
+    packsInstallHint: '在你的电脑上安装之后，推荐会按上下文更新',
     packsMine: '我的场景席位', packsNoneOwned: '还没有选用场景',
     subPlanTitle: '场景订阅',
     subHero1: '按你电脑里已有的技能推荐',
@@ -4749,7 +4749,7 @@ function packDeliverHtml(p) {{
     const href = safeUrl(k.url);
     const title = escapeHtml(k.source || '');
     const link = href && href !== 'about:blank'
-      ? `<a href="${{escapeHtml(href)}}" target="_blank" rel="noopener">${{title}}</a>`
+      ? `<a href="${{escapeHtml(safeUrl(href))}}" target="_blank" rel="noopener">${{title}}</a>`
       : `<b>${{title}}</b>`;
     const topics = (k.topics || []).filter(Boolean).join('、');
     return `<li>${{link}}${{topics ? `<span>${{escapeHtml(topics)}}</span>` : ''}}</li>`;
