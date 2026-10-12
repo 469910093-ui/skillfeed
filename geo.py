@@ -1044,7 +1044,11 @@ def _inline_md(text: str) -> str:
         elif match.group(2) is not None:
             parts.append(f"<strong>{_attr(match.group(2))}</strong>")
         else:
-            parts.append(f'<a href="{_attr(match.group(4))}">{_attr(match.group(3))}</a>')
+            href = match.group(4)
+            # URL scheme 白名单：只允许 http/https，防止 javascript: 等协议注入
+            if not re.match(r'^https?://', href, re.I):
+                href = '#'
+            parts.append(f'<a href="{_attr(href)}">{_attr(match.group(3))}</a>')
         pos = match.end()
     parts.append(_attr(text[pos:]))
     return "".join(parts)

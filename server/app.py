@@ -121,6 +121,7 @@ GATE_PUBLIC_EXACT = frozenset({
     # 发现流全量免费：hydrateLiveFeed 用它把已过审 UGC 混进静态首页。
     # 只出 published/approved，pending 不会从这里漏出去。
     "/api/feed",
+    "/api/packs/shelf",
     "/api/site-config",
     # 游客进站路径也要记：首页是 Nginx 静态页，多数人还没登录。
     # 已有 IP/设备限流；不记 IP / UA。运营读走 /op「路径」，不公开。
@@ -352,7 +353,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins or ["*"],
+        allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -1058,7 +1059,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         with db.db_session(settings.db_path) as conn:
             db.set_user_plan(
                 conn, uid, "subscriber", until,
-                seat_limit=3, billing="activation",
+                seat_limit=5, billing="activation",
             )
             user = db.get_user(conn, uid)
             packs = db.list_active_pack_ids(conn, uid) if user else []
@@ -1131,28 +1132,31 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             with db.db_session(settings.db_path) as conn:
                 order = pay.create_order(
                     conn, user_id=uid, sku_id=body.sku, settings=settings,
+                    assign_pack=assign,
                 )
-                if not settings.dev_mode:
+                if settings.dev_mode:
+                    paid, replay = pay.apply_paid_notify(
+                        conn,
+                        out_trade_no=order["out_trade_no"],
+                        provider_txn_id=f"dev-{order['out_trade_no']}",
+                        amount_fen=int(order["amount_fen"]),
+                        settings=settings,
+                        assign_pack=assign,
+                    )
+                    packs = db.list_active_pack_ids(conn, uid)
+                    user = db.get_user(conn, uid)
+                else:
                     if not settings.wechat_pay_configured:
                         raise pay.PayError(503, "微信支付还没开通")
-                    packs = db.list_active_pack_ids(conn, uid)
+                    prepay = pay.start_wechat_native(settings, order)
                     return {
                         "ok": True,
                         "paid": False,
                         "order": pay.order_public(order),
-                        "packs": packs,
+                        "code_url": prepay["code_url"],
+                        "qr_svg": prepay["qr_svg"],
                         "assign_pack": assign,
                     }
-                paid, replay = pay.apply_paid_notify(
-                    conn,
-                    out_trade_no=order["out_trade_no"],
-                    provider_txn_id=f"dev-{order['out_trade_no']}",
-                    amount_fen=int(order["amount_fen"]),
-                    settings=settings,
-                    assign_pack=assign,
-                )
-                packs = db.list_active_pack_ids(conn, uid)
-                user = db.get_user(conn, uid)
         except pay.PayError as e:
             raise _pay_error(e) from e
         return {
@@ -1274,6 +1278,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         raw = await request.body()
         try:
             payload = pay.verify_wechat_notify(raw, request.headers, settings)
+            if payload.get("skip"):
+                return JSONResponse({"code": "SUCCESS", "message": "成功"})
             with db.db_session(settings.db_path) as conn:
                 pay.apply_paid_notify(
                     conn,
@@ -1290,6 +1296,31 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return JSONResponse({"code": "SUCCESS", "message": "成功"})
 
     # —— Feed ——
+    @app.get("/api/packs/shelf")
+    def packs_shelf() -> dict[str, Any]:
+        """公开货架。本机安装包打开时来拉，后台改目录后下次打开即更新。"""
+        path = Path(__file__).resolve().parent.parent / "docs" / "packs" / "shelf_catalog.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        rows = []
+        for raw in data.get("packs") or []:
+            if not isinstance(raw, dict) or not raw.get("id"):
+                continue
+            rows.append({
+                "id": raw.get("id"),
+                "group": raw.get("group") or "",
+                "wave": raw.get("wave") or 0,
+                "status": raw.get("status") or "",
+                "titleZh": raw.get("titleZh") or "",
+                "audienceZh": raw.get("audienceZh") or "",
+                "blurbZh": raw.get("blurbZh") or "",
+                "flowZh": raw.get("flowZh") or [],
+                "flowHintZh": raw.get("flowHintZh") or [],
+            })
+        return {"ok": True, "packs": rows}
+
     @app.get("/api/feed")
     async def api_feed(
         request: Request,

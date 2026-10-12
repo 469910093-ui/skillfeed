@@ -132,7 +132,7 @@ def set_session_cookie(resp: Response, settings: Settings, user_id: int, login: 
 
 
 def clear_session_cookie(resp: Response, settings: Settings) -> None:
-    resp.delete_cookie(settings.cookie_name, path="/")
+    resp.delete_cookie(settings.cookie_name, **cookie_flags(settings))
 
 
 def session_user_id(request: Request, settings: Settings) -> Optional[int]:

@@ -1,11 +1,10 @@
 """订阅订单与到账开通。
 
-真微信支付（统一下单 / APIv3 验签）还没接。这里先把两件必须先对的事钉死：
-
-1. 下单只写 pending，不发权益。
-2. 到账回调按 out_trade_no 幂等开通：同一笔付两次，plan_until 不变。
+真微信支付走 Native 扫码：`start_wechat_native` 换 code_url，
+`/api/pay/wechat/notify` 验签解密后按 out_trade_no 幂等开通。
 
 测开通用 `/api/pay/dev-notify`（SKILLFEED_DEV=1 + 已登录 + 只能操作自己的单）。
+生产不要开 DEV：开了 checkout 会直接到账，不经过微信。
 
 变现：场景包无买断。卖的是月/季/年订阅（连续续费更便宜；单独买同周期更贵），
 期内按席位选用场景包；过期停更、停手册、停席位访问。
@@ -93,7 +92,7 @@ def catalog(settings: Settings) -> dict[str, Sku]:
             days=30,
             amount_fen=_fen(settings, SKU_MONTH_CONT, "sku_month_cont_fen", _DEFAULT_FEN[SKU_MONTH_CONT]),
             title="连续包月",
-            seats=1,
+            seats=2,
             billing=BILLING_CONTINUOUS,
             period="month",
         ),
@@ -103,7 +102,7 @@ def catalog(settings: Settings) -> dict[str, Sku]:
             days=90,
             amount_fen=_fen(settings, SKU_QUARTER_CONT, "sku_quarter_cont_fen", _DEFAULT_FEN[SKU_QUARTER_CONT]),
             title="连续包季",
-            seats=2,
+            seats=3,
             billing=BILLING_CONTINUOUS,
             period="quarter",
         ),
@@ -113,7 +112,7 @@ def catalog(settings: Settings) -> dict[str, Sku]:
             days=365,
             amount_fen=_fen(settings, SKU_YEAR_CONT, "sku_year_cont_fen", _DEFAULT_FEN[SKU_YEAR_CONT]),
             title="连续包年",
-            seats=3,
+            seats=5,
             billing=BILLING_CONTINUOUS,
             period="year",
         ),
@@ -123,7 +122,7 @@ def catalog(settings: Settings) -> dict[str, Sku]:
             days=30,
             amount_fen=_fen(settings, SKU_MONTH_ONCE, "sku_month_once_fen", _DEFAULT_FEN[SKU_MONTH_ONCE]),
             title="单独买一个月",
-            seats=1,
+            seats=2,
             billing=BILLING_ONCE,
             period="month",
         ),
@@ -133,7 +132,7 @@ def catalog(settings: Settings) -> dict[str, Sku]:
             days=90,
             amount_fen=_fen(settings, SKU_QUARTER_ONCE, "sku_quarter_once_fen", _DEFAULT_FEN[SKU_QUARTER_ONCE]),
             title="单独买一季",
-            seats=2,
+            seats=3,
             billing=BILLING_ONCE,
             period="quarter",
         ),
@@ -143,7 +142,7 @@ def catalog(settings: Settings) -> dict[str, Sku]:
             days=365,
             amount_fen=_fen(settings, SKU_YEAR_ONCE, "sku_year_once_fen", _DEFAULT_FEN[SKU_YEAR_ONCE]),
             title="单独买一年",
-            seats=3,
+            seats=5,
             billing=BILLING_ONCE,
             period="year",
         ),
@@ -200,6 +199,7 @@ def create_order(
     user_id: int,
     sku_id: str,
     settings: Settings,
+    assign_pack: str = "",
 ) -> dict[str, Any]:
     items = catalog(settings)
     sku = items.get(resolve_sku_id(sku_id))
@@ -216,6 +216,7 @@ def create_order(
         "provider": PROVIDER_WECHAT,
         "created_at": now,
         "updated_at": now,
+        "assign_pack": (assign_pack or "").strip()[:64],
     })
 
 
@@ -270,7 +271,7 @@ def apply_paid_notify(
         seat_limit=int(sku.seats),
         billing=sku.billing,
     )
-    pack = (assign_pack or "").strip()
+    pack = (assign_pack or "").strip() or str(order.get("assign_pack") or "").strip()
     # 旧买断占用可能已经超过本档席位。先腾位，再占用本次指定的场景。
     db.trim_pack_seats(conn, int(user["id"]), reserve_for=pack)
     if pack:
@@ -297,8 +298,19 @@ def apply_paid_notify(
 
 
 def verify_wechat_notify(raw: bytes, headers: Any, settings: Settings) -> dict[str, Any]:
-    """验签入口。商户号没齐或验签未写时一律拒绝，避免空回调误开通。"""
-    del raw, headers
-    if not settings.wechat_pay_configured:
-        raise PayError(503, "微信支付未配置")
-    raise PayError(503, "微信支付验签尚未接入")
+    """验签并解密。未配置时拒绝，避免空回调误开通。"""
+    from server import wechat_pay
+    return wechat_pay.verify_notify(raw, headers, settings)
+
+
+def start_wechat_native(settings: Settings, order: dict[str, Any]) -> dict[str, str]:
+    """已落库的 pending 单去微信换二维码。失败抛 PayError，调用方应回滚订单。"""
+    from server import wechat_pay
+    sku = catalog(settings).get(resolve_sku_id(str(order.get("sku") or "")))
+    title = sku.title if sku else "SkillFeeder"
+    return wechat_pay.native_prepay(
+        settings,
+        out_trade_no=str(order["out_trade_no"]),
+        amount_fen=int(order["amount_fen"]),
+        description=title,
+    )

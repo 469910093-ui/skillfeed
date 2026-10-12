@@ -1,0 +1,75 @@
+User-agent: *
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+Allow: /about.md
+Allow: /about.html
+Allow: /faq.md
+Allow: /faq.html
+Allow: /compare.md
+Allow: /compare.html
+Allow: /catalog.json
+Allow: /sitemap.xml
+Allow: /api/geo/
+Allow: /api/feed
+Allow: /api/site-config
+Allow: /login
+Allow: /publish
+Disallow: /op
+Disallow: /admin
+Disallow: /api/op
+Disallow: /auth/
+Disallow: /api/posts
+Disallow: /api/events
+Disallow: /api/me
+Disallow: /api/pay
+Disallow: /api/profile
+Disallow: /api/account
+Disallow: /api/stats
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: GoogleOther
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: FacebookBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://skillfeeder.cn/sitemap.xml

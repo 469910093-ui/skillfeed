@@ -1,0 +1,8 @@
+skill-feed static web product
+index.html = full site (updates ring/follow/publish when api_base set)
+embed.html = lite for skill-picker (no follow/publish/me)
+mode=full
+generated_at=2026-10-08T06:19:46.940029+00:00
+items=528
+corpus=369
+MIT covers source code only. SkillFeeder / Skill Picker names and demo assets are not licensed for commercial resale.

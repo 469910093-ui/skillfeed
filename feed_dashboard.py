@@ -145,8 +145,19 @@ def _with_csp(html: str, *, api_base: str = "") -> str:
         "base-uri": ["'none'"],
         "form-action": ["'none'"],
     }
+    # api_base 白名单：只允许已知可信域名进入 connect-src，防止 feed.json
+    # 被篡改后 CSP 放行攻击者控制的服务器（数据外泄到 attacker.com）。
+    _api_base_allowed = False
     if api_base.startswith(("http://", "https://")):
+        _ab_host = api_base.rstrip("/")
+        if (_ab_host == "https://skillfeeder.cn"
+                or _ab_host.startswith("http://127.0.0.1:")
+                or _ab_host.startswith("http://localhost:")):
+            _api_base_allowed = True
+    if _api_base_allowed:
         sources["connect-src"].append(api_base.rstrip("/"))
+    if "https://skillfeeder.cn" not in sources["connect-src"]:
+        sources["connect-src"].append("https://skillfeeder.cn")
 
     if not sources["script-src"]:
         raise RuntimeError(
@@ -1441,6 +1452,23 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     margin-top: 8px; border: 0; border-radius: 999px; padding: 8px 14px;
     background: #e7f3f3; color: var(--accent-strong); font-weight: 800; cursor: pointer;
   }}
+  .pay-sheet {{
+    position: fixed; inset: 0; z-index: 80;
+    background: rgba(15, 23, 42, .45);
+    display: flex; align-items: flex-end; justify-content: center;
+  }}
+  .pay-sheet-card {{
+    width: min(420px, 100%); background: #fff; border-radius: 16px 16px 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  }}
+  .pay-sheet-title {{ margin: 0; font-weight: 800; text-align: center; }}
+  .pay-sheet-sub {{ margin: 8px 0 0; color: var(--muted); text-align: center; font-size: .8rem; }}
+  .pay-qr {{ display: flex; justify-content: center; margin-top: 12px; }}
+  .pay-qr svg {{ width: 220px; height: 220px; }}
+  .pay-sheet-close {{
+    margin-top: 14px; width: 100%; border: 1px solid var(--line); background: #fff;
+    border-radius: 999px; padding: 10px; font: inherit; font-weight: 700; cursor: pointer;
+  }}
   .pack-buy-bar {{
     position: sticky; bottom: calc(64px + env(safe-area-inset-bottom));
     margin: 18px -12px 0; padding: 12px;
@@ -1896,6 +1924,13 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
       border-radius: 16px;
       max-height: 80vh;
     }}
+    .pay-sheet {{ align-items: center; padding: 24px; }}
+    .pay-sheet-card {{
+      width: min(400px, calc(100% - 48px));
+      border-radius: 16px;
+      padding: 22px 20px 18px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, .2);
+    }}
   }}
 </style>
 </head>
@@ -2068,6 +2103,11 @@ function resolveApiBase() {{
   }} catch (e) {{}}
   return '';
 }}
+function contentOrigin() {{
+  if (API_BASE) return API_BASE;
+  return 'https://skillfeeder.cn';
+}}
+
 const API_BASE = resolveApiBase();
 const state = {{ mode: 'all', scene: 'all', scene_l2: 'all', section: 'all', topicsView: 'scene', packId: '', packGroup: 'all', shown: 0, intent: '', publisher: '' }};
 const demo = {{ on: false, step: 0, timer: null, focus: -1 }};
@@ -2084,7 +2124,7 @@ const TAB_QUERY = {{ all: 'discover', topics: 'topics', packs: 'packs', publish:
 
 /* 一站式配齐货架：由 docs/packs/shelf_catalog.json（飞书包-* 表）注入。
    商详只讲为什么成套买。手册、技能排序、应用介绍、知识库购买后才向已购账号拉取。 */
-const PACK_SHELF = {pack_shelf_json};
+let PACK_SHELF = {pack_shelf_json};
 const packDelivery = {{}};
 const PACK_DELIVER_LOCKED = ['packsDeliverMd', 'packsDeliverSkills', 'packsDeliverApps', 'packsDeliverKb'];
 const PACK_HOWTO_LOCKED = [
@@ -2187,7 +2227,7 @@ const I18N = {{
     filterByScene: '按行业筛选',
     followScene: '关注行业 · 最新进顶部圆环',
     searchPlaceholder: '短关键词更好，如：去AI味 / 剪视频',
-    navDiscover: '发现', navTopics: '主题分类', navPacks: '一站式配齐', navPublish: '发布', navMe: '我的',
+    navDiscover: '发现', navTopics: '主题分类', navPacks: '场景包', navPublish: '发布', navMe: '我的',
     valueLine: '每刷一下，就快人一步',
     coachSkip: 'Skip', coachNext: '下一步', coachDone: '开始刷',
     coachStepOf: '{{n}} / {{total}}',
@@ -2204,7 +2244,7 @@ const I18N = {{
     tabsAria: '主导航', backToTop: '回到顶部',
 
     /* 一站式配齐 */
-    packsTitle: '一站式配齐',
+    packsTitle: '场景包',
     packsLead: '持续扩充中',
     packsGroupAll: '全部', packsGroupEcom: '电商', packsGroupMedia: '自媒体', packsGroupOps: '数据分析',
     packsBadgeShelf: '可买', packsBadgeSoon: '即将推出',
@@ -2212,19 +2252,23 @@ const I18N = {{
     packsBuyLocked: '登录后订阅', packsBuySoon: '即将推出',
     packsBuyNeedSite: '请到 skillfeeder.cn 订阅',
     packsOwned: '使用中', packsBuyOk: '已开通，手册已解锁', packsBuyFail: '开通没有完成',
+    savedToast: '已收藏', unsavedToast: '已取消收藏',
+    replayOnboarding: '重新播放使用引导',
+    goToMainSite: '前往 skillfeeder.cn 发布',
+    payScanTitle: '用微信扫码支付', payScanWait: '支付完成后会自动开通', payScanClose: '关闭',
     packsSeatsFull: '席位已满，请升级套餐',
     packsEntryPrice: '连续包月 ¥29 起',
-    packsMonthHint: '1 个场景。按你电脑里已有的技能推荐，并持续更新',
+    packsMonthHint: '2 个主题。按你指定的场景持续更新',
     packsInstallHint: '在你的电脑上安装之后，推荐会按上下文更新',
     packsMine: '我的场景席位', packsNoneOwned: '还没有选用场景',
     subPlanTitle: '场景订阅',
-    subHero1: '按你电脑里已有的技能推荐',
-    subHero2: '你选的场景，持续更新',
+    subHero1: '本地部署本软件，基于上下文给你更准确的推荐和更简单的操作指导',
+    subHero2: '按照你指定的主题，持续更新内容，让你永远快人一步',
     subTrackCont: '连续续费',
     subTrackOnce: '单独买',
-    subMonthCont: '连续包月 ¥29 · 1 个场景',
-    subQuarterCont: '连续包季 ¥78 · 2 个场景',
-    subYearCont: '连续包年 ¥228 · 3 个场景',
+    subMonthCont: '连续包月 ¥29 · 2 个场景',
+    subQuarterCont: '连续包季 ¥78 · 3 个场景',
+    subYearCont: '连续包年 ¥228 · 5 个场景',
     subMonthOnce: '月 ¥39',
     subQuarterOnce: '季 ¥105',
     subYearOnce: '年 ¥299',
@@ -2290,8 +2334,8 @@ const I18N = {{
     publishNeedLogin: '发布要先用 GitHub 登录。请用 Safari / Chrome 打开；微信、小红书、抖音内置页打不开 GitHub 授权。',
     publishLoginBtn: '去登录',
     publishOpenPage: '打开完整发布页',
-    publishNoBackendTitle: '这份是静态镜像',
-    publishNoBackend: '当前页面没有接云端 API，所以这里不放一个点了没反应的提交按钮。要发布请到接了后端的主站；本机看板里这个 tab 本来就不出现。',
+    publishNoBackendTitle: '请前往主站发布',
+    publishNoBackend: '发布功能需要访问 skillfeeder.cn。请前往主站发布您的技能。',
     publishRemoteTitle: '发布页在主站上',
     publishRemote: '这份页面和 API 不同源，会话 Cookie 是 SameSite=Lax，不会跟着页面内的请求发出去。所以这里改成整页打开主站发布页——那边是同源，登录态正常。',
     publishFailed: '提交失败，请稍后再试。',
@@ -2356,7 +2400,7 @@ const I18N = {{
     payDevFail: '测试开通失败',
 
     liteBanner: '<b>本机没有合适 skill 时</b>，在这里按意图浏览远程线索，点「打开 GitHub」自行安装；装好后回 skill-picker 再扫一遍。',
-    storiesHint: '<b>顶部圆环 = 你关注的最新动态</b>：关注 Builder 或行业后，新内容会出现在这里优先观看。',
+    storiesHint: '<b>顶部圆环 = 你关注的最新动态</b>：关注技能开发者（Builder）或行业后，新内容会出现在这里优先观看。',
     demoTitle: '自动 Demo', feedbackTitle: '反馈说明',
     notUseful: '不感兴趣 · 不再推荐这条',
     notUsefulToast: '已隐藏，以后不再推荐这条',
@@ -2385,8 +2429,8 @@ const I18N = {{
     reshuffleToast: '已换一批',
 
     /* 关注面板（发现 Builder / 发现行业 / 单个行业） */
-    sheetBuilderTitle: '发现 Builder',
-    sheetBuilderLead: '关注后，Ta 的最新 skill 会出现在<strong>顶部动态圆环</strong>，方便优先观看。',
+    sheetBuilderTitle: '发现技能开发者（Builder）',
+    sheetBuilderLead: '关注技能开发者后，Ta 的最新 skill 会出现在<strong>顶部动态圆环</strong>，方便优先观看。',
     sheetIndustryTitle: '发现行业',
     sheetIndustryLead: '关注行业后，该领域最新内容会出现在<strong>顶部动态圆环</strong>。',
     feedCount: 'Feed 内 {{n}} 条',
@@ -2396,7 +2440,7 @@ const I18N = {{
     industryRingOff: '圆环将不再优先展示该行业',
     industryRingOn: '最新内容进顶部圆环',
     onlyThisIndustry: '只看该行业 Feed',
-    onlyThisIndustryHint: '用下方 pills 筛选发现流',
+    onlyThisIndustryHint: '用下方筛选标签查看发现流',
     filterAction: '筛选',
     ringFollowing: '关注',
 
@@ -2410,7 +2454,7 @@ const I18N = {{
     feedbackLogged: '已记录 · {{action}}',
     feedbackFailed: '反馈失败',
     feedbackServeOnly: 'serve 模式下可写 feedback.jsonl',
-    storyGuideToast: '先去关注一位 Builder 或一个行业',
+    storyGuideToast: '先去关注一位技能开发者或一个行业',
     storyEmptyToast: '暂无最新动态 · 试试换个关注或 refresh',
 
     /* 意图关键词条 */
@@ -2425,7 +2469,7 @@ const I18N = {{
     inFeed: 'Feed 内',
     pubSub: '发布者主页 · Feed 内 {{n}} 条 · GitHub 整合',
     pubFollowNote: '关注后，最新动态会出现在<strong>顶部动态圆环</strong>',
-    followBuilder: '关注 Builder',
+    followBuilder: '关注技能开发者',
     backToFeed: '← 返回发现',
     allRepos: '全部仓库',
     pubSecFeed: '在 skill-feed 中',
@@ -2444,10 +2488,10 @@ const I18N = {{
 
     /* 我的 */
     unfollowAria: '取消关注',
-    meNoBuilders: '还没关注 Builder。在卡片点「关注」，最新动态会出现在顶部动态圆环。',
+    meNoBuilders: '还没关注技能开发者。在卡片点「关注」，最新动态会出现在顶部动态圆环。',
     meNoIndustries: '还没关注行业。点卡片上的场景标签即可关注。',
     meLead: '关注的 Builder / 行业，其<strong>最新内容会出现在发现页顶部动态圆环</strong>。赞/藏仍保存在此浏览器。',
-    meMyBuilders: '我关注的 Builder',
+    meMyBuilders: '我关注的技能开发者',
     meMyIndustries: '我关注的行业',
     meLocalTitle: '本机收藏',
     meCounts: '点赞 {{liked}} · 书签 {{saved}}',
@@ -2479,7 +2523,7 @@ const I18N = {{
     demoFollowIndustry: 'Demo：关注行业 → 顶部动态圆环',
     demoFollowToast: '关注后最新动态出现在顶部圆环',
     demoOpenStories: 'Demo：点动态圆环看关注最新',
-    demoPills: 'Demo：pills 筛选行业（非动态圆环）',
+    demoPills: 'Demo：筛选标签按行业分类（非动态圆环）',
     demoSearch: 'Demo：意图搜索「{{q}}」',
     demoLike: 'Demo：双击点赞 · {{name}}',
     demoSave: 'Demo：收藏书签',
@@ -2528,20 +2572,24 @@ const I18N = {{
     packsBuyLocked: 'Sign in to subscribe', packsBuySoon: 'Coming soon',
     packsBuyNeedSite: 'Subscribe on skillfeeder.cn',
     packsOwned: 'In use', packsBuyOk: 'Subscribed. The guide is open.', packsBuyFail: 'Checkout did not finish',
+    savedToast: 'Bookmarked', unsavedToast: 'Bookmark removed',
+    replayOnboarding: 'Replay onboarding guide',
+    goToMainSite: 'Go to skillfeeder.cn to publish',
+    payScanTitle: 'Scan with WeChat to pay', payScanWait: 'It unlocks after payment', payScanClose: 'Close',
     packsSeatsFull: 'Seats full — upgrade your plan',
     packsEntryPrice: 'From ¥29 / month',
-    packsMonthHint: '1 scene. Picks follow skills on your computer, and keep updating',
+    packsMonthHint: '2 topics. The scenes you pick keep updating',
     packsInstallHint: 'Install on your computer for context-aware picks',
     packsUnlockedHint: 'Guide, skill order, descriptions, and knowledge base are below.',
     packsMine: 'My scene seats', packsNoneOwned: 'No scenes selected yet',
     subPlanTitle: 'Scene subscription',
-    subHero1: 'Picks follow skills already on your computer',
-    subHero2: 'Scenes you choose keep updating',
+    subHero1: 'Install locally. Context makes recommendations more accurate and the steps easier',
+    subHero2: 'The topics you pick keep updating, so you stay ahead',
     subTrackCont: 'Auto-renew',
     subTrackOnce: 'One period',
-    subMonthCont: 'Monthly ¥29 · 1 scene',
-    subQuarterCont: 'Quarterly ¥78 · 2 scenes',
-    subYearCont: 'Yearly ¥228 · 3 scenes',
+    subMonthCont: 'Monthly ¥29 · 2 scenes',
+    subQuarterCont: 'Quarterly ¥78 · 3 scenes',
+    subYearCont: 'Yearly ¥228 · 5 scenes',
     subMonthOnce: 'Month ¥39',
     subQuarterOnce: 'Quarter ¥105',
     subYearOnce: 'Year ¥299',
@@ -2603,8 +2651,8 @@ const I18N = {{
     publishNeedLogin: 'Sign in with GitHub first. Use Safari or Chrome — in-app browsers (WeChat / Xiaohongshu / Douyin) cannot finish GitHub OAuth.',
     publishLoginBtn: 'Sign in',
     publishOpenPage: 'Open the full posting page',
-    publishNoBackendTitle: 'This is a static mirror',
-    publishNoBackend: 'This page has no cloud API attached, so there is no submit button here that would do nothing. Post from the main site, which does have the backend. In the local dashboard this tab does not appear at all.',
+    publishNoBackendTitle: 'Please visit the main site to publish',
+    publishNoBackend: 'Publishing requires access to skillfeeder.cn. Please visit the main site to publish your skill.',
     publishRemoteTitle: 'Posting lives on the main site',
     publishRemote: 'This page and the API are on different origins, and the session cookie is SameSite=Lax, so it is not sent with requests made from this page. The button opens the posting page on the main site instead, where it is same-origin and the sign-in works.',
     publishFailed: 'Could not submit. Try again in a moment.',
@@ -4203,9 +4251,13 @@ function emptyHtml(items) {{
       <a class="open-gh" style="display:inline-block;padding:10px 16px;width:auto;min-width:180px;background:#fff;color:var(--ink);border:1px solid var(--line)" href="${{escapeHtml(safeUrl(gh.repos))}}" target="_blank" rel="noopener">${{escapeHtml(tr('ghSearchRepos'))}}</a>
     </p>
     <p style="font-size:.78rem;color:var(--muted)">${{escapeHtml(tr('noInstallNote'))}}</p>
-    <p style="font-size:.72rem;color:var(--muted);margin-top:12px">${{escapeHtml(tr('funnel'))}}trending ${{funnel.trending_repos ?? '—'}} · search ${{funnel.search_candidates ?? '—'}} ·
-      ${{escapeHtml(tr('funnelPassed'))}} ${{funnel.passed ?? (FEED.gates && FEED.gates.passed) ?? 0}}
-      · rejected ${{escapeHtml(JSON.stringify(rejected))}}</p>
+    ${{(function() {{
+      try {{
+        const params = new URLSearchParams(location.search);
+        if (params.get('debug') !== '1') return '';
+      }} catch (e) {{ return ''; }}
+      return `<p style="font-size:.72rem;color:var(--muted);margin-top:12px">${{escapeHtml(tr('funnel'))}}trending ${{funnel.trending_repos ?? '—'}} · search ${{funnel.search_candidates ?? '—'}} · ${{escapeHtml(tr('funnelPassed'))}} ${{funnel.passed ?? (FEED.gates && FEED.gates.passed) ?? 0}} · rejected ${{escapeHtml(JSON.stringify(rejected))}}</p>`;
+    }}())}}
   </div>`;
 }}
 
@@ -4810,6 +4862,65 @@ function setPackGroup(group) {{
   syncTabUrl();
 }}
 
+function closePaySheet() {{
+  const el = document.getElementById('pay-sheet');
+  if (el) el.remove();
+  if (state.payPoll) {{
+    clearInterval(state.payPoll);
+    state.payPoll = null;
+  }}
+}}
+
+function openPaySheet(data) {{
+  closePaySheet();
+  const order = data.order || {{}};
+  const trade = order.out_trade_no || '';
+  let svg = '';
+  if (typeof data.qr_svg === 'string' && data.qr_svg.indexOf('<svg') !== -1) {{
+    try {{
+      const doc = new DOMParser().parseFromString(data.qr_svg, 'image/svg+xml');
+      if (doc.querySelector('parsererror') || !doc.querySelector('svg')) {{
+        svg = '';
+      }} else {{
+        doc.querySelectorAll('*').forEach(function(el) {{
+          Array.from(el.attributes).forEach(function(attr) {{
+            if (attr.name.toLowerCase().startsWith('on')) el.removeAttribute(attr.name);
+          }});
+        }});
+        svg = new XMLSerializer().serializeToString(doc.documentElement);
+      }}
+    }} catch (e) {{ svg = ''; }}
+  }}
+  if (!data.code_url || !svg) {{
+    toast(tr('packsBuyFail'));
+    return;
+  }}
+  const wrap = document.createElement('div');
+  wrap.id = 'pay-sheet';
+  wrap.className = 'pay-sheet';
+  wrap.innerHTML = '<div class="pay-sheet-card" role="dialog" aria-modal="true">'
+    + '<p class="pay-sheet-title">' + escapeHtml(tr('payScanTitle')) + '</p>'
+    + '<div class="pay-qr">' + svg + '</div>'
+    + '<p class="pay-sheet-sub">' + escapeHtml(tr('payScanWait')) + '</p>'
+    + '<button type="button" class="pay-sheet-close">' + escapeHtml(tr('payScanClose')) + '</button>'
+    + '</div>';
+  document.body.appendChild(wrap);
+  wrap.querySelector('.pay-sheet-close').addEventListener('click', closePaySheet);
+  state.payPoll = setInterval(async () => {{
+    try {{
+      const resp = await acctFetch('/api/pay/orders', {{ headers: {{ Accept: 'application/json' }} }});
+      if (!resp.ok) return;
+      const body = await resp.json();
+      const hit = (body.orders || []).find((row) => row.out_trade_no === trade && row.status === 'paid');
+      if (!hit) return;
+      closePaySheet();
+      await loadAccount();
+      toast(tr('packsBuyOk'));
+      if (state.mode === 'packs' || state.mode === 'me') render(false);
+    }} catch (e) {{}}
+  }}, 2000);
+}}
+
 async function buyPack(packId) {{
   const p = packById(packId);
   if (!p) return;
@@ -4873,7 +4984,7 @@ async function buyPack(packId) {{
       return;
     }}
     if (data.paid === false) {{
-      toast(tr('packsBuyFail'));
+      openPaySheet(data);
       return;
     }}
     ACCT.packs = Array.isArray(data.packs) ? data.packs : (ACCT.packs || []).concat([p.id]);
@@ -5558,12 +5669,12 @@ function acctPlanHtml() {{
   if (u.subscriber) {{
     const until = String(u.plan_until || '').slice(0, 10);
     body += `<p>${{escapeHtml(trn('subPlanActive', {{ d: until || '—', n: seatLimit() }}))}}</p>`;
-    if (seatLimit() < 2) {{
+    if (seatLimit() < 3) {{
       body += `<div class="me-actions" style="margin-top:8px">
         <button type="button" class="js-sub-upgrade" data-sku="subscriber_quarter_cont">${{escapeHtml(tr('subUpgradeQuarter'))}}</button>
       </div>`;
     }}
-    if (seatLimit() < 3) {{
+    if (seatLimit() < 5) {{
       body += `<div class="me-actions" style="margin-top:8px">
         <button type="button" class="js-sub-upgrade" data-sku="subscriber_year_cont">${{escapeHtml(tr('subUpgradeYear'))}}</button>
       </div>`;
@@ -5680,9 +5791,13 @@ async function upgradeSubscription(sku) {{
     }});
     let data = null;
     try {{ data = await resp.json(); }} catch (e) {{ data = null; }}
-    if (!resp.ok || !data || !data.ok || data.paid === false) {{
+    if (!resp.ok || !data || !data.ok) {{
       const detail = data && (typeof data.detail === 'string' ? data.detail : '');
       toast(detail || tr('packsBuyFail'));
+      return;
+    }}
+    if (data.paid === false) {{
+      openPaySheet(data);
       return;
     }}
     if (data.user) ACCT.user = data.user;
@@ -5823,25 +5938,38 @@ async function hydrateSiteConfig() {{
 }}
 
 async function hydrateLiveFeed() {{
-  if (IS_LITE) return;
+  // 安装包里的发现流和货架只是当时的快照。每次打开都向主站要最新的，
+  // 后台改完后下次打开即生效，不用重装。手册和订阅状态仍走登录态（API_BASE）。
   if (location.protocol === 'file:') return;
-  const base = API_BASE || '';
+  const base = contentOrigin();
+  const same = API_BASE && API_BASE === base;
   try {{
-    const resp = await fetch(base + '/api/feed?limit=100&source=all', {{
-      credentials: 'include',
+    const resp = await fetch(base + '/api/feed?limit=100&source=official', {{
+      credentials: same ? 'include' : 'omit',
       redirect: 'manual',
       headers: {{ 'Accept': 'application/json' }},
     }});
     if (resp.type === 'opaqueredirect' || resp.status === 302 || !resp.ok) return;
     const data = await resp.json();
-    if (!data || !Array.isArray(data.items)) return;
-    FEED.items = data.items;
-    FEED.ui = FEED.ui || {{}};
-    FEED.ui.quota = data.quota || null;
-    ACCT.quota = data.quota || ACCT.quota;
-    paintQuotaBanner(data.quota);
-    render(true);
+    if (data && Array.isArray(data.items) && data.items.length) {{
+      FEED.items = data.items;
+      FEED.ui = FEED.ui || {{}};
+      FEED.ui.quota = data.quota || null;
+      ACCT.quota = data.quota || ACCT.quota;
+      paintQuotaBanner(data.quota);
+    }}
   }} catch (e) {{}}
+  try {{
+    const shelf = await fetch(base + '/api/packs/shelf', {{
+      credentials: 'omit',
+      headers: {{ 'Accept': 'application/json' }},
+    }});
+    if (shelf.ok) {{
+      const body = await shelf.json();
+      if (body && Array.isArray(body.packs) && body.packs.length) PACK_SHELF = body.packs;
+    }}
+  }} catch (e) {{}}
+  render(true);
 }}
 
 function mePanelHtml() {{
@@ -5880,6 +6008,7 @@ function mePanelHtml() {{
       ${{countsNote}}
       <div class="me-actions">
         <button type="button" class="primary js-me-saved">${{escapeHtml(tr('meViewSaved'))}}</button>
+        <button type="button" class="js-replay-onboarding">${{escapeHtml(tr('replayOnboarding'))}}</button>
       </div>
     </div>
     <div class="me-card">
@@ -6032,6 +6161,7 @@ function toggleSave(fn, postEl) {{
     btn.classList.toggle('saved', now);
     btn.innerHTML = bookmarkSvg(now);
   }}
+  toast(now ? tr('savedToast') : tr('unsavedToast'));
   if (now) sendFeedback('useful', itemPayload(postEl));
 }}
 
@@ -6577,6 +6707,14 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     state.mode = 'all';
     render(true);
     openFollowSheet('industry');
+    return;
+  }}
+  const replayBtn = t.closest('.js-replay-onboarding');
+  if (replayBtn) {{
+    try {{ localStorage.removeItem(COACH_KEY); }} catch (e) {{}}
+    state.mode = 'all';
+    render(true);
+    setTimeout(() => coachShow(0), 100);
     return;
   }}
   const unB = t.closest('.js-unfollow-builder');

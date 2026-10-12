@@ -1109,7 +1109,7 @@ class TestPayOrders(unittest.TestCase):
         self.assertEqual(paid.status_code, 200, paid.text)
         self.assertFalse(paid.json()["replay"])
         self.assertTrue(paid.json()["user"]["subscriber"])
-        self.assertEqual(paid.json()["user"]["seat_limit"], 3)
+        self.assertEqual(paid.json()["user"]["seat_limit"], 5)
         again = self.client.post(
             "/api/pay/dev-notify", json={"out_trade_no": order["out_trade_no"]},
         )
@@ -1139,11 +1139,13 @@ class TestPayOrders(unittest.TestCase):
         self.assertEqual(body["order"]["sku"], "subscriber_month_cont")
         self.assertIn("shelf-ecom", body["packs"])
         self.assertTrue(body["user"]["subscriber"])
-        self.assertEqual(body["user"]["seat_limit"], 1)
+        self.assertEqual(body["user"]["seat_limit"], 2)
         me = self.client.get("/auth/me")
         self.assertIn("shelf-ecom", me.json()["packs"])
         self.assertTrue(me.json()["user"]["subscriber"])
-        full = self.client.post("/api/me/seats/assign", json={"assign_pack": "cross-border"})
+        second = self.client.post("/api/me/seats/assign", json={"assign_pack": "cross-border"})
+        self.assertEqual(second.status_code, 200, second.text)
+        full = self.client.post("/api/me/seats/assign", json={"assign_pack": "marketing"})
         self.assertEqual(full.status_code, 409)
         soon = self.client.post("/api/pay/checkout", json={
             "sku": "subscriber_month_cont",
@@ -1194,6 +1196,70 @@ class TestPayOrders(unittest.TestCase):
         other.get("/auth/dev-login?login=other-user")
         stolen = other.post("/api/pay/dev-notify", json={"out_trade_no": trade_no})
         self.assertEqual(stolen.status_code, 403)
+
+
+@unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")
+class TestWechatNativeCheckout(unittest.TestCase):
+    def test_checkout_returns_qr_without_granting(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        priv = Path(tmp.name) / "key.pem"
+        pub = Path(tmp.name) / "pub.pem"
+        priv.write_bytes(key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ))
+        pub.write_bytes(key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ))
+        settings = _settings(
+            tmp.name,
+            dev_mode=False,
+            dev_auth=False,
+            public_url="https://skillfeeder.cn",
+            wechat_pay_mchid="1900000001",
+            wechat_pay_api_v3_key="a" * 32,
+            wechat_pay_serial="CERTSERIAL",
+            wechat_pay_private_key_file=str(priv),
+            wechat_pay_public_key_file=str(pub),
+            wechat_pay_public_key_id="PUBKEYID",
+            wechat_pay_appid="wxappid",
+        )
+        db.init_db(settings.db_path)
+        conn = db.connect(settings.db_path)
+        conn.execute(
+            "INSERT INTO users (login, created_at, plan) VALUES ('payer', 't', 'free')"
+        )
+        uid = int(conn.execute("SELECT id FROM users").fetchone()[0])
+        conn.commit()
+        conn.close()
+        client = TestClient(server_app.create_app(settings))
+        token = auth.sign_session(
+            settings.session_secret, {"uid": uid, "login": "payer"},
+            max_age=settings.cookie_max_age,
+        )
+        client.cookies.set(settings.cookie_name, token)
+        with mock.patch(
+            "server.wechat_pay._http_post",
+            return_value=(200, '{"code_url":"weixin://wxpay/bizpayurl?pr=abc"}'),
+        ):
+            bought = client.post("/api/pay/checkout", json={
+                "sku": "subscriber_month_cont",
+                "assign_pack": "shelf-ecom",
+            })
+        self.assertEqual(bought.status_code, 200, bought.text)
+        body = bought.json()
+        self.assertFalse(body["paid"])
+        self.assertTrue(body["code_url"].startswith("weixin://"))
+        self.assertIn("<svg", body["qr_svg"])
+        me = client.get("/auth/me")
+        self.assertFalse(me.json()["user"]["subscriber"])
+        self.assertNotIn("shelf-ecom", me.json().get("packs") or [])
 
 
 @unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")

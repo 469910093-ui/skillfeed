@@ -150,7 +150,7 @@ class Settings:
         self.backup_keep = max(1, min(90, _int_env("SKILLFEED_BACKUP_KEEP", 14)))
         origins = _env(
             "SKILLFEED_CORS_ORIGINS",
-            "https://469910093-ui.github.io,http://127.0.0.1:8473,http://127.0.0.1:8787",
+            "http://127.0.0.1:8473,http://127.0.0.1:8787",
         )
         self.cors_origins = [o.strip() for o in origins.split(",") if o.strip()]
         self.cookie_name = "skillfeed_session"
@@ -205,11 +205,18 @@ class Settings:
             except ValueError:
                 pass
         self.sku_year_fen = self.sku_year_cont_fen
-        # 微信支付商户。三件都空 = 未接；缺一件也不算配置好，避免半套密钥上线。
-        # 验签还没写：填了也会在 notify 里 503，先用 /api/pay/dev-notify 测开通。
+        # 微信支付商户。验签与下单见 server/wechat_pay.py。缺一件就不算配好。
         self.wechat_pay_mchid = _env("SKILLFEED_WECHAT_PAY_MCHID")
         self.wechat_pay_api_v3_key = _env("SKILLFEED_WECHAT_PAY_API_V3_KEY")
         self.wechat_pay_serial = _env("SKILLFEED_WECHAT_PAY_SERIAL")
+        # 商户 API 证书私钥、微信支付公钥。只存路径，文件不要进 git。
+        self.wechat_pay_private_key_file = _env("SKILLFEED_WECHAT_PAY_PRIVATE_KEY_FILE")
+        self.wechat_pay_public_key_file = _env("SKILLFEED_WECHAT_PAY_PUBLIC_KEY_FILE")
+        self.wechat_pay_public_key_id = _env("SKILLFEED_WECHAT_PAY_PUBLIC_KEY_ID")
+        # 备证书（密钥轮换窗口期使用）
+        self.wechat_pay_public_key_id_backup = _env("SKILLFEED_WECHAT_PAY_PUBLIC_KEY_ID_BACKUP")
+        self.wechat_pay_public_key_file_backup = _env("SKILLFEED_WECHAT_PAY_PUBLIC_KEY_FILE_BACKUP")
+        self.wechat_pay_appid = _env("SKILLFEED_WECHAT_PAY_APPID") or self.wechat_app_id
         self.config = self._load_config()
 
     def _load_config(self) -> dict[str, Any]:
@@ -246,11 +253,8 @@ class Settings:
 
     @property
     def wechat_pay_configured(self) -> bool:
-        return bool(
-            self.wechat_pay_mchid
-            and self.wechat_pay_api_v3_key
-            and self.wechat_pay_serial
-        )
+        from server import wechat_pay
+        return not wechat_pay.missing_pay_fields(self)
 
     @property
     def sms_configured(self) -> bool:
@@ -350,6 +354,12 @@ class Settings:
                 "[info] 不信任 X-Forwarded-For，限流按 socket 对端地址分桶。"
                 "若部署在 Nginx 后面，请同时设 SKILLFEED_TRUSTED_PROXY_HOPS=1 和 "
                 "SKILLFEED_TRUSTED_PROXY_IPS=127.0.0.1，否则全站共用一个限流桶。"
+            )
+        if not self.wechat_pay_configured:
+            from server import wechat_pay
+            missing = "、".join(wechat_pay.missing_pay_fields(self)) or "微信支付"
+            notes.append(
+                "[warn] 微信支付还没配齐，用户付不了款。缺：" + missing
             )
         return notes
 

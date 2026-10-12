@@ -145,10 +145,10 @@ skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）─�
 
 | 轨道 | 月 | 季 | 年 | 席位 |
 |---|---|---|---|---|
-| **连续续费**（默认推，更便宜） | ¥29 | ¥78 | ¥228 | 1 / 2 / 3 |
-| **单独买同周期**（不自动续） | ¥39 | ¥105 | ¥299 | 1 / 2 / 3 |
+| **连续续费**（默认推，更便宜） | ¥29 | ¥78 | ¥228 | 2 / 3 / 5 |
+| **单独买同周期**（不自动续） | ¥39 | ¥105 | ¥299 | 2 / 3 / 5 |
 
-SKU：`subscriber_month_cont` / `quarter_cont` / `year_cont` · `subscriber_month_once` / `quarter_once` / `year_once`（旧 `subscriber_year` 等同连续包年）。收银台 `GET /api/pay/catalog`；下单 `POST /api/pay/checkout`（可带 `assign_pack` 顺带占席）；已订阅占席 `POST /api/me/seats/assign` 或整表 `PUT /api/me/seats`。交付 `GET /api/packs/{id}/delivery` 仅**订阅有效且席位占用**时下发四样：手册、技能排序、应用介绍、知识库。占用超过席位上限时，开通或读取会收掉多余项：保留最近占用，本次开通指定的场景优先留下。商详入口价：**连续包月 ¥29 起**；CTA 默认开连续包月并占用当前场景。即将推出不能下单。`SKILLFEED_DEV=1` 时 checkout 直接到账；生产未接微信支付时拒绝开通。目录真相源：飞书 Base `PCWZbMvydabY2Xs1yYSc2sc7nth` → `docs/packs/shelf_catalog.json`（`python scripts/sync_packs_shelf.py`）。深链：`?tab=packs` / `?tab=packs&pack=cross-border`。lite 不露出该 tab。
+SKU：`subscriber_month_cont` / `quarter_cont` / `year_cont` · `subscriber_month_once` / `quarter_once` / `year_once`（旧 `subscriber_year` 等同连续包年）。收银台 `GET /api/pay/catalog`；下单 `POST /api/pay/checkout`（可带 `assign_pack` 顺带占席）；已订阅占席 `POST /api/me/seats/assign` 或整表 `PUT /api/me/seats`。交付 `GET /api/packs/{id}/delivery` 仅**订阅有效且席位占用**时下发四样：手册、技能排序、应用介绍、知识库。占用超过席位上限时，开通或读取会收掉多余项：保留最近占用，本次开通指定的场景优先留下。商详入口价：**连续包月 ¥29 起**；CTA 默认开连续包月并占用当前场景。即将推出不能下单。`SKILLFEED_DEV=1` 时 checkout 直接到账。生产配齐微信支付后走 Native 扫码：二维码来自微信 `code_url`，`/api/pay/wechat/notify` 验签解密且 `trade_state=SUCCESS` 后才开通并占席；半套配置或验签失败拒绝开通。目录真相源：飞书 Base `PCWZbMvydabY2Xs1yYSc2sc7nth` → `docs/packs/shelf_catalog.json`（`python scripts/sync_packs_shelf.py`）。深链：`?tab=packs` / `?tab=packs&pack=cross-border`。lite 不露出该 tab。
 
 **增值层（利润，不替代订阅）：** ① **人工服务**——装机答疑 / 岗位陪跑 / 定制配齐（站内入口见下「找策展人」）；② **付费资讯**——飞得周讯。装机引导：订阅开通后提示「装到本机后，推荐会按你的上下文更新」。
 
@@ -218,7 +218,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 信息流卡片 | 见 5.2 | P0 |
 | 底栏五入口 | **发现 / 主题分类 / 一站式配齐 / 发布 / 我的**；`role=tablist` + `aria-selected`，左右键/Home/End 可走，激活态除颜色外另有指示条 + 字重 | P0 |
 | **主题分类** | 一级场景各自成块（条目数 + 二级场景 chips + 按栏目浏览）；点进去落到发现流的对应筛选 | P0 |
-| **一站式配齐** | 货架顶部是场景订阅入口：两句亮点（按本机已有技能推荐、所选场景持续更新）+ 连续月/季/年与单独买同周期。下方再选场景占席。未登录去登录再 `POST /api/pay/checkout`；lite 隐藏 | P0 |
+| **一站式配齐** | 货架顶部是场景订阅入口：两句亮点（本地部署后按上下文给更准的推荐和更简单的操作指导；按指定主题持续更新）+ 连续月/季/年（2 / 3 / 5 个场景）与单独买同周期。下方再选场景占席。未登录去登录再 `POST /api/pay/checkout`。生产弹出微信扫码：手机贴底，电脑居中成卡片并盖住底栏。付完同一页解锁手册。lite 隐藏 | P0 |
 | 发布 | **接 `server/` 的 `POST /api/posts`**：同源时页内表单直接提交；跨源只给整页跳 `api_base/publish`；无 `api_base` 时：github.io 只出说明，**skillfeeder.cn 同源回退到本域**（防定时构建漏写环境变量） | P0 |
 | 我的 | 真实登录态（`/auth/me`）+ 我发布的（`/api/posts/me`，点开跳发现流卡片或审核中预览）+ 赞藏（`/api/profile/reactions`，读不到则退回本机）+ **关注管理**（Builder / 行业列表）。**不再放「发现站」说明行** | P0 |
 | 发布者主页 | Feed 内作品 + GitHub 仓库 + **关注/取消关注 Builder** | P0 |
@@ -291,9 +291,11 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 ### 5.5 lite 嵌入契约（skill-picker）
 
 - **有：** 意图搜、pills、信息流卡片、打开 GitHub、`?q=` 预填、lite 顶栏说明  
-- **无：** 动态圆环、关注、发布、我的、`api_base`、Demo  
+- **运行时向主站要：** 发现流 `GET https://skillfeeder.cn/api/feed`、货架 `GET /api/packs/shelf`。安装包里的列表只是快照，下次打开用主站的新结果。推荐就是这份按意图筛过的发现流。  
+- **仍在主站登录态：** 场景手册 `GET /api/packs/{id}/delivery`、订阅状态 `/auth/me`。会话 Cookie 不出 skillfeeder.cn，本机页不代读。  
+- **无：** 动态圆环、关注、发布、我的、Demo  
 - picker：`discover.py` → `~/.skill-picker/discover.html`；看板第三 tab iframe；空匹配 CTA 切入  
-- 公开回退：`https://469910093-ui.github.io/skillfeed/embed.html`
+- 公开回退：`https://skillfeeder.cn/embed.html`
 
 ### 5.4 关注体系：Builder + 行业（动态圆环的数据来源）
 
@@ -668,8 +670,12 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-10-08 | 微信扫码层：手机贴底，电脑居中成卡片并盖住底栏，避免和开通按钮挤在一行 | §5.1、`feed_dashboard.py` |
 | 2026-10-08 | SEO 落地页：每条 Skill 出 `/s/{slug}.html` 详情、每个场景出 `/scene/{key}.html`、加 `/skills.html` 总目录，全部服务端直出中文并进 sitemap；静态页补 `session_start` 埋点，搜索落地可归因 | §6.3、`geo.py`、`skillfeed.py`、`pages.yml`、`deploy_to_aliyun.ps1` |
-| 2026-09-24 | 商详价格下小字改为包月亮点：1 个场景，按本机已有技能推荐并持续更新 | §5.1、`feed_dashboard.py` |
+| 2026-10-08 | 微信支付 Native 扫码下单；回调验签解密成功才开通并占席。订单记下要占用的场景 | §3.1、§5.1、`server/wechat_pay.py`、`pay.py`、`app.py`、`feed_dashboard.py` |
+| 2026-09-24 | 订阅页顶第一句改为：本地部署本软件，基于上下文给更准的推荐和更简单的操作指导 | §5.1、`feed_dashboard.py` |
+| 2026-09-24 | 连续包月/季/年席位改为 2 / 3 / 5 个场景（价仍 29 / 78 / 228；单独买同周期席位相同） | §3.1、§5.1、`pay.py`、`feed_dashboard.py` |
+| 2026-09-24 | 订阅页顶写清「场景」：你指定的主题，按这个主题持续更新 | §5.1、`feed_dashboard.py` |
 | 2026-09-24 | 场景席位超出上限时只留最近占用（开通指定的场景优先），其余占用收掉 | §3.1、`server/db.py`、`server/pay.py` |
 | 2026-09-24 | 场景包改订阅制（无买断）：连续 29/78/228 · 单独 39/105/299；席位 1/2/3；checkout+assign 席位；过期停交付 | §3.1、§5.1、`pay.py`、`db.py`、`app.py`、`feed_dashboard.py` |
 | 2026-09-23 | 购买后同一页交付手册、技能排序、应用介绍、知识库；未购买不下发正文 | §3.1、§5.1、`server/pack_delivery.py`、`feed_dashboard.py` |

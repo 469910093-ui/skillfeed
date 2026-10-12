@@ -171,7 +171,7 @@ class JsHarness:
             _grab(js, r"^const TAB_QUERY = \{[^\n]*\};"),
             # 空货架 `[];`、单行 JSON、或多行 indent 都能收口在第一个 `];`。
             # 旧写法要求 `\n]`，空 `[]` 会一路吞到后面的 PACK_HOWTO_LOCKED。
-            _grab(js, r"^const PACK_SHELF = \[[\s\S]*?\];"),
+            _grab(js, r"^(?:const|let) PACK_SHELF = \[[\s\S]*?\];"),
             _grab(js, r"^const PACK_HOWTO_LOCKED = \[[\s\S]*?\n\];"),
             _top_level_functions(js),
         ])
@@ -1468,7 +1468,7 @@ def _rgb_distance(a, b):
     """
     pa = tuple(int(a.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
     pb = tuple(int(b.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
-    return sum((x - y) ** 2 for x, y in zip(pa, pb, strict=True)) ** 0.5
+    return sum((x - y) ** 2 for x, y in zip(pa, pb)) ** 0.5
 
 
 def _hsl(hexstr):
@@ -1704,7 +1704,7 @@ class TestSceneColoursCarryInformation(unittest.TestCase):
                 lights = [_hsl(s)[2] for s in stops]
                 self.assertEqual(
                     lights, sorted(lights),
-                    f"{scene_id} 的明度不是递增：{list(zip(stops, lights, strict=True))}")
+                    f"{scene_id} 的明度不是递增：{list(zip(stops, lights))}")
 
     def test_no_palette_squats_on_the_accent_hue(self):
         """accent 色族在页面上的含义是「被强调」，分类色占进去就是语义串台。"""
@@ -2053,9 +2053,9 @@ class TestContentSecurityPolicy(unittest.TestCase):
         """配了后端地址就得放行，否则反馈回传会被 connect-src 静默拦掉。"""
         html = feed_dashboard.build_feed_html({
             "items": [self.ITEM], "corpus": [],
-            "ui": {"api_base": "https://feed.example.com/"},
+            "ui": {"api_base": "http://127.0.0.1:8787/"},
         }, variant="full")
-        self.assertIn("https://feed.example.com",
+        self.assertIn("http://127.0.0.1:8787",
                       self._policy(html)["connect-src"])
 
     def test_a_bogus_api_base_is_not_pasted_into_the_policy(self):
@@ -2065,7 +2065,7 @@ class TestContentSecurityPolicy(unittest.TestCase):
                 policy = self._policy(feed_dashboard.build_feed_html({
                     "items": [], "corpus": [], "ui": {"api_base": junk},
                 }, variant="full"))
-                self.assertEqual(["'self'", "https://api.github.com"],
+                self.assertEqual(["'self'", "https://api.github.com", "https://skillfeeder.cn"],
                                  policy["connect-src"])
                 self.assertTrue(all(s.startswith("'sha256-")
                                     for s in policy["script-src"]))
@@ -2313,6 +2313,7 @@ NEW_I18N_KEYS = (
     "packsGroupMedia", "packsGroupOps", "packsBadgeShelf", "packsBadgeSoon",
     "packsPriceTbd", "packsOpen", "packsBuy", "packsBuyLocked", "packsBuySoon",
     "packsBuyNeedSite", "packsOwned", "packsBuyOk", "packsBuyFail",
+    "payScanTitle", "payScanWait", "payScanClose",
     "packsSeatsFull", "packsEntryPrice", "packsMonthHint", "packsInstallHint",
     "packsUnlockedHint", "packsMine", "packsNoneOwned",
     "subPlanTitle", "subHero1", "subHero2", "subTrackCont", "subTrackOnce",
@@ -2411,7 +2412,7 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
 
     def test_packs_shelf_framework_lists_first_wave(self):
         js = _script_source(self.full)
-        self.assertIn("const PACK_SHELF = [", js)
+        self.assertIn("let PACK_SHELF = [", js)
         self.assertIn("function packsPanelHtml", js)
         self.assertIn("shelf-ecom", js)
         self.assertIn("cross-border", js)
@@ -2423,8 +2424,10 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertNotIn("发现流仍全量免费", self.full)
         self.assertIn("packs: 'packs'", js)
         self.assertNotIn('"priceFen"', js)
-        self.assertIn("连续包月 ¥29 起", self.full)
-        self.assertIn("按你电脑里已有的技能推荐", self.full)
+        self.assertIn("连续包月 ¥29 · 2 个场景", self.full)
+        self.assertIn("连续包季 ¥78 · 3 个场景", self.full)
+        self.assertIn("连续包年 ¥228 · 5 个场景", self.full)
+        self.assertIn("按照你指定的主题，持续更新内容，让你永远快人一步", self.full)
         self.assertIn("function packsSubHeroHtml", js)
         self.assertIn("subscriber_month_cont", js)
         self.assertIn("/api/pay/checkout", js)
@@ -2756,7 +2759,7 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
         self.assertNotIn("发现站", html)
         self.assertNotIn("meAboutTitle", html)
         self.assertIn("本机收藏", html)
-        self.assertIn("我关注的 Builder", html)
+        self.assertIn("我关注的技能开发者", html)
         live = self.harness(api_base="https://skillfeeder.cn",
                             extra="Object.assign(ACCT, { loaded: true });").eval(
             "mePanelHtml()")

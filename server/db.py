@@ -244,6 +244,7 @@ CREATE TABLE IF NOT EXISTS orders (
   provider_txn_id TEXT,
   paid_at TEXT,
   plan_until TEXT,
+  assign_pack TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(user_id) REFERENCES users(id)
@@ -414,6 +415,14 @@ def _migrate_events(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_orders(conn: sqlite3.Connection) -> None:
+    cols = _table_columns(conn, "orders")
+    if cols and "assign_pack" not in cols:
+        conn.execute(
+            "ALTER TABLE orders ADD COLUMN assign_pack TEXT NOT NULL DEFAULT ''"
+        )
+
+
 def _migrate_devices(conn: sqlite3.Connection) -> None:
     cols = _table_columns(conn, "devices")
     if not cols:
@@ -435,6 +444,7 @@ def init_db(db_path: Path) -> None:
         _migrate_posts(conn)
         _migrate_events(conn)
         _migrate_devices(conn)
+        _migrate_orders(conn)
         for stmt in USER_INDEXES:
             conn.execute(stmt)
         conn.commit()
@@ -1116,8 +1126,8 @@ def insert_order(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any
         """
         INSERT INTO orders (
           out_trade_no, user_id, sku, amount_fen, currency, status, provider,
-          provider_txn_id, paid_at, plan_until, created_at, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+          provider_txn_id, paid_at, plan_until, assign_pack, created_at, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             row["out_trade_no"],
@@ -1130,6 +1140,7 @@ def insert_order(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any
             row.get("provider_txn_id"),
             row.get("paid_at"),
             row.get("plan_until"),
+            (row.get("assign_pack") or "")[:64],
             row["created_at"],
             row["updated_at"],
         ),
