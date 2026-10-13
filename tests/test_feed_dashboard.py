@@ -1468,7 +1468,7 @@ def _rgb_distance(a, b):
     """
     pa = tuple(int(a.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
     pb = tuple(int(b.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
-    return sum((x - y) ** 2 for x, y in zip(pa, pb)) ** 0.5
+    return sum((x - y) ** 2 for x, y in zip(pa, pb, strict=True)) ** 0.5
 
 
 def _hsl(hexstr):
@@ -1704,7 +1704,7 @@ class TestSceneColoursCarryInformation(unittest.TestCase):
                 lights = [_hsl(s)[2] for s in stops]
                 self.assertEqual(
                     lights, sorted(lights),
-                    f"{scene_id} 的明度不是递增：{list(zip(stops, lights))}")
+                    f"{scene_id} 的明度不是递增：{list(zip(stops, lights, strict=True))}")
 
     def test_no_palette_squats_on_the_accent_hue(self):
         """accent 色族在页面上的含义是「被强调」，分类色占进去就是语义串台。"""
