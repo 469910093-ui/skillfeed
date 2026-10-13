@@ -87,9 +87,20 @@ def write_ico(path: Path, frames: list[Image.Image]) -> None:
         fh.write(b"".join(blobs))
 
 
+def write_page_webp() -> Path:
+    """首页内联用的团子：同尺寸 WebP，体积约为 PNG 的 1/10，肉眼无差。
+    PNG 仍是品牌源图；改了 PNG 必须重跑这里，否则首页还是旧团子。"""
+    out = OUT / "logo-feide-transparent.webp"
+    Image.open(SRC).convert("RGBA").save(
+        out, format="WEBP", quality=90, alpha_quality=100, method=6,
+    )
+    return out
+
+
 def main() -> None:
     if not SRC.exists():
         raise SystemExit(f"missing {SRC}")
+    print("wrote", write_page_webp())
     master = compose_master()
     side = min(master.width, 512)
     _downscale(master, side).save(OUT / "logo-sofa.png", format="PNG")
