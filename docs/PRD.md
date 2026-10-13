@@ -487,6 +487,8 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 **ICP 备案号：** 一处配置——`config_defaults.json` 的 `icp_beian`（或环境变量 `SKILLFEED_ICP` 覆盖：静态构建用 GitHub 仓库 Variable `SKILLFEED_ICP`，服务端用 `/opt/skill-feed/.env`）。填了才显示：首页页脚、about/faq/compare/skills/场景/详情页底部、登录页卡片底，链接 `https://beian.miit.gov.cn/`；没填不留任何占位。只在主站（`publish-site --full` 与 FastAPI 页面）显示，GitHub Pages 预览壳和 lite 嵌入页不显示。不含「ICP」字样或超过 40 字的值视为没填。
 
 **站长平台验证：** `config_defaults.json` 的 `site_verification`（短键 `baidu` / `google` / `bing` / `360` / `sogou` / `shenma`）→ 首页 `<head>` 对应 `<meta name=...>`。验证码只收字母数字与 `_-.=`，其余丢弃。平台会定期复查，验证通过后不能删。Google 走 DNS TXT、Bing 建议补 DNS CNAME，不依赖此项。
+
+**百度每日推送：** `.github/workflows/baidu-push.yml` 每天北京时间 09:30 跑 `scripts/baidu_push.py`，读线上 `sitemap.xml`，按百度给的每日额度（新站 6 条，自动按 `success + remain` 学习）挑页推送：首页与说明页 → 场景页 → Skill 详情页；没推过的优先，全推过一轮后从最早推的开始轮。token 在仓库 Secret `BAIDU_PUSH_TOKEN`，不进代码；已推记录存 actions cache，丢了只是重推。额度满记 warning，token 失效或拉 sitemap 失败让 job 红。手动推过的页面可用 workflow_dispatch 的 `mark` 只记账不推。
 | `GET /api/geo/skills?q=` | 按意图检索 | 免登录、限流、无 `rank_debug` |
 | `GET /api/geo/skills/{owner}/{repo}` | 单条 | 不在目录则 404 |
 | `GET /api/geo/openapi.json` | Agent | 只含 geo 路径。完整 `/docs` 仍登录后才开 |
@@ -679,6 +681,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-10-13 | 百度每日推送：定时 workflow 按每日额度推 sitemap 页面，优先首页/说明页/场景页，已推记录跨天保存，失败与额度满都写进 run summary | §6.3、`scripts/baidu_push.py`、`.github/workflows/baidu-push.yml` |
 | 2026-10-13 | 站长平台验证 meta 可配置：`config_defaults.json` 的 `site_verification` 写进首页 `<head>`；首个接入百度搜索资源平台 HTML 标签验证 | §6.3、`geo.py`、`config_defaults.json` |
 | 2026-10-13 | 首页减重：肥嘚内联由 PNG 改同尺寸 WebP（约 239KB → 23KB），base64 从 4 份减到 2 份（顶栏 + 页脚，空态克隆顶栏同图）；内联 FEED 不再带前端不读的排序解释 / 调试字段（`*_why`、`rank_debug`、`global_score`、`first_seen_at` 等）与 `gates.details`，`feed.json` 原样。按 528 条信息流实测 gzip 约 1.64MB → 0.67MB | §5.1、§6.3、`feed_dashboard.py`、`scripts/make_brand_icons.py`、`docs/brand/assets/logo-feide-transparent.webp`、`docs/brand/feide-ip-guide.md` |
 | 2026-10-13 | SEO/GEO 收录与归因补洞：ICP 备案号可配置（填了才在主站页脚 / 静态页 / 登录页显示，Pages 与 lite 不显示）；归因默认表补国内外模型与搜索引擎，`utm_source=chatgpt.com` 这类域名写法按来源域名表归 `geo_agent`；登录页 / 发布页补进站埋点（CSP nonce），同会话 `sf_session_attr` 粘住首个外部来源，GitHub 授权回跳不再冲成外链；sitemap 只留可索引 HTML、去掉 `/publish` 与 .md/.txt/.json、每条带真实 `lastmod`；首页 `session_start` 提到 `<head>` 的 `sf-boot` 先发 | §6.2、§6.3、`server/attribution.py`、`geo.py`、`feed_dashboard.py`、`server/app.py`、`server/config.py`、`templates/login.html`、`templates/publish.html`、`skillfeed.py`、`config_defaults.json`、`pages.yml`、`.env.example` |

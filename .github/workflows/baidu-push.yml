@@ -1,0 +1,53 @@
+# 每天把 sitemap 页面按额度推给百度搜索资源平台（普通收录 · API 提交）。
+# token 在仓库 Secrets：BAIDU_PUSH_TOKEN。已推记录靠 actions/cache 跨天保存，
+# cache 被清掉只会重推一轮，不影响正确性。
+name: Baidu Push
+
+on:
+  schedule:
+    # 北京时间每天 09:30；百度额度按北京时间 0 点重置
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+    inputs:
+      mark:
+        description: "只记账不推：空格分隔的 URL（手动推过的页面）"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baidu-push
+  cancel-in-progress: false
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore pushed state
+        uses: actions/cache/restore@v4
+        with:
+          path: .baidu-push
+          key: baidu-push-state-${{ github.run_id }}
+          restore-keys: baidu-push-state-
+
+      - name: Push to Baidu
+        env:
+          BAIDU_PUSH_TOKEN: ${{ secrets.BAIDU_PUSH_TOKEN }}
+          BAIDU_PUSH_MARK: ${{ inputs.mark }}
+        run: python scripts/baidu_push.py --state .baidu-push/state.json
+
+      - name: Save pushed state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .baidu-push
+          key: baidu-push-state-${{ github.run_id }}
