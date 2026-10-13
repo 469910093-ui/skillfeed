@@ -8,6 +8,7 @@ CI 不需要真凭据，也不会真发短信。
 """
 
 import json
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -219,6 +220,35 @@ class TestLoginGate(unittest.TestCase):
         self.assertNotIn("TOP-SECRET-AK", body)
         # AppID 也不下发：微信跳转是服务端在 /auth/wechat 里拼的
         self.assertNotIn("wxAPPID123", body)
+
+    def test_login_page_records_landing_under_its_nonce(self):
+        """外部来源先落在 /login 的人也要记首触渠道；脚本必须吃 CSP nonce，不放宽策略。"""
+        r = self.client.get("/login", params={"next": "/publish?utm_source=xhs"})
+        self.assertEqual(r.status_code, 200)
+        csp = r.headers["content-security-policy"]
+        self.assertNotIn("unsafe-inline", csp.split("script-src", 1)[1].split(";", 1)[0])
+        nonce = re.search(r"'nonce-([^']+)'", csp).group(1)
+        blocks = re.findall(r'<script nonce="([^"]+)">(.*?)</script>', r.text, flags=re.S)
+        beacon = [body for n, body in blocks if "session_start" in body]
+        self.assertEqual(1, len(beacon))
+        self.assertTrue(all(n == nonce for n, _ in blocks))
+        self.assertIn("/api/events", beacon[0])
+        self.assertIn("sf_session_attr", beacon[0])
+        self.assertIn("sf_device_token", beacon[0])
+        self.assertNotIn("{{", r.text)
+
+    def test_icp_footer_only_when_configured(self):
+        with mock.patch.dict("os.environ", {"SKILLFEED_ICP": ""}):
+            body = self.client.get("/login").text
+            self.assertNotIn("beian.miit.gov.cn", body)
+            self.assertNotIn("ICP", body)
+            self.assertNotIn("beian", self.client.get("/about.html").text)
+        with mock.patch.dict("os.environ", {"SKILLFEED_ICP": "京ICP备00000000号-1"}):
+            body = self.client.get("/login").text
+            self.assertIn('href="https://beian.miit.gov.cn/"', body)
+            self.assertIn("京ICP备00000000号-1", body)
+            about = self.client.get("/about.html").text
+            self.assertIn("京ICP备00000000号-1", about)
 
     def test_login_page_hides_github_by_default(self):
         """2.13：GitHub 降为可选绑定，默认不给入口，但路由必须还在。"""

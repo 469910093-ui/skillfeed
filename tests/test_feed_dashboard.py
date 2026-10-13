@@ -862,17 +862,23 @@ class TestScriptInjection(unittest.TestCase):
         for variant in ("full", "lite"):
             with self.subTest(variant=variant):
                 html = feed_dashboard.build_feed_html(_malicious_feed(), variant=variant)
-                # 允许两块：GEO 的 application/ld+json + 页面主脚本。
-                # 多出来的裸 <script> 才是被恶意数据劈开的。
+                # 允许的块：GEO 的 application/ld+json + 页面主脚本，full 另有
+                # <head> 里的 sf-boot 进站上报。多出来的裸 <script> 才是被恶意数据劈开的。
+                boot = 1 if variant == "full" else 0
                 tags = re.findall(r"<script\b([^>]*)>", html, flags=re.I)
-                self.assertEqual(2, len(tags), tags)
+                self.assertEqual(2 + boot, len(tags), tags)
                 self.assertEqual(
                     1, sum(1 for a in tags if "ld+json" in a.lower()),
                     "缺 JSON-LD 或被劈成多块")
                 self.assertEqual(
-                    1, sum(1 for a in tags if "ld+json" not in a.lower()),
+                    boot, sum(1 for a in tags if 'id="sf-boot"' in a),
+                    "sf-boot 只该出现在 full，且只有一块")
+                self.assertEqual(
+                    1, sum(1 for a in tags
+                           if "ld+json" not in a.lower() and "sf-boot" not in a),
                     "主脚本被劈开或消失：" + str(tags))
-                self.assertEqual(2, len(re.findall(r"</script\s*>", html, flags=re.I)))
+                self.assertEqual(
+                    2 + boot, len(re.findall(r"</script\s*>", html, flags=re.I)))
                 bodies = _script_blocks(html)
                 self.assertEqual(1, len(bodies), "主脚本（无 type）应恰好一块")
                 body = bodies[0].lower()
@@ -889,6 +895,47 @@ class TestScriptInjection(unittest.TestCase):
         body = src[src.index("def build_feed_html"):src.index("def write_feed_html")]
         self.assertNotIn("json.dumps", body,
                          "build_feed_html 里不该再出现裸 json.dumps，请用 _json_for_script")
+
+
+class TestBootBeaconAndIcp(unittest.TestCase):
+    """首页 <head> 里的进站上报 + 页脚备案号：只在 full，且只在配置了才出现。"""
+
+    def _html(self, variant="full", **ui):
+        return feed_dashboard.build_feed_html(
+            {"items": [], "corpus": [], "ui": ui}, variant=variant)
+
+    def test_boot_beacon_sits_in_head_before_main_script(self):
+        html = self._html(api_base="https://skillfeeder.cn")
+        head = html.split("</head>", 1)[0]
+        m = re.search(r'<script id="sf-boot">(.*?)</script>', head, flags=re.S)
+        self.assertIsNotNone(m, "sf-boot 必须在 <head> 里，主脚本加载完之前就发出")
+        boot = m.group(1)
+        self.assertIn("session_start", boot)
+        self.assertIn("sf_session_attr", boot)
+        self.assertIn('var base = "https://skillfeeder.cn";', boot)
+        self.assertLess(html.index('id="sf-boot"'), html.index("<title>"))
+        csp = re.search(r'http-equiv="Content-Security-Policy" content="([^"]+)"', html).group(1)
+        self.assertIn(feed_dashboard._sha256_source(boot), csp)
+        self.assertNotIn("'unsafe-inline'", csp.split("script-src", 1)[1].split(";", 1)[0])
+
+    def test_main_script_waits_for_boot_instead_of_double_counting(self):
+        js = _script_source(self._html())
+        self.assertIn("window.__sfBoot", js)
+        self.assertEqual(1, js.count("track('session_start'"))
+
+    def test_lite_has_no_boot_and_no_icp(self):
+        html = self._html("lite", icp="京ICP备00000000号-1")
+        self.assertNotIn('<script id="sf-boot">', html)
+        self.assertNotIn("beian", html)
+        self.assertNotIn("ICP备", html)
+
+    def test_icp_footer_only_when_configured(self):
+        self.assertNotIn("beian", self._html())
+        self.assertNotIn("foot-icp\"", self._html(icp="   "))
+        html = self._html(icp="京ICP备00000000号-1")
+        foot = html.split('<footer class="site-foot"', 1)[1].split("</footer>", 1)[0]
+        self.assertIn('href="https://beian.miit.gov.cn/"', foot)
+        self.assertIn("京ICP备00000000号-1", foot)
 
 
 @unittest.skipIf(NODE is None, "需要 node 才能验证生成的 JS 真能读到数据")

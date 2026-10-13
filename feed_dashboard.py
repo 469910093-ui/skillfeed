@@ -523,6 +523,8 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     feed = dict(feed)
     ui = dict(feed.get("ui") or {})
     ui["variant"] = variant
+    icp = "" if lite else str(ui.get("icp") or "")
+    ui.pop("icp", None)
     feed["ui"] = ui
     payload = _json_for_script(feed)
     scenes = _json_for_script(feed.get("scenes") or scene.scene_chips())
@@ -543,12 +545,18 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     logo_mark = f'<img class="logo-mark" src="{logo_src}" alt="" />'
     feide_img = f'<img class="feide" src="{logo_src}" alt="feide" />'
     pack_shelf_json = _json_for_script(load_pack_shelf())
+    # 进站上报放在 <head> 最前：页面几 MB，慢网访客等不到主脚本跑完就走了。
+    # lite 不记路径（嵌在 skill-picker 里，没有进站这回事）。
+    boot_script = "" if lite else (
+        f'<script id="sf-boot">{geo.landing_beacon_js(str(ui.get("api_base") or ""))}</script>\n'
+    )
+    icp_html = geo.icp_link_html(icp, cls="foot-icp")
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>{page_title}</title>
+{boot_script}<title>{page_title}</title>
 {geo.html_head_tags()}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1182,9 +1190,11 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .site-foot {{
     display: flex; justify-content: center;
+    flex-wrap: wrap; align-items: center; gap: 2px 10px;
     padding: 8px 12px 0;
   }}
   .foot-logo {{ font-size: 1.05rem; }}
+  .foot-icp {{ font-size: .62rem; color: var(--muted); text-decoration: none; white-space: nowrap; }}
   .nav {{
     border: 0; background: transparent; color: var(--ink); cursor: pointer;
     display: grid; place-items: center; gap: 2px; font-size: .52rem; font-weight: 600;
@@ -2012,6 +2022,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
             {logo_mark}
         Skill<span class="feeder">Feeder</span>
       </div>
+      {icp_html}
     </footer>
     <nav class="bottom" id="tabBar" role="tablist" aria-label="主导航" data-i18n-aria="tabsAria">
       <button class="nav on" type="button" data-mode="all" role="tab" id="tab-all" aria-selected="true" aria-controls="feed">
@@ -5342,10 +5353,17 @@ async function claimGuestDevice() {{
 
 async function bootGuestIdentity() {{
   if (typeof IS_LITE !== 'undefined' && IS_LITE) return;
+  /* <head> 里的 sf-boot 已经发过 session_start；等它回来再取凭据，
+     否则两个请求抢着注册设备，凭据可能落在没人存的那一边。 */
+  const boot = (typeof window !== 'undefined' && window.__sfBoot) || null;
+  const booted = !!(boot && boot.done);
+  if (booted) {{
+    try {{ await boot.done; }} catch (e) {{}}
+  }}
   try {{
     await ensureDeviceToken();
   }} catch (e) {{}}
-  track('session_start', collectAttribution());
+  if (!booted) track('session_start', collectAttribution());
   track('view_tab', {{ item_key: state.mode || 'all', source: 'boot' }});
   try {{
     const me = await acctFetch('/auth/me', {{ headers: {{ 'Accept': 'application/json' }} }});

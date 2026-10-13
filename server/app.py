@@ -331,6 +331,11 @@ CSP_SITE = (
 )
 
 
+def _icp_footer_html(settings: Settings) -> str:
+    link = geo.icp_link_html(settings.icp)
+    return f'<p class="icp-foot">{link}</p>' if link else ""
+
+
 def _apply_feed_quota(
     request: Request,
     settings: Settings,
@@ -521,15 +526,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/about.html")
     def about_html() -> HTMLResponse:
-        return HTMLResponse(geo.render_about_html())
+        return HTMLResponse(geo.with_icp_footer(geo.render_about_html(), settings.icp))
 
     @app.get("/faq.html")
     def faq_html() -> HTMLResponse:
-        return HTMLResponse(geo.render_faq_html())
+        return HTMLResponse(geo.with_icp_footer(geo.render_faq_html(), settings.icp))
 
     @app.get("/compare.html")
     def compare_html() -> HTMLResponse:
-        return HTMLResponse(geo.render_compare_html())
+        return HTMLResponse(geo.with_icp_footer(geo.render_compare_html(), settings.icp))
 
     @app.get("/catalog.json")
     def catalog_json() -> dict[str, Any]:
@@ -672,6 +677,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             # script 里 &amp; 不会被 HTML 解析器还原，购买回跳的 & 必须按 JS 字符串注入
             ("{{next_js}}", json.dumps(dest, ensure_ascii=False)),
             ("{{sms_cooldown}}", str(settings.sms_resend_cooldown_s)),
+            ("{{landing_beacon_js}}", geo.landing_beacon_js()),
+            ("{{icp_footer}}", _icp_footer_html(settings)),
         ):
             html = html.replace(key, value)
         return html_response(html.replace("{{csp_nonce}}", nonce), nonce)
@@ -683,6 +690,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         html = (TEMPLATES / "publish.html").read_text(encoding="utf-8")
         html = html.replace("{{logged_in}}", "1" if uid else "0")
         html = html.replace("{{public_url}}", settings.public_url)
+        html = html.replace("{{landing_beacon_js}}", geo.landing_beacon_js())
         return html_response(html.replace("{{csp_nonce}}", nonce), nonce)
 
     def _admin_html(request: Request) -> HTMLResponse:
