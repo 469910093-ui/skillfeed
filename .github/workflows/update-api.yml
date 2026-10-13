@@ -30,17 +30,14 @@ jobs:
           ssh -o ConnectTimeout=15 "$ALIYUN_USER@$ALIYUN_HOST" 'bash -s' <<'EOF'
           set -euo pipefail
           cd /opt/skill-feed
-          before=$(git rev-parse --short HEAD)
           git fetch --prune origin
-          git checkout main
-          git pull --ff-only origin main
-          .venv/bin/pip install -q -r requirements-server.txt \
-            -i https://mirrors.aliyun.com/pypi/simple/ \
-            --trusted-host mirrors.aliyun.com
-          sudo systemctl restart skillfeed-api
-          sleep 2
-          curl -fsS http://127.0.0.1:8787/health
-          echo
-          echo "api_rev ${before} -> $(git rev-parse --short HEAD)"
-          systemctl is-active skillfeed-api
+          echo "HEAD $(git rev-parse --short HEAD)"
+          echo "==== status ===="
+          git status --short
+          echo "==== diff stat vs HEAD ===="
+          git diff --stat
+          echo "==== diff stat vs origin/main ===="
+          git diff --stat origin/main
+          echo "==== untracked ===="
+          git ls-files --others --exclude-standard
           EOF
