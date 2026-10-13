@@ -268,7 +268,42 @@ CREATE TABLE IF NOT EXISTS site_settings (
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- 渠道归因规则的覆盖。默认规则在 server/attribution.py；这里只存运营改过的条目：
+-- 同 (kind, value) 覆盖默认，enabled=0 表示停用；删行 = 恢复默认 / 删掉自加项。
+CREATE TABLE IF NOT EXISTS channel_rules (
+  kind TEXT NOT NULL,
+  value TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  updated_by TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (kind, value)
+);
+
+-- 推广链接预设（后台「渠道配置」生成带 utm 的外发链接）
+CREATE TABLE IF NOT EXISTS channel_presets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  utm_source TEXT NOT NULL DEFAULT '',
+  utm_medium TEXT NOT NULL DEFAULT '',
+  utm_campaign TEXT NOT NULL DEFAULT '',
+  landing TEXT NOT NULL DEFAULT '/',
+  sort INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 """
+
+# 首次建表时塞进去的起步预设；之后运营删光也不会再补
+SEED_CHANNEL_PRESETS: tuple[tuple[str, str, str, str], ...] = (
+    ("小红书笔记", "xhs", "social", "note"),
+    ("微信群", "wechat", "social", "group"),
+    ("公众号文章", "weixin", "social", "article"),
+    ("抖音", "douyin", "social", "video"),
+    ("即刻", "jike", "social", "post"),
+    ("Twitter / X", "twitter", "social", "post"),
+)
 
 
 def _now() -> str:
@@ -438,8 +473,11 @@ def _migrate_devices(conn: sqlite3.Connection) -> None:
 def init_db(db_path: Path) -> None:
     conn = connect(db_path)
     try:
+        had_presets = bool(_table_columns(conn, "channel_presets"))
         conn.executescript(SCHEMA)
         conn.commit()
+        if not had_presets:
+            _seed_channel_presets(conn)
         _migrate_users(conn)
         _migrate_posts(conn)
         _migrate_events(conn)
@@ -1887,6 +1925,97 @@ def list_site_settings(conn: sqlite3.Connection, *, public_only: bool = False) -
         key = str(row["key"])
         out[key] = str(row["value"] or "")
     return out
+
+
+# —— 渠道配置（规则覆盖 + 推广链接预设） ——
+
+def list_channel_rule_overrides(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "SELECT kind, value, channel, enabled, updated_by, updated_at "
+        "FROM channel_rules ORDER BY kind, value"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def upsert_channel_rule(
+    conn: sqlite3.Connection, *, kind: str, value: str, channel: str, enabled: bool, actor: str = "",
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO channel_rules(kind, value, channel, enabled, updated_by, updated_at)
+        VALUES(?,?,?,?,?,?)
+        ON CONFLICT(kind, value) DO UPDATE SET
+          channel=excluded.channel, enabled=excluded.enabled,
+          updated_by=excluded.updated_by, updated_at=excluded.updated_at
+        """,
+        (kind, value, channel, 1 if enabled else 0, actor[:80], _now()),
+    )
+
+
+def delete_channel_rule(conn: sqlite3.Connection, *, kind: str, value: str) -> bool:
+    cur = conn.execute("DELETE FROM channel_rules WHERE kind=? AND value=?", (kind, value))
+    return bool(cur.rowcount)
+
+
+def _seed_channel_presets(conn: sqlite3.Connection) -> None:
+    now = _now()
+    conn.executemany(
+        "INSERT INTO channel_presets(name, utm_source, utm_medium, utm_campaign, landing, sort, "
+        "created_at, updated_at) VALUES(?,?,?,?,'/',?,?,?)",
+        [
+            (name, src, med, camp, i, now, now)
+            for i, (name, src, med, camp) in enumerate(SEED_CHANNEL_PRESETS)
+        ],
+    )
+    conn.commit()
+
+
+def list_channel_presets(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "SELECT id, name, utm_source, utm_medium, utm_campaign, landing, sort, updated_at "
+        "FROM channel_presets ORDER BY sort, id"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_channel_preset(
+    conn: sqlite3.Connection, *, preset_id: Optional[int], name: str,
+    utm_source: str, utm_medium: str, utm_campaign: str, landing: str,
+) -> Optional[dict[str, Any]]:
+    """新建（preset_id 为空）或更新；更新不存在的 id 返回 None。"""
+    now = _now()
+    if preset_id:
+        cur = conn.execute(
+            "UPDATE channel_presets SET name=?, utm_source=?, utm_medium=?, utm_campaign=?, "
+            "landing=?, updated_at=? WHERE id=?",
+            (name, utm_source, utm_medium, utm_campaign, landing, now, int(preset_id)),
+        )
+        if not cur.rowcount:
+            return None
+        pid = int(preset_id)
+    else:
+        row = conn.execute("SELECT COALESCE(MAX(sort), -1) + 1 AS n FROM channel_presets").fetchone()
+        cur = conn.execute(
+            "INSERT INTO channel_presets(name, utm_source, utm_medium, utm_campaign, landing, sort, "
+            "created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
+            (name, utm_source, utm_medium, utm_campaign, landing, int(row["n"]), now, now),
+        )
+        pid = int(cur.lastrowid)
+    row = conn.execute(
+        "SELECT id, name, utm_source, utm_medium, utm_campaign, landing, sort, updated_at "
+        "FROM channel_presets WHERE id=?", (pid,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def count_channel_presets(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT COUNT(*) AS n FROM channel_presets").fetchone()
+    return int(row["n"] or 0)
+
+
+def delete_channel_preset(conn: sqlite3.Connection, preset_id: int) -> bool:
+    cur = conn.execute("DELETE FROM channel_presets WHERE id=?", (int(preset_id),))
+    return bool(cur.rowcount)
 
 
 def op_stats(conn: sqlite3.Connection) -> dict[str, Any]:

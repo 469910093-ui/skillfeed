@@ -37,7 +37,7 @@ SKILLFEED_OPERATOR_LOGINS=<你的 GitHub login>
 SKILLFEED_REVIEW_WEBHOOK=<飞书自定义机器人 webhook，可选>
 ```
 
-投稿进 `pending` 后如果配了 webhook（`.env` 的 `SKILLFEED_REVIEW_WEBHOOK`，或登录运营账号打开 `/op` → 页面配置粘贴飞书自定义机器人），会给运营群推一条（含 `/op?tab=review` 链接）。没配则只落库，投稿页显示「审核中」，不会发 IM / 邮件。运营后台：`https://skillfeeder.cn/admin`（`/op` 同页；`SKILLFEED_OPERATOR_LOGINS` 白名单）。已上架卡片短链：`https://skillfeeder.cn/p/{仓库名}`。路径分析：`/op#path`。用户库每日备份：`scripts/skillfeed-db-backup.timer`（`python skillfeed.py backup-db`）。已登录用户可在「我的」绑微信/手机并导出账本；投稿仍只收 GitHub 链接。
+投稿进 `pending` 后如果配了 webhook（`.env` 的 `SKILLFEED_REVIEW_WEBHOOK`，或登录运营账号打开 `/op` → 页面配置粘贴飞书自定义机器人），会给运营群推一条（含 `/op?tab=review` 链接）。没配则只落库，投稿页显示「审核中」，不会发 IM / 邮件。运营后台：`https://skillfeeder.cn/admin`（`/op` 同页；`SKILLFEED_OPERATOR_LOGINS` 白名单）。已上架卡片短链：`https://skillfeeder.cn/p/{仓库名}`。路径分析：`/op#path`。渠道规则与推广链接：`/op#channels`（存在 SQLite，首次启动自动建表，无需新环境变量；API 改动要 `git pull` 后 `sudo systemctl restart skillfeed-api`，或手动跑 Actions「Update API」）。用户库每日备份：`scripts/skillfeed-db-backup.timer`（`python skillfeed.py backup-db`）。已登录用户可在「我的」绑微信/手机并导出账本；投稿仍只收 GitHub 链接。
 
 认领仓库要求登录名等于 owner，所以 **发新帖仍要 GitHub**。日常进「我的」应再绑微信或手机。`SKILLFEED_DEV` 生产环境不要开。
 

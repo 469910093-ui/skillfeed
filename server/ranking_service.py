@@ -57,6 +57,7 @@ def normalize_events(
     *,
     config: Optional[dict] = None,
     now: Optional[datetime] = None,
+    channel_rules: Optional[attribution.ChannelRules] = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """返回 (可入库的行, 按原因分类的丢弃计数)。
 
@@ -110,7 +111,7 @@ def normalize_events(
         except (TypeError, ValueError):
             band = None
         attr = (
-            attribution.sanitize_attr(raw)
+            attribution.sanitize_attr(raw, rules=channel_rules)
             if action == "session_start"
             else {
                 "channel": "", "referrer": "", "landing": "",
@@ -153,13 +154,20 @@ def ingest_events(
     ua_hash: str = "",
     now: Optional[datetime] = None,
     session_state: Optional["SessionOrderCache"] = None,
+    channel_rules: Optional[attribution.ChannelRules] = None,
 ) -> dict[str, Any]:
     cfg = ranking.resolve_config(config)
     now = now or _now()
     db.touch_device(conn, device_id, ua_hash=ua_hash)
     target = db.resolve_device(conn, device_id)
+    if channel_rules is None and any(
+        isinstance(e, dict) and e.get("action") == "session_start" for e in events or []
+    ):
+        channel_rules = attribution.load_rules(conn)
 
-    rows, rejected = normalize_events(device_id, session_id, events, config=cfg, now=now)
+    rows, rejected = normalize_events(
+        device_id, session_id, events, config=cfg, now=now, channel_rules=channel_rules,
+    )
     focus_payloads = [r.pop("_focus") for r in rows]
     accepted = db.insert_events(conn, rows)
     accepted_ids = {id(r) for r in accepted}

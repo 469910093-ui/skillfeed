@@ -34,7 +34,7 @@
   }
   h1 { font-size: .95rem; margin: 0; font-weight: 700; }
   .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-  .tabs a, header .ghost, .panel button, .views button {
+  .tabs a, header .ghost, .panel button, .views button, #view-channels button {
     appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
     border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .78rem; font-weight: 600;
     cursor: pointer; text-decoration: none;
@@ -90,6 +90,31 @@
   .path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.5; word-break: break-all; }
   .tl { margin: 0; padding-left: 18px; }
   .tl li { margin: 6px 0; }
+  select {
+    border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px;
+    font: inherit; font-size: .8rem; background: #fff; color: var(--ink);
+  }
+  .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .form-row label { margin-top: 0; }
+  .link-out {
+    margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: #eef3ff;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  .link-out code { flex: 1 1 320px; word-break: break-all; font-size: 12px; }
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .7rem; font-weight: 600;
+    background: #eef3ff; color: var(--ink);
+  }
+  .tag.ch { background: rgba(13,115,119,.12); color: var(--accent); }
+  .tag.off { background: #f3f3f3; color: var(--muted); }
+  .tag.edit { background: #fff4e5; color: #9a5b00; }
+  tr.off td { color: var(--muted); }
+  .rule-group { margin-top: 14px; font-size: .8rem; font-weight: 700; }
+  .rule-group .hint { font-weight: 400; }
+  .ch-table tr { cursor: default; }
+  .ch-table td button { font-size: .72rem; padding: 4px 10px; }
+  .inline-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .inline-add input { flex: 1 1 200px; width: auto; }
 </style>
 </head>
 <body>
@@ -99,6 +124,7 @@
     <nav class="tabs" id="tabs">
       <a href="#overview" data-tab="overview" class="on">数据</a>
       <a href="#path" data-tab="path">路径</a>
+      <a href="#channels" data-tab="channels">渠道配置</a>
       <a href="#review" data-tab="review">审批</a>
       <a href="#site" data-tab="site">页面配置</a>
     </nav>
@@ -131,7 +157,7 @@
           <button type="button" data-hours="168">近 7 天</button>
           <a class="ghost" id="pathCsv" href="/api/op/journeys.csv?hours=72">导出 CSV</a>
         </div>
-        <p class="hint" style="margin-top:10px">一条会话就是一次打开站点到关掉页签。进站记渠道（UTM / referrer → SEO / GEO / 社交 / 直接等）。曝光/停留默认不进路径。登录后会把本机 device 挂到 GitHub login。</p>
+        <p class="hint" style="margin-top:10px">一条会话就是一次打开站点到关掉页签。进站记渠道（UTM / referrer → SEO / GEO / 社交 / 直接等）。曝光/停留默认不进路径。登录后会把本机 device 挂到 GitHub login。没带参数也没来源网址的访问记为直接，<a href="#channels">去生成带参数的链接 →</a></p>
         <div class="table-scroll">
           <table>
             <thead><tr><th>用户</th><th>渠道</th><th>来源域</th><th>开始</th><th>步数</th><th>路径</th></tr></thead>
@@ -140,6 +166,66 @@
         </div>
       </div>
       <aside class="panel" id="pathPanel" style="margin-top:16px">点一行看时间线。</aside>
+    </section>
+
+    <section id="view-channels" class="hide">
+      <div class="card">
+        <strong>推广链接</strong>
+        <p class="hint" style="margin-top:6px">没带参数也没来源网址的访问记为直接。往外发的链接带上参数，路径里就能看出是哪来的。</p>
+        <div class="table-scroll">
+          <table class="ch-table">
+            <thead><tr><th>名称</th><th>链接</th><th>归到</th><th></th></tr></thead>
+            <tbody id="presetRows"></tbody>
+          </table>
+        </div>
+        <form id="presetForm" style="margin-top:14px">
+          <div class="form-row">
+            <div><label for="pName">名称</label><input id="pName" maxlength="40" placeholder="小红书笔记"></div>
+            <div><label for="pSource">utm_source（必填）</label><input id="pSource" maxlength="80" placeholder="xhs"></div>
+            <div><label for="pMedium">utm_medium</label><input id="pMedium" maxlength="80" placeholder="social"></div>
+            <div><label for="pCampaign">utm_campaign</label><input id="pCampaign" maxlength="80" placeholder="note_1013"></div>
+            <div><label for="pLanding">落地路径</label><input id="pLanding" maxlength="200" value="/" placeholder="/"></div>
+          </div>
+          <div class="link-out">
+            <code id="pUrl"></code>
+            <span>归到 <span class="tag ch" id="pChannel">—</span></span>
+            <button type="button" id="pCopy">复制链接</button>
+          </div>
+          <div class="actions">
+            <button type="submit" id="pSave">保存为新预设</button>
+            <button type="button" id="pSaveNew" class="hide">另存为新预设</button>
+            <button type="button" id="pClear">清空</button>
+          </div>
+          <p id="presetLog" class="ok"></p>
+        </form>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <strong>归因规则</strong>
+        <p class="hint" style="margin-top:6px">utm 参数优先于来源网址。同时命中几条时：付费 &gt; 模型GEO &gt; 搜索SEO &gt; 社交。带了参数但哪条都没命中，记为活动UTM。保存后半分钟内对新访问生效，已记下的访问不改。</p>
+        <div class="views" id="ruleKinds" style="margin-top:10px">
+          <button type="button" data-kind="host" class="on">来源域名</button>
+          <button type="button" data-kind="source">utm_source</button>
+          <button type="button" data-kind="medium">utm_medium</button>
+        </div>
+        <div class="inline-add">
+          <input id="ruleValue" maxlength="80" placeholder="xiaohongshu.com">
+          <select id="ruleChannel"></select>
+          <button type="button" id="ruleAdd">添加</button>
+        </div>
+        <p id="ruleLog" class="ok"></p>
+        <div id="ruleList"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <strong>试一试</strong>
+        <div class="form-row" style="margin-top:10px">
+          <div><label for="tSource">utm_source</label><input id="tSource" maxlength="80"></div>
+          <div><label for="tMedium">utm_medium</label><input id="tMedium" maxlength="80"></div>
+          <div><label for="tReferrer">来源网址</label><input id="tReferrer" maxlength="200" placeholder="https://www.xiaohongshu.com/…"></div>
+        </div>
+        <p style="margin-top:10px">会记为 <span class="tag ch" id="tChannel">直接</span></p>
+      </div>
     </section>
 
     <section id="view-review" class="hide">
@@ -200,10 +286,11 @@ let pathHours = 72;
 let pathSessions = [];
 let pathSelected = 0;
 
+const TABS = ["overview", "path", "channels", "review", "site"];
 function tabFromHash() {
   const raw = (location.hash || "#overview").replace("#", "");
   const base = raw.split("?")[0].split("/")[0];
-  return ["overview", "path", "review", "site"].includes(base) ? base : "overview";
+  return TABS.includes(base) ? base : "overview";
 }
 function hashParams() {
   const raw = (location.hash || "").replace(/^#/, "");
@@ -211,10 +298,11 @@ function hashParams() {
   return new URLSearchParams(q);
 }
 function showTab(tab) {
-  ["overview", "path", "review", "site"].forEach(name => {
+  TABS.forEach(name => {
     document.getElementById("view-" + name).classList.toggle("hide", name !== tab);
   });
   document.querySelectorAll("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
+  if (tab === "channels") loadChannels();
   if (tab === "review") {
     const st = hashParams().get("status");
     if (st) status = st;
@@ -536,6 +624,291 @@ function renderPathPanel() {
     ).join("")}</ol>`;
 }
 
+// —— 渠道配置 ——
+let chData = null;
+let ruleKind = "host";
+let presetEditId = 0;
+let previewTimer = 0;
+let testTimer = 0;
+const RULE_PLACEHOLDER = { host: "xiaohongshu.com", source: "xhs", medium: "social" };
+
+async function chFetch(url, opts) {
+  const r = await fetch(url, Object.assign({ credentials: "include" }, opts || {}));
+  if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op"; throw new Error(""); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const d = data.detail;
+    throw new Error(typeof d === "string" ? d : "保存失败");
+  }
+  return data;
+}
+function chPost(url, body) {
+  return chFetch(url, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+}
+function chLabel(key) {
+  const hit = ((chData && chData.channels) || []).find(c => c.key === key);
+  return hit ? hit.label : channelLabel(key);
+}
+function channelOptions(selected) {
+  return ((chData && chData.channels) || []).map(c =>
+    `<option value="${esc(c.key)}"${c.key === selected ? " selected" : ""}>${esc(c.label)}</option>`
+  ).join("");
+}
+
+async function loadChannels() {
+  try {
+    chData = await chFetch("/api/op/channels");
+  } catch (e) {
+    if (e.message) document.getElementById("ruleList").innerHTML = `<p class="err">${esc(e.message)}</p>`;
+    return;
+  }
+  renderPresets();
+  renderRules();
+  updatePresetPreview();
+}
+
+function buildLink(base, landing, src, med, camp) {
+  let path = landing || "/";
+  let frag = "";
+  const hi = path.indexOf("#");
+  if (hi >= 0) { frag = path.slice(hi + 1); path = path.slice(0, hi); }
+  let query = "";
+  const qi = path.indexOf("?");
+  if (qi >= 0) { query = path.slice(qi + 1); path = path.slice(0, qi); }
+  const pairs = query
+    ? query.split("&").filter(p => p && !["utm_source", "utm_medium", "utm_campaign"].includes(p.split("=")[0]))
+    : [];
+  const utm = new URLSearchParams();
+  if (src) utm.append("utm_source", src);
+  if (med) utm.append("utm_medium", med);
+  if (camp) utm.append("utm_campaign", camp);
+  if (utm.toString()) pairs.push(utm.toString());
+  let url = String(base || "").replace(/\/+$/, "") + path;
+  if (pairs.length) url += "?" + pairs.join("&");
+  if (frag) url += "#" + frag;
+  return url;
+}
+
+function presetFormValues() {
+  const v = id => document.getElementById(id).value.trim();
+  return {
+    name: v("pName"),
+    utm_source: v("pSource").toLowerCase(),
+    utm_medium: v("pMedium").toLowerCase(),
+    utm_campaign: v("pCampaign"),
+    landing: v("pLanding") || "/",
+  };
+}
+
+function updatePresetPreview() {
+  const f = presetFormValues();
+  const base = (chData && chData.site) || location.origin;
+  document.getElementById("pUrl").textContent = buildLink(base, f.landing, f.utm_source, f.utm_medium, f.utm_campaign);
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(async () => {
+    try {
+      const data = await chPost("/api/op/channels/preview", {
+        utm_source: f.utm_source, utm_medium: f.utm_medium, utm_campaign: f.utm_campaign,
+      });
+      document.getElementById("pChannel").textContent = data.label || chLabel(data.channel);
+    } catch (e) { /* 预览失败不打断编辑 */ }
+  }, 250);
+}
+
+function setPresetEditing(p) {
+  presetEditId = p ? p.id : 0;
+  document.getElementById("pName").value = p ? p.name : "";
+  document.getElementById("pSource").value = p ? p.utm_source : "";
+  document.getElementById("pMedium").value = p ? p.utm_medium : "";
+  document.getElementById("pCampaign").value = p ? p.utm_campaign : "";
+  document.getElementById("pLanding").value = p ? p.landing : "/";
+  document.getElementById("pSave").textContent = presetEditId ? "保存修改" : "保存为新预设";
+  document.getElementById("pSaveNew").classList.toggle("hide", !presetEditId);
+  document.getElementById("presetLog").textContent = "";
+  updatePresetPreview();
+}
+
+function renderPresets() {
+  const list = (chData && chData.presets) || [];
+  document.getElementById("presetRows").innerHTML = list.map(p => `
+    <tr data-id="${esc(p.id)}"${p.id === presetEditId ? " class=\"on\"" : ""}>
+      <td>${esc(p.name)}</td>
+      <td class="path">${esc(p.url)}</td>
+      <td><span class="tag ch">${esc(chLabel(p.channel))}</span></td>
+      <td style="white-space:nowrap">
+        <button type="button" data-pact="copy">复制</button>
+        <button type="button" data-pact="edit">编辑</button>
+        <button type="button" data-pact="del">删除</button>
+      </td>
+    </tr>`).join("") || "<tr><td colspan='4'>还没有预设。在下面填好保存。</td></tr>";
+}
+
+async function copyText(text, logEl) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e2) { /* 忽略 */ }
+    ta.remove();
+  }
+  if (logEl) { logEl.className = "ok"; logEl.textContent = "已复制"; }
+}
+
+async function savePreset(asNew) {
+  const log = document.getElementById("presetLog");
+  const body = presetFormValues();
+  if (presetEditId && !asNew) body.id = presetEditId;
+  try {
+    chData = await chPost("/api/op/channels/presets", body);
+    const saved = (chData.presets || []).find(p => p.id === chData.saved_id);
+    setPresetEditing(saved || null);
+    renderPresets();
+    log.className = "ok";
+    log.textContent = "已保存";
+  } catch (e) {
+    if (e.message) { log.className = "err"; log.textContent = e.message; }
+  }
+}
+
+function ruleStatus(r) {
+  if (!r.enabled) return `<span class="tag off">已停用</span>`;
+  if (!r.is_default) return `<span class="tag edit">新增</span>`;
+  if (r.changed) return `<span class="tag edit">已改 · 默认${esc(chLabel(r.default_channel))}</span>`;
+  return `<span class="tag">默认</span>`;
+}
+
+function renderRules() {
+  document.querySelectorAll("#ruleKinds button").forEach(b => b.classList.toggle("on", b.dataset.kind === ruleKind));
+  document.getElementById("ruleValue").placeholder = RULE_PLACEHOLDER[ruleKind] || "";
+  const sel = document.getElementById("ruleChannel");
+  const prev = sel.value || "social";
+  sel.innerHTML = channelOptions(prev);
+  const rules = ((chData && chData.rules) || []).filter(r => r.kind === ruleKind);
+  const groups = ((chData && chData.channels) || [])
+    .map(c => ({ key: c.key, label: c.label, rows: rules.filter(r => r.channel === c.key) }))
+    .filter(g => g.rows.length);
+  document.getElementById("ruleList").innerHTML = groups.map(g => `
+    <div class="rule-group">${esc(g.label)} <span class="hint">· ${esc(g.rows.length)} 条</span></div>
+    <div class="table-scroll"><table class="ch-table">
+      <thead><tr><th>匹配</th><th>归到</th><th>状态</th><th></th></tr></thead>
+      <tbody>${g.rows.map(r => `
+        <tr class="${r.enabled ? "" : "off"}" data-kind="${esc(r.kind)}" data-value="${esc(r.value)}">
+          <td><code>${esc(r.value)}</code></td>
+          <td><select data-ract="channel">${channelOptions(r.channel)}</select></td>
+          <td>${ruleStatus(r)}</td>
+          <td style="white-space:nowrap">
+            <button type="button" data-ract="toggle">${r.enabled ? "停用" : "启用"}</button>
+            ${r.is_default && r.changed ? `<button type="button" data-ract="reset">恢复默认</button>` : ""}
+            ${!r.is_default ? `<button type="button" data-ract="reset">删除</button>` : ""}
+          </td>
+        </tr>`).join("")}</tbody>
+    </table></div>`).join("") || "<p class='hint'>这一类还没有规则。</p>";
+}
+
+async function ruleWrite(url, body) {
+  const log = document.getElementById("ruleLog");
+  try {
+    chData = await chPost(url, body);
+    renderRules();
+    renderPresets();
+    updatePresetPreview();
+    runTester();
+    log.className = "ok";
+    log.textContent = "已保存";
+    return true;
+  } catch (e) {
+    if (e.message) { log.className = "err"; log.textContent = e.message; }
+    return false;
+  }
+}
+
+function runTester() {
+  clearTimeout(testTimer);
+  testTimer = setTimeout(async () => {
+    const v = id => document.getElementById(id).value.trim();
+    try {
+      const data = await chPost("/api/op/channels/preview", {
+        utm_source: v("tSource"), utm_medium: v("tMedium"), referrer: v("tReferrer"),
+      });
+      document.getElementById("tChannel").textContent = data.label || chLabel(data.channel);
+    } catch (e) { /* 忽略 */ }
+  }, 250);
+}
+
+document.getElementById("presetForm").addEventListener("input", updatePresetPreview);
+document.getElementById("presetForm").addEventListener("submit", e => { e.preventDefault(); savePreset(false); });
+document.getElementById("pSaveNew").addEventListener("click", () => savePreset(true));
+document.getElementById("pClear").addEventListener("click", () => { setPresetEditing(null); renderPresets(); });
+document.getElementById("pCopy").addEventListener("click", () =>
+  copyText(document.getElementById("pUrl").textContent, document.getElementById("presetLog")));
+document.getElementById("presetRows").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-pact]");
+  const tr = e.target.closest("tr[data-id]");
+  if (!b || !tr) return;
+  const id = Number(tr.dataset.id);
+  const p = ((chData && chData.presets) || []).find(x => x.id === id);
+  if (!p) return;
+  const log = document.getElementById("presetLog");
+  if (b.dataset.pact === "copy") { copyText(p.url, log); return; }
+  if (b.dataset.pact === "edit") { setPresetEditing(p); renderPresets(); return; }
+  if (b.dataset.pact === "del") {
+    if (!confirm("删除「" + p.name + "」？")) return;
+    try {
+      chData = await chFetch("/api/op/channels/presets/" + id, { method: "DELETE" });
+      if (presetEditId === id) setPresetEditing(null);
+      renderPresets();
+      log.className = "ok";
+      log.textContent = "已删除";
+    } catch (err) {
+      if (err.message) { log.className = "err"; log.textContent = err.message; }
+    }
+  }
+});
+document.getElementById("ruleKinds").addEventListener("click", e => {
+  const b = e.target.closest("button[data-kind]");
+  if (!b) return;
+  ruleKind = b.dataset.kind;
+  document.getElementById("ruleLog").textContent = "";
+  renderRules();
+});
+document.getElementById("ruleAdd").addEventListener("click", () => {
+  const value = document.getElementById("ruleValue").value.trim();
+  if (!value) return;
+  ruleWrite("/api/op/channels/rules", {
+    kind: ruleKind, value, channel: document.getElementById("ruleChannel").value, enabled: true,
+  }).then(ok => { if (ok) document.getElementById("ruleValue").value = ""; });
+});
+document.getElementById("ruleList").addEventListener("change", e => {
+  const sel = e.target.closest("select[data-ract='channel']");
+  const tr = e.target.closest("tr[data-value]");
+  if (!sel || !tr) return;
+  const r = ((chData && chData.rules) || []).find(x => x.kind === tr.dataset.kind && x.value === tr.dataset.value);
+  ruleWrite("/api/op/channels/rules", {
+    kind: tr.dataset.kind, value: tr.dataset.value, channel: sel.value, enabled: r ? r.enabled : true,
+  });
+});
+document.getElementById("ruleList").addEventListener("click", e => {
+  const b = e.target.closest("button[data-ract]");
+  const tr = e.target.closest("tr[data-value]");
+  if (!b || !tr) return;
+  const r = ((chData && chData.rules) || []).find(x => x.kind === tr.dataset.kind && x.value === tr.dataset.value);
+  if (!r) return;
+  if (b.dataset.ract === "toggle") {
+    ruleWrite("/api/op/channels/rules", { kind: r.kind, value: r.value, channel: r.channel, enabled: !r.enabled });
+  }
+  if (b.dataset.ract === "reset") {
+    if (!r.is_default && !confirm("删除「" + r.value + "」？")) return;
+    ruleWrite("/api/op/channels/rules/reset", { kind: r.kind, value: r.value });
+  }
+});
+["tSource", "tMedium", "tReferrer"].forEach(id =>
+  document.getElementById(id).addEventListener("input", runTester));
+
 async function loadQueue() {
   const r = await fetch("/api/op/queue?status=" + encodeURIComponent(status), { credentials: "include" });
   if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op"; return; }
@@ -665,7 +1038,7 @@ document.getElementById("siteForm").addEventListener("submit", async e => {
 });
 
 const q = new URLSearchParams(location.search);
-if (["review", "path", "site"].includes(q.get("tab") || "")) location.hash = q.get("tab");
+if (["review", "path", "channels", "site"].includes(q.get("tab") || "")) location.hash = q.get("tab");
 window.addEventListener("hashchange", () => showTab(tabFromHash()));
 document.getElementById("kpiDetail").addEventListener("click", e => {
   const a = e.target.closest('a[href^="#"]');

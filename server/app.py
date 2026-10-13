@@ -21,7 +21,20 @@ from pydantic import BaseModel, Field
 import geo
 import ranking
 import ranking_path
-from server import auth, backup, db, entitlement, metrics, notify, pack_delivery, pay, ranking_service, sms, ugc
+from server import (
+    attribution,
+    auth,
+    backup,
+    db,
+    entitlement,
+    metrics,
+    notify,
+    pack_delivery,
+    pay,
+    ranking_service,
+    sms,
+    ugc,
+)
 from server.config import Settings, get_settings
 from server.ratelimit import EventLimiter, GeoLimiter, SmsLimiter
 
@@ -87,6 +100,34 @@ class SiteSettingsBody(BaseModel):
     search_placeholder: str = ""
     logo_url: str = ""
     review_webhook: str = ""
+
+
+class ChannelRuleBody(BaseModel):
+    kind: str = Field("", max_length=20)
+    value: str = Field("", max_length=200)
+    channel: str = Field("", max_length=40)
+    enabled: bool = True
+
+
+class ChannelRuleResetBody(BaseModel):
+    kind: str = Field("", max_length=20)
+    value: str = Field("", max_length=200)
+
+
+class ChannelPresetBody(BaseModel):
+    id: Optional[int] = None
+    name: str = Field("", max_length=200)
+    utm_source: str = Field("", max_length=200)
+    utm_medium: str = Field("", max_length=200)
+    utm_campaign: str = Field("", max_length=200)
+    landing: str = Field("/", max_length=400)
+
+
+class ChannelPreviewBody(BaseModel):
+    utm_source: str = Field("", max_length=200)
+    utm_medium: str = Field("", max_length=200)
+    utm_campaign: str = Field("", max_length=200)
+    referrer: str = Field("", max_length=400)
 
 
 class PayCreateBody(BaseModel):
@@ -327,6 +368,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         ttl_s=float(app.state.ranking_config["session"]["order_ttl_s"]),
     )
     app.state.ingest_metrics = metrics.IngestMetrics()
+    app.state.channel_rules = attribution.RulesCache()
     app.state.sms_limiter = SmsLimiter(
         window_s=settings.sms_window_s,
         max_per_phone=settings.sms_max_per_phone,
@@ -1494,6 +1536,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 conn, device_id, session_id, events,
                 config=app.state.ranking_config,
                 session_state=app.state.order_cache,
+                channel_rules=app.state.channel_rules.get(conn),
             )
         rejected = dict(result.get("rejected") or {})
         for reason, n in pre_rejected.items():
@@ -1819,6 +1862,146 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "kpis": db.journey_kpis(conn, hours=hours),
                 "sessions": db.list_journey_sessions(conn, hours=hours, limit=limit),
             }
+
+    # —— 渠道配置：归因规则覆盖 + 推广链接预设 ——
+
+    def _channel_rows(conn: Any) -> list[dict[str, Any]]:
+        overrides = {(r["kind"], r["value"]): r for r in db.list_channel_rule_overrides(conn)}
+        out: list[dict[str, Any]] = []
+        for kind in attribution.RULE_KINDS:
+            defaults = attribution.default_table(kind)
+            custom = sorted(v for (k, v) in overrides if k == kind and v not in defaults)
+            for value in [*defaults, *custom]:
+                ov = overrides.get((kind, value))
+                default_channel = defaults.get(value, "")
+                out.append({
+                    "kind": kind,
+                    "value": value,
+                    "channel": ov["channel"] if ov else default_channel,
+                    "enabled": bool(ov["enabled"]) if ov else True,
+                    "default_channel": default_channel,
+                    "is_default": bool(default_channel),
+                    "changed": ov is not None,
+                    "updated_by": (ov or {}).get("updated_by") or "",
+                })
+        return out
+
+    def _preset_rows(conn: Any, rules: attribution.ChannelRules) -> list[dict[str, Any]]:
+        rows = db.list_channel_presets(conn)
+        for p in rows:
+            p["url"] = attribution.build_link(
+                geo.CANONICAL, p["landing"],
+                utm_source=p["utm_source"], utm_medium=p["utm_medium"],
+                utm_campaign=p["utm_campaign"],
+            )
+            p["channel"] = attribution.classify_channel(
+                utm_source=p["utm_source"], utm_medium=p["utm_medium"],
+                utm_campaign=p["utm_campaign"], rules=rules,
+            )
+        return rows
+
+    def _channels_payload(conn: Any) -> dict[str, Any]:
+        rules = app.state.channel_rules.get(conn)
+        return {
+            "ok": True,
+            "site": geo.CANONICAL,
+            "channels": [
+                {"key": k, "label": attribution.CHANNEL_LABELS[k]}
+                for k in attribution.CHANNEL_LABELS
+            ],
+            "rules": _channel_rows(conn),
+            "presets": _preset_rows(conn, rules),
+        }
+
+    @app.get("/api/op/channels")
+    def api_op_channels(request: Request) -> dict[str, Any]:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            return _channels_payload(conn)
+
+    @app.post("/api/op/channels/rules")
+    def api_op_channel_rule_save(request: Request, body: ChannelRuleBody) -> dict[str, Any]:
+        _, user = _op_user(request)
+        kind = (body.kind or "").strip()
+        channel = (body.channel or "").strip()
+        try:
+            value = attribution.normalize_rule_value(kind, body.value)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        if channel not in attribution.CHANNELS:
+            raise HTTPException(400, "渠道不在可选范围内")
+        default_channel = attribution.default_table(kind).get(value, "")
+        with db.db_session(settings.db_path) as conn:
+            if default_channel and body.enabled and channel == default_channel:
+                db.delete_channel_rule(conn, kind=kind, value=value)
+            else:
+                if not default_channel and len(db.list_channel_rule_overrides(conn)) >= 500:
+                    raise HTTPException(400, "自定义规则最多 500 条")
+                db.upsert_channel_rule(
+                    conn, kind=kind, value=value, channel=channel,
+                    enabled=body.enabled, actor=user.get("login") or "",
+                )
+            app.state.channel_rules.invalidate()
+            return _channels_payload(conn)
+
+    @app.post("/api/op/channels/rules/reset")
+    def api_op_channel_rule_reset(request: Request, body: ChannelRuleResetBody) -> dict[str, Any]:
+        """默认项恢复默认；自加项直接删掉。"""
+        _op_user(request)
+        kind = (body.kind or "").strip()
+        try:
+            value = attribution.normalize_rule_value(kind, body.value)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        with db.db_session(settings.db_path) as conn:
+            db.delete_channel_rule(conn, kind=kind, value=value)
+            app.state.channel_rules.invalidate()
+            return _channels_payload(conn)
+
+    @app.post("/api/op/channels/preview")
+    def api_op_channel_preview(request: Request, body: ChannelPreviewBody) -> dict[str, Any]:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            rules = app.state.channel_rules.get(conn)
+        channel = attribution.classify_channel(
+            utm_source=body.utm_source[:80], utm_medium=body.utm_medium[:40],
+            utm_campaign=body.utm_campaign[:80], referrer=body.referrer, rules=rules,
+        )
+        return {"ok": True, "channel": channel, "label": attribution.CHANNEL_LABELS[channel]}
+
+    @app.post("/api/op/channels/presets")
+    def api_op_channel_preset_save(request: Request, body: ChannelPresetBody) -> dict[str, Any]:
+        _op_user(request)
+        name = (body.name or "").strip()
+        if not name or len(name) > 40 or any(ord(c) < 32 for c in name):
+            raise HTTPException(400, "名称填 1–40 个字")
+        try:
+            source = attribution.normalize_utm_value(body.utm_source, lower=True)
+            medium = attribution.normalize_utm_value(body.utm_medium, lower=True)
+            campaign = attribution.normalize_utm_value(body.utm_campaign)
+            landing = attribution.normalize_landing(body.landing)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        if not source:
+            raise HTTPException(400, "utm_source 必填")
+        with db.db_session(settings.db_path) as conn:
+            if not body.id and db.count_channel_presets(conn) >= 100:
+                raise HTTPException(400, "链接预设最多 100 条")
+            saved = db.save_channel_preset(
+                conn, preset_id=body.id, name=name, utm_source=source,
+                utm_medium=medium, utm_campaign=campaign, landing=landing,
+            )
+            if saved is None:
+                raise HTTPException(404, "这条预设已不存在")
+            return {**_channels_payload(conn), "saved_id": saved["id"]}
+
+    @app.delete("/api/op/channels/presets/{preset_id}")
+    def api_op_channel_preset_delete(preset_id: int, request: Request) -> dict[str, Any]:
+        _op_user(request)
+        with db.db_session(settings.db_path) as conn:
+            if not db.delete_channel_preset(conn, preset_id):
+                raise HTTPException(404, "这条预设已不存在")
+            return _channels_payload(conn)
 
     def _push_ugc_to_bitable(post: dict[str, Any]) -> None:
         """审核通过的 UGC 帖子自动推送到飞书底表（来源=用户上传）。"""
