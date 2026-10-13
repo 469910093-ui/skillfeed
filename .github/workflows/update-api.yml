@@ -1,0 +1,46 @@
+# 把 main 上的 FastAPI 同步到阿里云 /opt/skill-feed 并重启。
+# 静态页仍由 pages.yml 的 Nginx 作业覆盖；这里只动 API 代码与 venv。
+# 不改 /opt/skill-feed/.env。手动触发，不跟 6 小时内容刷新绑在一起。
+name: Update API
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update-api:
+    name: Aliyun · skillfeed-api
+    if: ${{ vars.ALIYUN_DEPLOY == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: git pull and restart skillfeed-api
+        env:
+          ALIYUN_SSH_KEY: ${{ secrets.ALIYUN_SSH_KEY }}
+          ALIYUN_HOST: ${{ secrets.ALIYUN_HOST }}
+          ALIYUN_USER: ${{ secrets.ALIYUN_USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ALIYUN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 15 -H "$ALIYUN_HOST" >> ~/.ssh/known_hosts
+          ssh -o ConnectTimeout=15 "$ALIYUN_USER@$ALIYUN_HOST" 'bash -s' <<'EOF'
+          set -euo pipefail
+          cd /opt/skill-feed
+          before=$(git rev-parse --short HEAD)
+          git fetch --prune origin
+          git checkout main
+          git pull --ff-only origin main
+          .venv/bin/pip install -q -r requirements-server.txt \
+            -i https://mirrors.aliyun.com/pypi/simple/ \
+            --trusted-host mirrors.aliyun.com
+          sudo systemctl restart skillfeed-api
+          sleep 2
+          curl -fsS http://127.0.0.1:8787/health
+          echo
+          echo "api_rev ${before} -> $(git rev-parse --short HEAD)"
+          systemctl is-active skillfeed-api
+          EOF
