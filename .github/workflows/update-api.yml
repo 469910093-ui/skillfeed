@@ -31,16 +31,28 @@ jobs:
           set -euo pipefail
           cd /opt/skill-feed
           git fetch --prune origin
-          echo "HEAD $(git rev-parse --short HEAD) origin $(git rev-parse --short origin/main)"
-          for f in requirements-server.txt server/db.py server/pay.py server/app.py server/config.py server/auth.py feed_dashboard.py server/wechat_pay.py server/pack_delivery.py; do
+          before=$(git rev-parse --short HEAD)
+          stamp=$(date +%Y%m%d%H%M%S)
+          bak=/tmp/skillfeed-pre-pull-$stamp
+          mkdir -p "$bak"
+          git status --short > "$bak/status.txt"
+          for f in feed_dashboard.py requirements-server.txt server/app.py server/config.py server/db.py server/pay.py server/wechat_pay.py server/pack_delivery.py; do
             if [ -f "$f" ]; then
-              work=$(git hash-object "$f")
-            else
-              work=missing
+              mkdir -p "$bak/$(dirname "$f")"
+              cp -a "$f" "$bak/$f"
             fi
-            main=$(git rev-parse "origin/main:$f" 2>/dev/null || echo missing)
-            echo "hash $f work=$work main=$main"
           done
-          echo "==== diff server/app.py server/config.py vs origin/main ===="
-          git diff origin/main -- server/app.py server/config.py
+          git checkout -- feed_dashboard.py requirements-server.txt server/app.py server/config.py server/db.py server/pay.py
+          rm -f server/wechat_pay.py server/pack_delivery.py
+          git pull --ff-only origin main
+          .venv/bin/pip install -q -r requirements-server.txt \
+            -i https://mirrors.aliyun.com/pypi/simple/ \
+            --trusted-host mirrors.aliyun.com
+          sudo systemctl restart skillfeed-api
+          sleep 2
+          curl -fsS http://127.0.0.1:8787/health
+          echo
+          echo "api_rev ${before} -> $(git rev-parse --short HEAD)"
+          echo "backup $bak"
+          systemctl is-active skillfeed-api
           EOF
