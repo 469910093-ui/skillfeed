@@ -938,6 +938,52 @@ class TestBootBeaconAndIcp(unittest.TestCase):
         self.assertIn("京ICP备00000000号-1", foot)
 
 
+class TestInlinePayloadSlim(unittest.TestCase):
+    """首页减重：前端不读的排序解释不随 HTML 下发，读的字段一个不少。"""
+
+    ITEM = {
+        "id": "a/b", "full_name": "a/b", "name": "b", "url": "https://github.com/a/b",
+        "description": "desc", "body_preview": "body", "one_liner_zh": "一句话",
+        "highlights_en": ["x"], "personal_score": 0.5, "rel_score": 0.4, "stars": 9,
+        "skill_path": "SKILL.md", "cover_url": "https://example.com/c.png",
+        "rank_why": "RANKWHY", "rel_why": "RELWHY", "global_why": "GLOBALWHY",
+        "scene_why": "SCENEWHY", "scene_l2_why": "L2WHY", "personal_why": "PWHY",
+        "rank_debug": {"w": "RANKDEBUG"}, "global_score": 0.123456789,
+        "first_seen_at": "2001-02-03T04:05:06", "hellogithub_url": "https://hellogithub.com/x",
+    }
+
+    def _payload(self, variant):
+        feed = {
+            "items": [dict(self.ITEM)], "corpus": [dict(self.ITEM, id="c/d", full_name="c/d")],
+            "gates": {"passed": 1, "rejected": {"low": 2}, "details": [{"repo": "GATEDETAIL"}]},
+        }
+        html = feed_dashboard.build_feed_html(feed, variant=variant)
+        return html, feed
+
+    def test_unused_fields_dropped_used_fields_kept(self):
+        for variant in ("full", "lite"):
+            with self.subTest(variant=variant):
+                html, feed = self._payload(variant)
+                for marker in ("RANKWHY", "RELWHY", "GLOBALWHY", "SCENEWHY", "L2WHY", "PWHY",
+                               "RANKDEBUG", "0.123456789", "2001-02-03", "hellogithub.com/x",
+                               "GATEDETAIL"):
+                    self.assertNotIn(marker, html)
+                for kept in ('"body_preview"', '"one_liner_zh"', '"highlights_en"',
+                             '"personal_score"', '"rel_score"', '"skill_path"', '"cover_url"',
+                             '"rejected"', '"passed"'):
+                    self.assertIn(kept, html)
+                # 传进来的 feed 不被就地改掉（publish-site 还要拿它写 feed.json）
+                self.assertIn("rank_why", feed["items"][0])
+                self.assertIn("details", feed["gates"])
+
+    def test_drop_keys_are_really_unused_by_the_page_js(self):
+        js = _script_source(feed_dashboard.build_feed_html({"items": [], "corpus": []}))
+        for key in feed_dashboard._INLINE_DROP_KEYS:
+            with self.subTest(key=key):
+                self.assertIsNone(re.search(r"\b" + key + r"\b", js), key + " 被前端用到了，不能剥")
+        self.assertNotIn("gates.details", js)
+
+
 @unittest.skipIf(NODE is None, "需要 node 才能验证生成的 JS 真能读到数据")
 class TestMaliciousDataStillUsable(unittest.TestCase):
     """修安全不能把数据弄坏：恶意 item 的正常字段仍要被 JS 原样读到。"""
@@ -1395,9 +1441,17 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
 
     def test_feide_logo_is_the_brand_asset_file(self):
         """顶栏/页脚/空态都用完整透明团子，不用带底图缺口的残缺磁贴。"""
-        uri = feed_dashboard.brand_png_data_uri()
-        self.assertTrue(uri.startswith("data:image/png;base64,"))
-        self.assertGreaterEqual(self.html.count(uri), 3)  # 顶栏 + 页脚 + 空态
+        uri = feed_dashboard.brand_data_uri()
+        self.assertTrue(uri.startswith("data:image/webp;base64,"))
+        # 顶栏 + 页脚各一份；空态从 .logo-mark 取同一 src，不再内联第三份
+        self.assertEqual(2, self.html.count(uri))
+        self.assertNotIn("data:image/png;base64,", self.html)
+        js = _script_source(self.html)
+        fn = re.search(r"function feideImgHtml\(\) \{(.*?)\n\}", js, flags=re.S)
+        self.assertIsNotNone(fn)
+        self.assertIn("'.logo-mark'", fn.group(1))
+        self.assertIn("className = 'feide'", fn.group(1))
+        self.assertGreaterEqual(js.count("${feideImgHtml()}"), 2)
         # 残缺磁贴（140×160 带蓝底缺口）不得进空态
         empty_bad = feed_dashboard._BRAND_ASSETS / "logo-feide-empty.png"
         if empty_bad.exists():
@@ -1417,9 +1471,25 @@ class TestBrandIdentityIsOurOwn(unittest.TestCase):
         self.assertIsNotNone(wh)
         self.assertIsNotNone(hh)
         self.assertNotEqual(wh.group(1), hh.group(1), "肥嘚被塞进正方形会变形")
-        self.assertIn(
-            'src="' + feed_dashboard.brand_png_data_uri("logo-feide-transparent.png"),
-            self.html)
+        self.assertEqual(feed_dashboard._FEIDE_EMPTY, "logo-feide-transparent.webp")
+        self.assertIn('src="' + feed_dashboard.brand_data_uri(feed_dashboard._FEIDE_EMPTY),
+                      self.html)
+
+    def test_inline_webp_matches_brand_png(self):
+        """页面内联的 WebP 必须是透明源图同尺寸转出来的：改了 PNG 忘了重跑脚本，这里会红。"""
+        assets = feed_dashboard._BRAND_ASSETS
+        png = (assets / "logo-feide-transparent.png").read_bytes()
+        webp = (assets / "logo-feide-transparent.webp").read_bytes()
+        png_size = (int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big"))
+        self.assertEqual(webp[:4], b"RIFF")
+        self.assertEqual(webp[8:12], b"WEBP")
+        self.assertEqual(webp[12:16], b"VP8X", "需要带 alpha 的扩展格式")
+        self.assertTrue(webp[20] & 0x10, "WebP 丢了透明通道")
+        webp_size = (int.from_bytes(webp[24:27], "little") + 1,
+                     int.from_bytes(webp[27:30], "little") + 1)
+        self.assertEqual(png_size, (512, 393))
+        self.assertEqual(webp_size, png_size)
+        self.assertLess(len(webp), len(png) // 4)
 
     def test_ring_gradient_stays_in_the_accent_family(self):
         """头像环是渐变最大的曝光面：每张卡片一个。"""

@@ -226,7 +226,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | Demo 巡演 | 顶栏播放键或 `?demo=1` | P1 |
 | 反馈 | 赞/踩/打开 GitHub；静态站 localStorage | P1 |
 | **浏览器小标** | tab favicon / 添加到主屏用肥嘚**慵懒躺沙发**造型：`/favicon.ico`（16/32/48）`/favicon.png`（192，视网膜）`/apple-touch-icon.png`（180）。源图 `docs/brand/assets/logo-feide-transparent.png`，由 `scripts/make_brand_icons.py` 高分辨率缩小，禁止平滑发糊 | P0 |
-| **肥嘚展示比例** | 页头与空态统一用完整透明团子 `logo-feide-transparent.png`（512×393）：页头 **52×40**，空态 **156×120**，`object-fit: contain`。**禁止**用带蓝底缺口的残缺磁贴（`_logo_v2` / `logo-feide-empty`）进空态 | P0 |
+| **肥嘚展示比例** | 页头与空态统一用完整透明团子 `logo-feide-transparent.png`（512×393）：页头 **52×40**，空态 **156×120**，`object-fit: contain`。**禁止**用带蓝底缺口的残缺磁贴（`_logo_v2` / `logo-feide-empty`）进空态。页面内联的是同尺寸派生图 `logo-feide-transparent.webp`（`scripts/make_brand_icons.py` 从 PNG 转出，约 23KB，PNG 约 239KB），只内联顶栏、页脚两份，空态从顶栏 `.logo-mark` 克隆同一张图；改了 PNG 必须重跑脚本（测试校验尺寸与透明通道） | P0 |
 
 **URL 可寻址（P0）**：`?tab=discover|topics|packs|publish|me`（默认 discover 不写参数）、
 `?pack=` / `?pg=`（仅 packs）、`?scene=` / `?l2=` 深链到发现流的某个分类，与既有 `?q=` / `?intent=` / `?demo=1` 并存。
@@ -503,6 +503,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 - `robots.txt` **放行** `/login` `/publish` 与 HTML 说明页；显式允许 GPTBot / OAI-SearchBot / ClaudeBot / PerplexityBot / Bytespider 等；仍挡住 `/op` `/admin` `/auth`
 - 登录页 / 发布页各自有中文 title + description + Twitter/JSON-LD，方便「skill 怎么推广」收录
 - `/llms.txt` 的 `>` 一句话保持 <200 字符，并含 `## Key Facts`
+- 首页体积：信息流整份内联（离线 / lite 嵌入也能用），但不带前端不读的字段（`feed_dashboard._INLINE_DROP_KEYS` + `gates.details`）；品牌图内联 WebP、只两份。新增字段若前端要读，从剥离名单里删掉（测试会拦）
 
 **首页 Agent 指针：** `<link rel="describedby" href="https://skillfeeder.cn/llms.txt">` + `hreflang` + JSON-LD + `<noscript>`。
 
@@ -676,6 +677,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-10-13 | 首页减重：肥嘚内联由 PNG 改同尺寸 WebP（约 239KB → 23KB），base64 从 4 份减到 2 份（顶栏 + 页脚，空态克隆顶栏同图）；内联 FEED 不再带前端不读的排序解释 / 调试字段（`*_why`、`rank_debug`、`global_score`、`first_seen_at` 等）与 `gates.details`，`feed.json` 原样。按 528 条信息流实测 gzip 约 1.64MB → 0.67MB | §5.1、§6.3、`feed_dashboard.py`、`scripts/make_brand_icons.py`、`docs/brand/assets/logo-feide-transparent.webp`、`docs/brand/feide-ip-guide.md` |
 | 2026-10-13 | SEO/GEO 收录与归因补洞：ICP 备案号可配置（填了才在主站页脚 / 静态页 / 登录页显示，Pages 与 lite 不显示）；归因默认表补国内外模型与搜索引擎，`utm_source=chatgpt.com` 这类域名写法按来源域名表归 `geo_agent`；登录页 / 发布页补进站埋点（CSP nonce），同会话 `sf_session_attr` 粘住首个外部来源，GitHub 授权回跳不再冲成外链；sitemap 只留可索引 HTML、去掉 `/publish` 与 .md/.txt/.json、每条带真实 `lastmod`；首页 `session_start` 提到 `<head>` 的 `sf-boot` 先发 | §6.2、§6.3、`server/attribution.py`、`geo.py`、`feed_dashboard.py`、`server/app.py`、`server/config.py`、`templates/login.html`、`templates/publish.html`、`skillfeed.py`、`config_defaults.json`、`pages.yml`、`.env.example` |
 | 2026-10-13 | 运营后台新增「渠道配置」tab：归因规则（来源域名 / utm_source / utm_medium）由代码默认 + 后台逐条覆盖，可改归属、停用、恢复默认、新增；推广链接预设生成带 utm 的外发链接并预览归属渠道。只影响新进站，历史渠道不重算 | §6.2、`server/attribution.py`、`db.py`、`app.py`、`ranking_service.py`、`templates/admin.html`、`docs/deploy-api.md` |
 | 2026-10-08 | 微信扫码层：手机贴底，电脑居中成卡片并盖住底栏，避免和开通按钮挤在一行 | §5.1、`feed_dashboard.py` |

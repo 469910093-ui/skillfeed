@@ -62,16 +62,49 @@ _CHARSET_META = '<meta charset="utf-8">'
 
 
 _BRAND_ASSETS = Path(__file__).resolve().parent / "docs" / "brand" / "assets"
-_FEIDE_LOGO = "logo-feide-transparent.png"
-# 空态用完整透明团子（无磁贴底、无缺口）；禁止用带底图的残缺磁贴。
-_FEIDE_EMPTY = "logo-feide-transparent.png"
+# 源图是 logo-feide-transparent.png；页面内联同尺寸 WebP（scripts/make_brand_icons.py 生成），
+# 体积约 1/10。空态用完整透明团子（无磁贴底、无缺口）；禁止用带底图的残缺磁贴。
+_FEIDE_LOGO = "logo-feide-transparent.webp"
+_FEIDE_EMPTY = _FEIDE_LOGO
 _PACKS_CATALOG = Path(__file__).resolve().parent / "docs" / "packs" / "shelf_catalog.json"
 
+_IMAGE_MIME = {".png": "image/png", ".webp": "image/webp"}
 
-def brand_png_data_uri(name: str = _FEIDE_LOGO) -> str:
-    """把品牌 PNG 编成 data URI，生成页时内联，改文件即换标。"""
+
+def brand_data_uri(name: str = _FEIDE_LOGO) -> str:
+    """把品牌图编成 data URI，生成页时内联，改文件即换标。"""
     raw = (_BRAND_ASSETS / name).read_bytes()
-    return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+    mime = _IMAGE_MIME[Path(name).suffix.lower()]
+    return f"data:{mime};base64," + base64.b64encode(raw).decode("ascii")
+
+
+def brand_png_data_uri(name: str = "logo-feide-transparent.png") -> str:
+    return brand_data_uri(name)
+
+
+# 内联进页面的 FEED 里，前端从不读的排序解释 / 调试字段。feed.json 原样保留，
+# 只是不随 HTML 下发（每条好几百字节，乘上几百条就是几百 KB）。
+_INLINE_DROP_KEYS = frozenset({
+    "rank_why", "rel_why", "global_why", "scene_why", "scene_l2_why", "personal_why",
+    "rank_debug", "global_score", "scene_confidence", "scene_l2_confidence",
+    "first_seen_at", "hellogithub_url", "i18n_ready",
+})
+
+
+def _slim_for_inline(feed: dict) -> dict:
+    out = dict(feed)
+    for bucket in ("items", "corpus"):
+        rows = out.get(bucket)
+        if isinstance(rows, list):
+            out[bucket] = [
+                {k: v for k, v in it.items() if k not in _INLINE_DROP_KEYS}
+                if isinstance(it, dict) else it
+                for it in rows
+            ]
+    gates = out.get("gates")
+    if isinstance(gates, dict):
+        out["gates"] = {k: gates[k] for k in ("rejected", "passed") if k in gates}
+    return out
 
 
 _PACK_PUBLIC_KEYS = (
@@ -526,7 +559,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     icp = "" if lite else str(ui.get("icp") or "")
     ui.pop("icp", None)
     feed["ui"] = ui
-    payload = _json_for_script(feed)
+    payload = _json_for_script(_slim_for_inline(feed))
     scenes = _json_for_script(feed.get("scenes") or scene.scene_chips())
     scenes_l2 = _json_for_script(feed.get("scenes_l2") or scene.scene_l2_tree())
     page_title = "去 GitHub 发现" if variant == "lite" else geo.PAGE_TITLE
@@ -541,9 +574,10 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
             f'发现流全量免费，登录是为了发布自己的 skill。'
             f'</div>'
         )
-    logo_src = brand_png_data_uri()
+    logo_src = brand_data_uri()
     logo_mark = f'<img class="logo-mark" src="{logo_src}" alt="" />'
-    feide_img = f'<img class="feide" src="{logo_src}" alt="feide" />'
+    # 空态团子不再内联第三、四份 base64：同一张图从顶栏 .logo-mark 取 src
+    feide_img = "${feideImgHtml()}"
     pack_shelf_json = _json_for_script(load_pack_shelf())
     # 进站上报放在 <head> 最前：页面几 MB，慢网访客等不到主脚本跑完就走了。
     # lite 不记路径（嵌在 skill-picker 里，没有进站这回事）。
@@ -4251,6 +4285,15 @@ function githubSearchUrls(intent) {{
     code: 'https://github.com/search?type=code&q=' + enc(codeQ),
     repos: 'https://github.com/search?type=repositories&q=' + enc(repoQ),
   }};
+}}
+
+function feideImgHtml() {{
+  const mark = document.querySelector('.logo-mark');
+  if (!mark) return '';
+  const img = mark.cloneNode(false);
+  img.className = 'feide';
+  img.alt = 'feide';
+  return img.outerHTML;
 }}
 
 function emptyHtml(items) {{
