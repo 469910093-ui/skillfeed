@@ -43,14 +43,26 @@ jobs:
             fi
           done
           git checkout -- feed_dashboard.py requirements-server.txt server/app.py server/config.py server/db.py server/pay.py
-          rm -f server/wechat_pay.py server/pack_delivery.py
+          # 只删未跟踪的旧副本（会挡住 pull 新增同名文件）。已跟踪的文件删了，
+          # pull 只应用两次提交之间的差异，不会把它们补回来，API 起不来。
+          for f in server/wechat_pay.py server/pack_delivery.py; do
+            git ls-files --error-unmatch "$f" >/dev/null 2>&1 || rm -f "$f"
+          done
           git pull --ff-only origin main
+          git checkout HEAD -- server/wechat_pay.py server/pack_delivery.py
           .venv/bin/pip install -q -r requirements-server.txt \
             -i https://mirrors.aliyun.com/pypi/simple/ \
             --trusted-host mirrors.aliyun.com
           sudo systemctl restart skillfeed-api
-          sleep 2
-          curl -fsS http://127.0.0.1:8787/health
+          healthy=0
+          for i in $(seq 1 15); do
+            if curl -fsS http://127.0.0.1:8787/health; then healthy=1; break; fi
+            sleep 2
+          done
+          if [ "$healthy" != 1 ]; then
+            sudo journalctl -u skillfeed-api -n 60 --no-pager || true
+            exit 1
+          fi
           echo
           echo "api_rev ${before} -> $(git rev-parse --short HEAD)"
           echo "backup $bak"
