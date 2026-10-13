@@ -31,13 +31,16 @@ jobs:
           set -euo pipefail
           cd /opt/skill-feed
           git fetch --prune origin
-          echo "HEAD $(git rev-parse --short HEAD)"
-          echo "==== status ===="
-          git status --short
-          echo "==== diff stat vs HEAD ===="
-          git diff --stat
-          echo "==== diff stat vs origin/main ===="
-          git diff --stat origin/main
-          echo "==== untracked ===="
-          git ls-files --others --exclude-standard
+          echo "HEAD $(git rev-parse --short HEAD) origin $(git rev-parse --short origin/main)"
+          for f in requirements-server.txt server/db.py server/pay.py server/app.py server/config.py server/auth.py feed_dashboard.py server/wechat_pay.py server/pack_delivery.py; do
+            if [ -f "$f" ]; then
+              work=$(git hash-object "$f")
+            else
+              work=missing
+            fi
+            main=$(git rev-parse "origin/main:$f" 2>/dev/null || echo missing)
+            echo "hash $f work=$work main=$main"
+          done
+          echo "==== diff server/app.py server/config.py vs origin/main ===="
+          git diff origin/main -- server/app.py server/config.py
           EOF
