@@ -205,6 +205,9 @@ jobs:
           # 「我的」才能同页登录。没填时前端会引导用户去 https://skillfeeder.cn/login。
           # 空变量会让 Aliyun 全量站没有 api_base，发布 tab 显示「静态镜像」。
           SKILLFEED_PUBLIC_URL: ${{ vars.SKILLFEED_PUBLIC_URL || 'https://skillfeeder.cn' }}
+          # ICP 备案号。只进 --full（skillfeeder.cn）的页脚，Pages 预览壳不带。
+          # 留空则读 config_defaults.json 的 icp_beian；两处都空 = 页脚不显示。
+          SKILLFEED_ICP: ${{ vars.SKILLFEED_ICP }}
         run: |
           # pipefail：不加的话 tee 的退出码会盖掉 python 的，refresh 崩了这步照样绿
           set -o pipefail

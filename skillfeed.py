@@ -772,6 +772,11 @@ def cmd_publish_site(argv: list[str]) -> int:
         print("[publish-site] --full defaulted api_base to https://skillfeeder.cn")
     if api_base:
         ui["api_base"] = api_base
+    # 备案号只挂主站（skillfeeder.cn）；github.io 预览壳不显示
+    icp = "" if preview else geo.resolve_icp(load_config())
+    ui.pop("icp", None)
+    if icp:
+        ui["icp"] = icp
     feed["ui"] = ui
 
     out.mkdir(parents=True, exist_ok=True)
@@ -797,6 +802,7 @@ def cmd_publish_site(argv: list[str]) -> int:
     lite_ui = dict(pub_ui)
     lite_ui["variant"] = "lite"
     lite_ui.pop("api_base", None)
+    lite_ui.pop("icp", None)
     lite_feed["ui"] = lite_ui
     feed_dashboard.write_feed_html(lite_feed, out / "embed.html", variant="lite")
     mode = "preview" if preview else "full"
@@ -812,7 +818,7 @@ def cmd_publish_site(argv: list[str]) -> int:
         "demo assets are not licensed for commercial resale.\n",
         encoding="utf-8",
     )
-    geo_paths = geo.write_geo_site(out, feed, full=not preview)
+    geo_paths = geo.write_geo_site(out, feed, full=not preview, icp=icp)
     print(f"[publish-site] wrote {out.resolve()}/index.html (full web, {mode})")
     print(f"[publish-site] wrote {out.resolve()}/embed.html (lite embed, {mode})")
     print(f"[publish-site] items={len(published.get('items') or [])} "
@@ -848,7 +854,8 @@ def cmd_publish_geo(argv: list[str]) -> int:
         except (json.JSONDecodeError, OSError) as e:
             print(f"bad feed.json: {e}", file=sys.stderr)
             return 1
-    written = geo.write_geo_site(out, feed, full=full)
+    icp = geo.resolve_icp(load_config()) if full else ""
+    written = geo.write_geo_site(out, feed, full=full, icp=icp)
     print(f"[publish-geo] wrote {len(written)} files in {out.resolve()} full={full}")
     return 0
 

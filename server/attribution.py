@@ -45,19 +45,29 @@ RULE_KINDS = ("host", "source", "medium")
 
 _SEARCH_HOSTS = (
     "google.", "bing.", "baidu.", "duckduckgo.", "yahoo.",
-    "sogou.", "so.com", "yandex.", "ecosia.", "search.brave.",
+    "sogou.", "so.com", "haosou.com", "sm.cn", "so.toutiao.com",
+    "yandex.", "search.naver.com", "ecosia.", "search.brave.",
+    "startpage.com", "qwant.com", "petalsearch.com",
 )
 _GEO_HOSTS = (
+    # 海外模型 / AI 搜索
     "chat.openai.com", "chatgpt.com", "claude.ai", "perplexity.ai",
     "gemini.google.com", "bard.google.com", "you.com", "poe.com",
-    "copilot.microsoft.com", "kimi.moonshot.cn", "tongyi.aliyun.com",
-    "yuanbao.tencent.com", "doubao.com", "xinghuo.xfyun.cn",
+    "copilot.microsoft.com", "grok.com", "meta.ai", "phind.com",
+    "chat.mistral.ai", "felo.ai", "genspark.ai",
+    # 国产模型 / AI 搜索
+    "kimi.com", "kimi.moonshot.cn", "chat.deepseek.com", "deepseek.com",
+    "metaso.cn", "doubao.com", "yuanbao.tencent.com",
+    "tongyi.aliyun.com", "qianwen.aliyun.com", "tongyi.com", "chat.qwen.ai",
+    "chatglm.cn", "yiyan.baidu.com", "tiangong.cn", "xinghuo.xfyun.cn",
+    "hailuoai.com", "n.cn",
 )
 _SOCIAL_HOSTS = (
     "weixin.qq.com", "mp.weixin.qq.com", "xiaohongshu.com", "xhslink.com",
     "douyin.com", "iesdouyin.com", "weibo.com", "t.cn",
     "twitter.com", "x.com", "linkedin.com", "facebook.com", "fb.com",
     "instagram.com", "zhihu.com", "bilibili.com", "tiktok.com",
+    "kuaishou.com", "okjike.com", "reddit.com", "youtube.com",
 )
 _PAID_MEDIUM = (
     "cpc", "ppc", "paid", "paidsearch", "paid_social", "paidsocial",
@@ -65,8 +75,19 @@ _PAID_MEDIUM = (
 )
 _OWN_HOSTS = ("skillfeeder.cn", "469910093-ui.github.io")
 
-_GEO_SOURCES = ("chatgpt", "claude", "perplexity", "gemini", "geo", "agent", "llm")
-_SEARCH_SOURCES = ("google", "baidu", "bing", "seo")
+_GEO_SOURCES = (
+    "chatgpt", "claude", "perplexity", "gemini", "geo", "agent", "llm",
+    # 模型会自己在外链上挂 utm_source=域名（ChatGPT 是 chatgpt.com）
+    "chatgpt.com", "openai", "claude.ai", "perplexity.ai", "copilot", "grok",
+    "meta.ai", "phind", "poe", "you.com",
+    "kimi", "kimi.com", "deepseek", "metaso", "doubao", "yuanbao",
+    "tongyi", "qianwen", "qwen", "chatglm", "zhipu", "yiyan", "wenxin",
+    "tiangong", "xinghuo",
+)
+_SEARCH_SOURCES = (
+    "google", "baidu", "bing", "seo", "sogou", "360", "shenma", "yandex",
+    "duckduckgo", "naver",
+)
 _SOCIAL_SOURCES = (
     "weixin", "wechat", "xiaohongshu", "xhs", "douyin", "weibo", "twitter", "linkedin",
 )
@@ -237,6 +258,22 @@ def _match_host(host: str, needles: Iterable[str]) -> bool:
     return False
 
 
+def _host_channel(host: str, rules: ChannelRules) -> str:
+    hits = [ch for needle, ch in rules.host.items() if _match_host(host, (needle,))]
+    return _pick(hits, _HOST_PRIORITY)
+
+
+def _source_as_host(source: str, rules: ChannelRules) -> Optional[str]:
+    """utm_source 写成域名（chatgpt.com、kimi.com）时按来源域名表再查一次。
+
+    自家域名不算：utm_source=skillfeeder.cn 是站内自己挂的参数，不是外部来源。
+    """
+    if "." not in source or source.rstrip(".") in rules.source:
+        return None
+    channel = _host_channel(_host(source), rules)
+    return channel if channel and channel != "internal" else None
+
+
 def _pick(candidates: Iterable[Optional[str]], priority: tuple[str, ...]) -> str:
     found = {c for c in candidates if c in CHANNELS}
     for ch in priority:
@@ -270,14 +307,14 @@ def classify_channel(
         rules.source.get(source) if source else None,
         # 老口径：utm_source 填成 cpc 之类的付费媒介也算付费
         "paid" if source and rules.medium.get(source) == "paid" else None,
+        _source_as_host(source, rules),
     ]
     hit = _pick(utm_hits, _UTM_PRIORITY)
     if hit:
         return hit
 
     if host:
-        host_hits = [ch for needle, ch in rules.host.items() if _match_host(host, (needle,))]
-        hit = _pick(host_hits, _HOST_PRIORITY)
+        hit = _host_channel(host, rules)
         if hit:
             return hit
 

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import geo
 import skillfeed
@@ -118,7 +122,8 @@ class TestWriteGeoSite(unittest.TestCase):
             self.assertNotIn("Disallow: /publish", robots)
             sitemap = (out / "sitemap.xml").read_text(encoding="utf-8")
             self.assertIn("/login", sitemap)
-            self.assertIn("/publish", sitemap)
+            # 未登录访问 /publish 会 302 到 /login，不进 sitemap
+            self.assertNotIn("/publish", sitemap)
             self.assertIn("/about.html", sitemap)
             self.assertIn("/faq.html", sitemap)
             self.assertTrue((out / "og.png").exists())
@@ -269,6 +274,191 @@ class TestSeoPages(unittest.TestCase):
             self.assertNotIn("/s/", sitemap)
 
 
+class TestSitemap(unittest.TestCase):
+    def _full_sitemap(self, feed=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            geo.write_geo_site(out, feed or ZH_FEED, full=True)
+            pages = sorted(
+                str(p.relative_to(out)) for p in out.rglob("*.html")
+            )
+            return (out / "sitemap.xml").read_text(encoding="utf-8"), pages
+
+    def test_only_indexable_html_urls(self):
+        sitemap, _ = self._full_sitemap()
+        locs = re.findall(r"<loc>([^<]+)</loc>", sitemap)
+        self.assertEqual(len(locs), len(set(locs)), "sitemap 里有重复 URL")
+        for loc in locs:
+            with self.subTest(loc=loc):
+                self.assertTrue(loc.startswith("https://skillfeeder.cn/"))
+                path = loc[len("https://skillfeeder.cn"):]
+                self.assertTrue(path in ("/", "/login") or path.endswith(".html"), path)
+        for banned in (".md<", ".txt<", ".json<", "/publish<", "/api/", "/op", "/admin", "/auth/"):
+            self.assertNotIn(banned, sitemap)
+
+    def test_every_seo_page_is_listed(self):
+        sitemap, pages = self._full_sitemap()
+        for rel in pages:
+            with self.subTest(rel=rel):
+                self.assertIn(f"<loc>https://skillfeeder.cn/{rel}</loc>", sitemap)
+        self.assertTrue(any(p.startswith("s/") for p in pages))
+        self.assertTrue(any(p.startswith("scene/") for p in pages))
+
+    def test_every_url_has_a_real_lastmod(self):
+        feed = dict(ZH_FEED, generated_at="2026-10-11T06:00:00+00:00")
+        sitemap, _ = self._full_sitemap(feed)
+        urls = re.findall(r"<url>(.*?)</url>", sitemap, flags=re.S)
+        self.assertTrue(urls)
+        for block in urls:
+            self.assertRegex(block, r"<lastmod>\d{4}-\d{2}-\d{2}</lastmod>")
+        self.assertIn(
+            "<loc>https://skillfeeder.cn/</loc>\n    <lastmod>2026-10-11</lastmod>", sitemap,
+        )
+        self.assertIn(
+            "<loc>https://skillfeeder.cn/about.html</loc>\n"
+            f"    <lastmod>{geo.STATIC_COPY_LASTMOD}</lastmod>", sitemap,
+        )
+
+    def test_canonical_matches_sitemap_loc(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            geo.write_geo_site(out, ZH_FEED, full=True)
+            for rel in ("about.html", "skills.html", "scene/content.html",
+                        "s/acme-weekly-skill.html"):
+                with self.subTest(rel=rel):
+                    page = (out / rel).read_text(encoding="utf-8")
+                    self.assertIn(
+                        f'<link rel="canonical" href="https://skillfeeder.cn/{rel}">', page,
+                    )
+                    self.assertNotIn("noindex", page)
+
+    def test_robots_points_at_sitemap(self):
+        robots = geo.render_robots_txt()
+        self.assertIn("Sitemap: https://skillfeeder.cn/sitemap.xml", robots)
+
+
+class TestIcpFooter(unittest.TestCase):
+    def test_normalize(self):
+        self.assertEqual(geo.normalize_icp("  京ICP备 12345678号-1 "), "京ICP备 12345678号-1")
+        for bad in ("", None, "待补充", "x" * 60 + "ICP"):
+            with self.subTest(bad=bad):
+                self.assertEqual(geo.normalize_icp(bad), "")
+
+    def test_env_wins_over_config(self):
+        cfg = {"icp_beian": "沪ICP备11111111号"}
+        with mock.patch.dict(os.environ, {"SKILLFEED_ICP": ""}):
+            self.assertEqual(geo.resolve_icp(cfg), "沪ICP备11111111号")
+            self.assertEqual(geo.resolve_icp({}), "")
+        with mock.patch.dict(os.environ, {"SKILLFEED_ICP": "京ICP备22222222号"}):
+            self.assertEqual(geo.resolve_icp(cfg), "京ICP备22222222号")
+
+    def test_link_is_escaped_and_points_at_miit(self):
+        link = geo.icp_link_html("京ICP备<b>1</b>号")
+        self.assertIn('href="https://beian.miit.gov.cn/"', link)
+        self.assertIn('rel="noopener noreferrer"', link)
+        self.assertNotIn("<b>", link)
+
+    def test_full_site_pages_carry_icp_preview_does_not(self):
+        icp = "京ICP备00000000号-1"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            geo.write_geo_site(out, ZH_FEED, full=True, icp=icp)
+            for rel in ("about.html", "faq.html", "compare.html", "skills.html",
+                        "scene/content.html", "s/acme-weekly-skill.html"):
+                with self.subTest(rel=rel):
+                    self.assertIn(icp, (out / rel).read_text(encoding="utf-8"))
+            self.assertNotIn(icp, (out / "llms.txt").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            geo.write_geo_site(out, ZH_FEED, full=False, icp=icp)
+            self.assertNotIn(icp, (out / "about.html").read_text(encoding="utf-8"))
+
+    def test_no_icp_no_placeholder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            geo.write_geo_site(out, ZH_FEED, full=True)
+            about = (out / "about.html").read_text(encoding="utf-8")
+            self.assertNotIn("beian", about)
+            self.assertNotIn('class="site-icp"', about)
+
+
+_BEACON_HARNESS = r"""
+const vm = require('vm');
+const src = require('fs').readFileSync(0, 'utf8');
+function store(init) {
+  const m = new Map(Object.entries(init || {}));
+  return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), _m: m };
+}
+const local = store();
+const session = store();
+const sent = [];
+function visit(href, referrer, origin) {
+  const u = new URL(href);
+  const ctx = {
+    window: {}, localStorage: local, sessionStorage: session, URL, URLSearchParams, JSON, Date, Math, String,
+    location: { href, search: u.search, pathname: u.pathname, origin: origin || u.origin },
+    document: { referrer },
+    fetch: (url, init) => { sent.push({ url, body: JSON.parse(init.body) }); return Promise.resolve({ ok: true, json: () => Promise.resolve({ device_token: 'tok' }) }); },
+  };
+  vm.runInNewContext(src, ctx);
+  return sent[sent.length - 1];
+}
+const out = [];
+out.push(visit('https://skillfeeder.cn/login?next=%2Fpublish%3Futm_source%3Dchatgpt.com', 'https://www.google.com/'));
+out.push(visit('https://skillfeeder.cn/?tab=me', 'https://github.com/'));
+out.push(visit('https://skillfeeder.cn/?utm_source=xhs&utm_medium=social', ''));
+out.push(visit('https://example.github.io/skillfeed/', '', 'https://example.github.io'));
+setTimeout(() => {
+  out.push({ token: local.getItem('sf_device_token') });
+  process.stdout.write(JSON.stringify(out));
+}, 0);
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not installed")
+class TestLandingBeaconBehaviour(unittest.TestCase):
+    """用 node 真跑一遍进站脚本：授权回跳不能把外部渠道冲成 github.com 外链。"""
+
+    @classmethod
+    def setUpClass(cls):
+        js = geo.landing_beacon_js("https://skillfeeder.cn")
+        proc = subprocess.run(
+            ["node", "-e", _BEACON_HARNESS], input=js, capture_output=True,
+            text=True, timeout=30, check=True,
+        )
+        cls.rows = json.loads(proc.stdout)
+
+    def test_utm_inside_next_is_picked_up(self):
+        ev = self.rows[0]["body"]["events"][0]
+        self.assertEqual(ev["action"], "session_start")
+        self.assertEqual(ev["utm_source"], "chatgpt.com")
+        self.assertEqual(ev["referrer"], "google.com")
+        self.assertTrue(ev["landing"].startswith("/login"))
+        self.assertEqual(self.rows[0]["url"], "https://skillfeeder.cn/api/events")
+
+    def test_oauth_return_keeps_first_external_source(self):
+        first = self.rows[0]["body"]
+        back = self.rows[1]["body"]
+        self.assertEqual(first["session_id"], back["session_id"])
+        self.assertEqual(first["device_id"], back["device_id"])
+        ev = back["events"][0]
+        self.assertEqual(ev["referrer"], "google.com")
+        self.assertEqual(ev["utm_source"], "chatgpt.com")
+        self.assertEqual(ev["landing"], "/?tab=me")
+
+    def test_new_utm_in_same_session_wins(self):
+        ev = self.rows[2]["body"]["events"][0]
+        self.assertEqual(ev["utm_source"], "xhs")
+        self.assertEqual(ev["referrer"], "")
+
+    def test_device_token_is_stored(self):
+        self.assertEqual(self.rows[-1]["token"], "tok")
+
+    def test_bad_api_base_is_dropped(self):
+        self.assertIn('var base = "";', geo.landing_beacon_js("javascript:alert(1)"))
+        self.assertIn('var base = "";', geo.landing_beacon_js('https://x.cn/"'))
+
+
 class TestPublishSiteWritesGeo(unittest.TestCase):
     def _publish(self, extra):
         tmp = tempfile.TemporaryDirectory()
@@ -317,6 +507,20 @@ class TestPublishSiteWritesGeo(unittest.TestCase):
         self.assertIn("apple-touch-icon.png", html)
         self.assertTrue((out / "favicon.ico").exists())
         self.assertNotIn("secret ranking", html)
+
+    def test_icp_only_on_full_main_site(self):
+        icp = "京ICP备00000000号-1"
+        with mock.patch.dict(os.environ, {"SKILLFEED_ICP": icp}):
+            full = self._publish(["--full"])
+            preview = self._publish([])
+        for rel in ("index.html", "about.html", "skills.html"):
+            with self.subTest(rel=rel):
+                self.assertIn(icp, (full / rel).read_text(encoding="utf-8"))
+        self.assertNotIn(icp, (full / "embed.html").read_text(encoding="utf-8"))
+        for rel in ("index.html", "embed.html", "about.html"):
+            with self.subTest(preview=rel):
+                self.assertNotIn(icp, (preview / rel).read_text(encoding="utf-8"))
+        self.assertNotIn(icp, (preview / "feed.json").read_text(encoding="utf-8"))
 
     def test_full_publish_keeps_geo_sanitized(self):
         out = self._publish(["--full"])

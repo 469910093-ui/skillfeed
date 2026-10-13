@@ -229,6 +229,12 @@ class Settings:
     def ranking_config(self) -> dict[str, Any]:
         return self.config
 
+    @property
+    def icp(self) -> str:
+        """ICP 备案号：SKILLFEED_ICP 优先，其次 config_defaults.json 的 icp_beian。空 = 页脚不显示。"""
+        import geo
+        return geo.resolve_icp(self.config)
+
     def __repr__(self) -> str:  # pragma: no cover - 仅影响日志/调试输出
         """脱敏的 repr。
 

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script nonce="{{csp_nonce}}">{{landing_beacon_js}}</script>
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -94,6 +95,8 @@
     border-radius: 10px; padding: 10px 12px; font-size: .82rem; margin-top: 12px;
   }
   .hide { display: none; }
+  .icp-foot { text-align: center; margin: 8px 0 0; font-size: .75rem; }
+  .icp-foot a { color: var(--muted); text-decoration: none; }
   code { background: #f9fafb; border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: .9em; }
 </style>
 </head>
@@ -142,6 +145,7 @@
       Skill<span class="feeder">Feeder</span>
     </p>
     <p class="hint" style="margin-top:14px;text-align:center">MIT 只覆盖源代码。名称与 Logo 未授权不得用于商业销售。</p>
+    {{icp_footer}}
   </div>
 
 <script nonce="{{csp_nonce}}">

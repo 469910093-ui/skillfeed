@@ -79,6 +79,56 @@ class TestClassifyChannel(unittest.TestCase):
     def test_paid_source_kept(self):
         self.assertEqual(classify_channel(utm_source="cpc"), "paid")
 
+    def test_model_utm_source_domain_is_geo(self):
+        """ChatGPT 等外链会自己挂 utm_source=域名，没有 referrer 也要归模型GEO。"""
+        for src in ("chatgpt.com", "perplexity.ai", "claude.ai", "kimi.com",
+                    "chat.deepseek.com", "metaso.cn", "www.doubao.com", "CHATGPT.COM"):
+            with self.subTest(src=src):
+                self.assertEqual(classify_channel(utm_source=src), "geo_agent")
+
+    def test_domain_utm_source_falls_back_to_host_table(self):
+        self.assertEqual(classify_channel(utm_source="m.sm.cn"), "organic_search")
+        self.assertEqual(classify_channel(utm_source="xiaohongshu.com"), "social")
+        # 自家域名当 utm_source 不算外部来源
+        self.assertEqual(classify_channel(utm_source="skillfeeder.cn"), "campaign")
+        self.assertEqual(classify_channel(utm_source="unknown.example"), "campaign")
+
+    def test_paid_medium_still_beats_model_source(self):
+        self.assertEqual(classify_channel(utm_source="chatgpt.com", utm_medium="cpc"), "paid")
+
+    def test_domestic_models_are_geo(self):
+        for ref in ("https://kimi.com/chat/1", "kimi.moonshot.cn", "chat.deepseek.com",
+                    "www.deepseek.com", "metaso.cn", "www.doubao.com",
+                    "yuanbao.tencent.com", "tongyi.aliyun.com", "www.tongyi.com",
+                    "chat.qwen.ai", "chatglm.cn", "yiyan.baidu.com", "www.tiangong.cn",
+                    "xinghuo.xfyun.cn", "hailuoai.com", "www.n.cn"):
+            with self.subTest(ref=ref):
+                self.assertEqual(classify_channel(referrer=ref), "geo_agent")
+
+    def test_overseas_models_are_geo(self):
+        for ref in ("copilot.microsoft.com", "grok.com", "www.meta.ai", "www.phind.com",
+                    "chat.mistral.ai", "felo.ai", "www.genspark.ai"):
+            with self.subTest(ref=ref):
+                self.assertEqual(classify_channel(referrer=ref), "geo_agent")
+
+    def test_model_subdomain_of_search_engine_stays_geo(self):
+        self.assertEqual(classify_channel(referrer="yiyan.baidu.com"), "geo_agent")
+        self.assertEqual(classify_channel(referrer="www.baidu.com"), "organic_search")
+
+    def test_more_search_engines(self):
+        for ref in ("m.sm.cn", "www.so.com", "m.so.com", "so.toutiao.com", "www.haosou.com",
+                    "search.naver.com", "yandex.ru", "www.sogou.com", "duckduckgo.com"):
+            with self.subTest(ref=ref):
+                self.assertEqual(classify_channel(referrer=ref), "organic_search")
+        # 头条正文页不是搜索
+        self.assertEqual(classify_channel(referrer="www.toutiao.com"), "referral")
+
+    def test_new_defaults_visible_in_default_tables(self):
+        host = DEFAULT_RULES.table("host")
+        for v in ("kimi.com", "chat.deepseek.com", "metaso.cn", "sm.cn", "so.toutiao.com"):
+            self.assertIn(v, host)
+        self.assertEqual(DEFAULT_RULES.table("source")["chatgpt.com"], "geo_agent")
+
 
 def _ov(kind, value, channel, enabled=1):
     return {"kind": kind, "value": value, "channel": channel, "enabled": enabled}
@@ -118,6 +168,19 @@ class TestRuleOverrides(unittest.TestCase):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
         self.assertIs(load_rules(conn), DEFAULT_RULES)
+
+    def test_override_on_new_default_still_applies(self):
+        rules = merge_rules([_ov("host", "kimi.com", "referral")])
+        self.assertEqual(classify_channel(referrer="kimi.com", rules=rules), "referral")
+        rules = merge_rules([_ov("source", "chatgpt.com", "campaign")])
+        self.assertEqual(classify_channel(utm_source="chatgpt.com", rules=rules), "campaign")
+
+    def test_domain_source_fallback_follows_host_overrides(self):
+        rules = merge_rules([_ov("host", "jike.city", "social")])
+        self.assertEqual(classify_channel(utm_source="jike.city"), "campaign")
+        self.assertEqual(classify_channel(utm_source="jike.city", rules=rules), "social")
+        rules = merge_rules([_ov("host", "metaso.cn", "geo_agent", enabled=0)])
+        self.assertEqual(classify_channel(utm_source="metaso.cn", rules=rules), "campaign")
 
     def test_sanitize_uses_rules(self):
         rules = merge_rules([_ov("source", "jike", "social")])

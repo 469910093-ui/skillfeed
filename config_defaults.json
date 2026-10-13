@@ -31,6 +31,7 @@
   "i18n_limit": 0,
   "dashscope_api_key": "",
   "bitable_base_token": "",
+  "icp_beian": "",
   "allowed_sources": [
     "github.com/trending",
     "hellogithub",

@@ -7,13 +7,15 @@
 from __future__ import annotations
 
 import hashlib
+import html as html_lib
 import json
+import os
 import re
 import shutil
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from xml.sax.saxutils import escape as xml_escape
 
 CANONICAL = "https://skillfeeder.cn"
@@ -116,6 +118,45 @@ COMPARE_DESCRIPTION = (
 OG_IMAGE_SRC = Path(__file__).resolve().parent / "docs" / "pitch" / "assets" / "ui-card.png"
 ICON_SRC_DIR = Path(__file__).resolve().parent / "docs" / "brand" / "assets"
 ICON_FILENAMES = ("favicon.ico", "favicon.png", "apple-touch-icon.png")
+
+
+ICP_URL = "https://beian.miit.gov.cn/"
+_ICP_MAX = 40
+
+
+def normalize_icp(raw: Any) -> str:
+    """ICP 备案号：去首尾空白、压空格；不含 ICP 字样或过长一律当没填。"""
+    text = " ".join(str(raw or "").split())
+    if not text or len(text) > _ICP_MAX or "icp" not in text.lower():
+        return ""
+    return text
+
+
+def resolve_icp(config: Mapping[str, Any] | None = None) -> str:
+    """备案号来源：环境变量 SKILLFEED_ICP 优先，其次 config 的 icp_beian。"""
+    env = (os.environ.get("SKILLFEED_ICP") or "").strip()
+    if env:
+        return normalize_icp(env)
+    return normalize_icp((config or {}).get("icp_beian"))
+
+
+def icp_link_html(icp: str, *, cls: str = "icp") -> str:
+    """备案号链接；没填返回空串，页面上不留任何占位。"""
+    icp = normalize_icp(icp)
+    if not icp:
+        return ""
+    return (
+        f'<a class="{cls}" href="{ICP_URL}" target="_blank" rel="noopener noreferrer">'
+        f"{html_lib.escape(icp)}</a>"
+    )
+
+
+def with_icp_footer(page: str, icp: str) -> str:
+    """给独立 HTML（说明页 / Skill 详情 / 场景页）在 </body> 前补备案页脚。"""
+    link = icp_link_html(icp)
+    if not link or "</body>" not in page:
+        return page
+    return page.replace("</body>", f'<footer class="site-icp">{link}</footer>\n</body>', 1)
 
 
 def utc_now_iso() -> str:
@@ -657,33 +698,51 @@ Sitemap: {CANONICAL}/sitemap.xml
 """
 
 
-def render_sitemap_xml(extra_paths: Iterable[str] = ()) -> str:
-    pages = (
-        ("/", "weekly"),
-        *((path, "weekly") for path in extra_paths),
-        ("/about.html", "monthly"),
-        ("/faq.html", "monthly"),
-        ("/compare.html", "monthly"),
-        ("/about.md", "monthly"),
-        ("/faq.md", "monthly"),
-        ("/compare.md", "monthly"),
-        ("/llms.txt", "weekly"),
-        ("/llms-full.txt", "daily"),
-        ("/catalog.json", "daily"),
-        ("/login", "monthly"),
-        ("/publish", "monthly"),
-        ("/api/geo/openapi.json", "monthly"),
-    )
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+# about / faq / compare / 登录页的正文改了就同步这个日期；sitemap 的 lastmod 用它，
+# 不再每次发布都写成当天（谎报更新会让搜索引擎不再信这个字段）。
+STATIC_COPY_LASTMOD = "2026-10-13"
+
+# sitemap 只收「直接 200、可索引、canonical 指向自己」的 HTML 页。
+# .md / llms*.txt / catalog.json / openapi.json 是给 Agent 读的，从 llms.txt 和
+# robots.txt 能找到，进 sitemap 只会和同文的 .html 抢收录；/publish 未登录会 302。
+SITEMAP_STATIC_PAGES = (
+    ("/about.html", "monthly"),
+    ("/faq.html", "monthly"),
+    ("/compare.html", "monthly"),
+    ("/login", "monthly"),
+)
+
+
+def _iso_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}", text):
+        return text[:10]
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def render_sitemap_xml(extra_paths: Iterable[str] = (), *, content_date: str = "") -> str:
+    """content_date：信息流生成日（首页、总目录、场景页、详情页随它变）。"""
+    feed_day = _iso_date(content_date)
+    seen: set[str] = set()
+    pages: list[tuple[str, str, str]] = []
+    for path, freq, day in (
+        ("/", "daily", feed_day),
+        *((p, "weekly", feed_day) for p in extra_paths if str(p).endswith(".html")),
+        *((p, freq, STATIC_COPY_LASTMOD) for p, freq in SITEMAP_STATIC_PAGES),
+    ):
+        if path in seen:
+            continue
+        seen.add(path)
+        pages.append((path, freq, day))
     chunks = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ]
-    for path, freq in pages:
+    for path, freq, day in pages:
         loc = xml_escape(f"{CANONICAL}{path}")
         chunks.append("  <url>")
         chunks.append(f"    <loc>{loc}</loc>")
-        chunks.append(f"    <lastmod>{today}</lastmod>")
+        chunks.append(f"    <lastmod>{day}</lastmod>")
         chunks.append(f"    <changefreq>{freq}</changefreq>")
         chunks.append("  </url>")
     chunks.append("</urlset>")
@@ -1173,13 +1232,21 @@ _PAGE_STYLE = """<style>
   ul.skills li { padding: .55rem 0; border-bottom: 1px solid #e6eaf5; }
   ul.skills .stars { color: #5a6485; font-size: .85rem; margin-left: .4rem; }
   ul.skills .line { display: block; color: #414141; font-size: .92rem; }
+  .site-icp { margin-top: 2.5rem; text-align: center; font-size: .8rem; }
+  .site-icp a { color: #5a6485; text-decoration: none; }
 </style>"""
 
-# 搜索用户多半从这些静态页落地。键名与首页 feed_dashboard 的埋点一致，
+# 进站埋点：静态页、登录页、首页 <head> 共用这一段。键名与首页 feed_dashboard 一致，
 # 同一标签页再点进首页时仍是同一个会话，渠道按第一条 session_start 算。
 # device_token 只在设备首次注册时下发一次，这里拿到也要存下，否则首页并档会失败。
-_LANDING_BEACON = """<script>
+#
+# 同一会话里没带 utm 的再次进站（GitHub 授权回跳、站内跳转、刷新）沿用本会话
+# 第一次进站的来源，避免 github.com / 自家域名把外部渠道冲成外链或站内。
+# 被登录门禁 302 过来的人，utm 在 ?next= 里，也要取出来。
+_LANDING_BEACON_JS = """
 (function () {
+  var boot = { attr: null, done: null };
+  window.__sfBoot = boot;
   try {
     var rnd = function () { return Math.random().toString(36).slice(2); };
     var did = localStorage.getItem('sf_device_id');
@@ -1187,20 +1254,47 @@ _LANDING_BEACON = """<script>
     var sid = sessionStorage.getItem('sf_session_id');
     if (!sid) { sid = 's-' + rnd() + Date.now().toString(36); sessionStorage.setItem('sf_session_id', sid); }
     var q = new URLSearchParams(location.search || '');
+    var nq = null;
+    try {
+      var nx = q.get('next') || '';
+      if (nx.charAt(0) === '/' && nx.charAt(1) !== '/') nq = new URL(nx, location.href).searchParams;
+    } catch (e) {}
+    var pick = function (k) { return q.get(k) || (nq && nq.get(k)) || ''; };
     var ref = '';
     try { if (document.referrer) ref = new URL(document.referrer).hostname.replace(/^www\\./, ''); } catch (e) {}
+    var attr = {
+      channel: String(pick('ch') || pick('channel')).slice(0, 40),
+      referrer: ref.slice(0, 120),
+      utm_source: String(pick('utm_source') || pick('sf_from') || pick('from')).slice(0, 80),
+      utm_medium: String(pick('utm_medium')).slice(0, 40),
+      utm_campaign: String(pick('utm_campaign')).slice(0, 80)
+    };
+    var tagged = attr.channel || attr.utm_source || attr.utm_medium || attr.utm_campaign;
+    var prev = null;
+    try { prev = JSON.parse(sessionStorage.getItem('sf_session_attr') || 'null'); } catch (e) {}
+    if (prev && typeof prev === 'object' && !tagged) {
+      ['channel', 'referrer', 'utm_source', 'utm_medium', 'utm_campaign'].forEach(function (k) {
+        attr[k] = String(prev[k] || '');
+      });
+    } else {
+      sessionStorage.setItem('sf_session_attr', JSON.stringify(attr));
+    }
+    attr.landing = String(location.pathname + location.search).slice(0, 200);
+    boot.attr = attr;
     var ev = {
       action: 'session_start',
       source: 'landing',
-      channel: String(q.get('ch') || q.get('channel') || '').slice(0, 40),
-      referrer: ref.slice(0, 120),
-      landing: String(location.pathname + location.search).slice(0, 200),
-      utm_source: String(q.get('utm_source') || q.get('sf_from') || q.get('from') || '').slice(0, 80),
-      utm_medium: String(q.get('utm_medium') || '').slice(0, 40),
-      utm_campaign: String(q.get('utm_campaign') || '').slice(0, 80),
+      channel: attr.channel,
+      referrer: attr.referrer,
+      landing: attr.landing,
+      utm_source: attr.utm_source,
+      utm_medium: attr.utm_medium,
+      utm_campaign: attr.utm_campaign,
       client_ts: Date.now() + '-' + rnd().slice(0, 6)
     };
-    fetch('/api/events', {
+    var base = __SF_API_BASE__;
+    if (!base && location.origin === 'https://skillfeeder.cn') base = location.origin;
+    boot.done = fetch(base + '/api/events', {
       method: 'POST',
       credentials: 'include',
       keepalive: true,
@@ -1211,7 +1305,20 @@ _LANDING_BEACON = """<script>
     }).catch(function () {});
   } catch (e) {}
 })();
-</script>"""
+"""
+
+_API_BASE_RE = re.compile(r"^https?://[A-Za-z0-9.-]+(?::\d{1,5})?$")
+
+
+def landing_beacon_js(api_base: str = "") -> str:
+    """进站 session_start 上报脚本（不含 <script> 标签）。api_base 空 = 同源。"""
+    base = (api_base or "").strip().rstrip("/")
+    if not _API_BASE_RE.match(base):
+        base = ""
+    return _LANDING_BEACON_JS.replace("__SF_API_BASE__", json.dumps(base))
+
+
+_LANDING_BEACON = f"<script>{landing_beacon_js()}</script>"
 
 
 def _json_ld_script(payload: dict[str, Any]) -> str:
@@ -1706,8 +1813,13 @@ def copy_brand_icons(out: Path) -> list[Path]:
     return written
 
 
-def write_geo_site(out: Path, feed: dict[str, Any], *, full: bool = False) -> list[Path]:
-    """把 Agent Surface 写进 publish-site 产物目录。"""
+def write_geo_site(
+    out: Path, feed: dict[str, Any], *, full: bool = False, icp: str = "",
+) -> list[Path]:
+    """把 Agent Surface 写进 publish-site 产物目录。
+
+    icp：ICP 备案号，只在主站（full）写进各 HTML 页脚；Pages 预览壳不带。
+    """
     dest = Path(out)
     dest.mkdir(parents=True, exist_ok=True)
     raw_items = [it for it in (feed.get("items") or []) if isinstance(it, dict)]
@@ -1726,7 +1838,10 @@ def write_geo_site(out: Path, feed: dict[str, Any], *, full: bool = False) -> li
         "llms.txt": render_llms_txt(full=full, item_count=len(raw_items)),
         "llms-full.txt": render_llms_full_txt(items, full=full),
         "robots.txt": render_robots_txt(),
-        "sitemap.xml": render_sitemap_xml(f"/{rel}" for rel in seo_paths),
+        "sitemap.xml": render_sitemap_xml(
+            (f"/{rel}" for rel in seo_paths),
+            content_date=str(feed.get("generated_at") or ""),
+        ),
         "about.md": render_about_md(),
         "faq.md": render_faq_md(),
         "compare.md": render_compare_md(),
@@ -1740,9 +1855,12 @@ def write_geo_site(out: Path, feed: dict[str, Any], *, full: bool = False) -> li
         ),
         **seo_pages,
     }
+    footer_icp = icp if full else ""
     written: list[Path] = []
     for name, text in files.items():
         path = dest / name
+        if footer_icp and name.endswith(".html"):
+            text = with_icp_footer(text, footer_icp)
         write_utf8_lf(path, text)
         written.append(path)
     og = copy_og_image(dest)
