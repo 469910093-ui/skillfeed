@@ -32,6 +32,9 @@
   "dashscope_api_key": "",
   "bitable_base_token": "",
   "icp_beian": "",
+  "site_verification": {
+    "baidu": "codeva-yeBjHlHidg"
+  },
   "allowed_sources": [
     "github.com/trending",
     "hellogithub",

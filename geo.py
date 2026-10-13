@@ -151,6 +151,40 @@ def icp_link_html(icp: str, *, cls: str = "icp") -> str:
     )
 
 
+# 站长平台所有权验证：config 里的短键 → 首页 <meta name>。
+SITE_VERIFICATION_NAMES = {
+    "baidu": "baidu-site-verification",
+    "google": "google-site-verification",
+    "bing": "msvalidate.01",
+    "360": "360-site-verification",
+    "sogou": "sogou_site_verification",
+    "shenma": "shenma-site-verification",
+}
+_VERIFY_CODE_RE = re.compile(r"^[A-Za-z0-9_\-.=]{1,128}$")
+_CONFIG_DEFAULTS = Path(__file__).resolve().parent / "config_defaults.json"
+
+
+def _default_config() -> dict[str, Any]:
+    try:
+        data = json.loads(_CONFIG_DEFAULTS.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def site_verification_meta(config: Mapping[str, Any] | None = None) -> str:
+    """站长平台验证 meta；平台下线复查时会再读，验证通过后不能删。"""
+    raw = (config if config is not None else _default_config()).get("site_verification")
+    if not isinstance(raw, Mapping):
+        return ""
+    tags = []
+    for key, name in SITE_VERIFICATION_NAMES.items():
+        code = str(raw.get(key) or "").strip()
+        if code and _VERIFY_CODE_RE.match(code):
+            tags.append(f'<meta name="{name}" content="{html_lib.escape(code)}">\n')
+    return "".join(tags)
+
+
 def with_icp_footer(page: str, icp: str) -> str:
     """给独立 HTML（说明页 / Skill 详情 / 场景页）在 </body> 前补备案页脚。"""
     link = icp_link_html(icp)
@@ -1056,6 +1090,7 @@ def html_head_tags() -> str:
     dumped = dumped.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     return (
         seo_meta_tags(title=PAGE_TITLE, description=PAGE_DESCRIPTION, path="/")
+        + site_verification_meta()
         + f'<link rel="describedby" href="{CANONICAL}/llms.txt">\n'
         + f'<link rel="alternate" hreflang="zh-CN" href="{CANONICAL}/">\n'
         + f'<link rel="alternate" hreflang="x-default" href="{CANONICAL}/">\n'
