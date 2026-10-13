@@ -382,6 +382,24 @@ class TestIcpFooter(unittest.TestCase):
             self.assertNotIn('class="site-icp"', about)
 
 
+class TestSiteVerificationMeta(unittest.TestCase):
+    def test_configured_platforms_become_head_meta(self):
+        meta = geo.site_verification_meta(
+            {"site_verification": {"baidu": "codeva-abc", "bing": "ABC123"}})
+        self.assertIn('<meta name="baidu-site-verification" content="codeva-abc">', meta)
+        self.assertIn('<meta name="msvalidate.01" content="ABC123">', meta)
+
+    def test_unknown_or_unsafe_codes_are_dropped(self):
+        meta = geo.site_verification_meta({"site_verification": {
+            "baidu": '"><script>x</script>', "evil": "abc"}})
+        self.assertEqual("", meta)
+        self.assertEqual("", geo.site_verification_meta({}))
+
+    def test_homepage_head_carries_baidu_verification(self):
+        self.assertIn('name="baidu-site-verification" content="codeva-yeBjHlHidg"',
+                      geo.html_head_tags())
+
+
 _BEACON_HARNESS = r"""
 const vm = require('vm');
 const src = require('fs').readFileSync(0, 'utf8');
