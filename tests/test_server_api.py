@@ -1480,6 +1480,173 @@ class TestAdminSite(unittest.TestCase):
         ):
             self.assertEqual(self.client.get(path).status_code, 403, path)
 
+    # —— 渠道配置 ——
+
+    def _session_start(self, device, client_ts, **attr):
+        r = self.client.post("/api/events", json={
+            "device_id": device, "session_id": "s-" + device,
+            "events": [{"action": "session_start", "client_ts": client_ts, **attr}],
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        with db.db_session(self.settings.db_path) as conn:
+            row = conn.execute(
+                "SELECT channel FROM events WHERE device_id=? AND action='session_start'",
+                (device,),
+            ).fetchone()
+        return row["channel"]
+
+    def test_channel_config_requires_operator(self):
+        cases = (
+            ("GET", "/api/op/channels", None),
+            ("POST", "/api/op/channels/rules", {"kind": "source", "value": "x", "channel": "social"}),
+            ("POST", "/api/op/channels/rules/reset", {"kind": "source", "value": "x"}),
+            ("POST", "/api/op/channels/preview", {"utm_source": "xhs"}),
+            ("POST", "/api/op/channels/presets", {"name": "x", "utm_source": "x"}),
+            ("DELETE", "/api/op/channels/presets/1", None),
+        )
+        for method, path, body in cases:
+            r = self.client.request(method, path, json=body)
+            self.assertEqual(r.status_code, 302, (method, path))
+            self.assertIn("/login", r.headers.get("location", ""))
+        self.client.get("/auth/dev-login?login=other-user")
+        for method, path, body in cases:
+            r = self.client.request(method, path, json=body)
+            self.assertEqual(r.status_code, 403, (method, path))
+
+    def test_channel_config_lists_defaults_and_seed_presets(self):
+        self.client.get("/auth/dev-login")
+        r = self.client.get("/api/op/channels")
+        self.assertEqual(r.status_code, 200, r.text)
+        data = r.json()
+        xhs = next(x for x in data["rules"] if x["kind"] == "source" and x["value"] == "xhs")
+        self.assertEqual(xhs["channel"], "social")
+        self.assertTrue(xhs["is_default"])
+        self.assertFalse(xhs["changed"])
+        self.assertTrue(any(x["kind"] == "medium" and x["value"] == "cpc" for x in data["rules"]))
+        self.assertTrue(any(x["kind"] == "host" and x["value"] == "chatgpt.com" for x in data["rules"]))
+        names = [p["name"] for p in data["presets"]]
+        self.assertIn("小红书笔记", names)
+        first = data["presets"][0]
+        self.assertTrue(first["url"].startswith("https://skillfeeder.cn/?utm_source="))
+        self.assertEqual(first["channel"], "social")
+
+    def test_rule_override_changes_new_ingest(self):
+        self.assertEqual(self._session_start("dev-a", "a1", utm_source="jike"), "campaign")
+        self.client.get("/auth/dev-login")
+        r = self.client.post("/api/op/channels/rules", json={
+            "kind": "source", "value": "Jike", "channel": "social", "enabled": True,
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        added = next(x for x in r.json()["rules"] if x["value"] == "jike")
+        self.assertFalse(added["is_default"])
+        self.assertEqual(added["updated_by"], "dev-user")
+        self.assertEqual(self._session_start("dev-b", "b1", utm_source="jike"), "social")
+        # 历史行不重算
+        self.assertEqual(self._session_start("dev-a", "a1", utm_source="jike"), "campaign")
+        preview = self.client.post("/api/op/channels/preview", json={"utm_source": "jike"})
+        self.assertEqual(preview.json()["channel"], "social")
+
+    def test_default_rule_can_be_disabled_and_restored(self):
+        self.client.get("/auth/dev-login")
+        off = self.client.post("/api/op/channels/rules", json={
+            "kind": "host", "value": "zhihu.com", "channel": "social", "enabled": False,
+        })
+        self.assertEqual(off.status_code, 200, off.text)
+        row = next(x for x in off.json()["rules"] if x["kind"] == "host" and x["value"] == "zhihu.com")
+        self.assertFalse(row["enabled"])
+        self.assertTrue(row["changed"])
+        self.assertEqual(
+            self._session_start("dev-z1", "z1", referrer="https://www.zhihu.com/q/1"), "referral",
+        )
+        back = self.client.post("/api/op/channels/rules/reset", json={
+            "kind": "host", "value": "zhihu.com",
+        })
+        row = next(x for x in back.json()["rules"] if x["kind"] == "host" and x["value"] == "zhihu.com")
+        self.assertTrue(row["enabled"])
+        self.assertFalse(row["changed"])
+        self.assertEqual(
+            self._session_start("dev-z2", "z2", referrer="https://www.zhihu.com/q/1"), "social",
+        )
+        # 改回默认渠道 = 不留覆盖行
+        self.client.post("/api/op/channels/rules", json={
+            "kind": "source", "value": "xhs", "channel": "social", "enabled": True,
+        })
+        with db.db_session(self.settings.db_path) as conn:
+            self.assertEqual(db.list_channel_rule_overrides(conn), [])
+
+    def test_rule_input_validation(self):
+        self.client.get("/auth/dev-login")
+        for body in (
+            {"kind": "source", "value": "xhs", "channel": "nope"},
+            {"kind": "bogus", "value": "xhs", "channel": "social"},
+            {"kind": "host", "value": "<img src=x onerror=alert(1)>", "channel": "social"},
+            {"kind": "source", "value": "a b", "channel": "social"},
+            {"kind": "source", "value": "", "channel": "social"},
+        ):
+            r = self.client.post("/api/op/channels/rules", json=body)
+            self.assertEqual(r.status_code, 400, body)
+        with db.db_session(self.settings.db_path) as conn:
+            self.assertEqual(db.list_channel_rule_overrides(conn), [])
+
+    def test_preset_crud_and_validation(self):
+        self.client.get("/auth/dev-login")
+        created = self.client.post("/api/op/channels/presets", json={
+            "name": "知乎回答", "utm_source": "ZhiHu", "utm_medium": "social",
+            "utm_campaign": "Answer_1013", "landing": "/skills.html",
+        })
+        self.assertEqual(created.status_code, 200, created.text)
+        data = created.json()
+        pid = data["saved_id"]
+        p = next(x for x in data["presets"] if x["id"] == pid)
+        self.assertEqual(p["utm_source"], "zhihu")
+        self.assertEqual(
+            p["url"],
+            "https://skillfeeder.cn/skills.html?utm_source=zhihu&utm_medium=social&utm_campaign=Answer_1013",
+        )
+        self.assertEqual(p["channel"], "social")
+
+        updated = self.client.post("/api/op/channels/presets", json={
+            "id": pid, "name": "知乎", "utm_source": "zhihu", "utm_medium": "cpc",
+            "utm_campaign": "", "landing": "/",
+        })
+        self.assertEqual(updated.status_code, 200, updated.text)
+        p = next(x for x in updated.json()["presets"] if x["id"] == pid)
+        self.assertEqual((p["name"], p["channel"]), ("知乎", "paid"))
+
+        for bad in (
+            {"name": "", "utm_source": "x"},
+            {"name": "x", "utm_source": ""},
+            {"name": "x", "utm_source": "a&b"},
+            {"name": "x", "utm_source": "x", "landing": "//evil.com"},
+            {"name": "x", "utm_source": "x", "landing": "javascript:alert(1)"},
+            {"name": "x" * 41, "utm_source": "x"},
+        ):
+            r = self.client.post("/api/op/channels/presets", json=bad)
+            self.assertEqual(r.status_code, 400, bad)
+        missing = self.client.post("/api/op/channels/presets", json={
+            "id": 99999, "name": "x", "utm_source": "x",
+        })
+        self.assertEqual(missing.status_code, 404)
+
+        gone = self.client.delete(f"/api/op/channels/presets/{pid}")
+        self.assertEqual(gone.status_code, 200, gone.text)
+        self.assertFalse(any(x["id"] == pid for x in gone.json()["presets"]))
+        self.assertEqual(self.client.delete(f"/api/op/channels/presets/{pid}").status_code, 404)
+
+    def test_deleted_seed_presets_stay_deleted(self):
+        self.client.get("/auth/dev-login")
+        for p in self.client.get("/api/op/channels").json()["presets"]:
+            self.client.delete(f"/api/op/channels/presets/{p['id']}")
+        db.init_db(self.settings.db_path)
+        self.assertEqual(self.client.get("/api/op/channels").json()["presets"], [])
+
+    def test_admin_page_has_channel_tab(self):
+        self.client.get("/auth/dev-login")
+        r = self.client.get("/op")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('data-tab="channels"', r.text)
+        self.assertIn("没带参数也没来源网址的访问记为直接", r.text)
+
 
 @unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")
 class TestIdentityBind(unittest.TestCase):

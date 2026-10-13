@@ -8,7 +8,7 @@
 | 仓库 | https://github.com/469910093-ui/skillfeed |
 | 公开发现站 | https://469910093-ui.github.io/skillfeed/ |
 | 关联产品 | [skill-picker](https://github.com/469910093-ui/Skill-picker)（本机已装 skill 的扫描/匹配） |
-| 更新日期 | 2026-09-21 |
+| 更新日期 | 2026-10-13 |
 
 ---
 
@@ -440,8 +440,9 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 登出 | `POST /auth/logout` | |
 | 发布 UGC | `POST /api/posts`、表单 `/api/posts/form`、页 `/publish` | 只收 GitHub 链接 + 标题 + 文案；进审核后上架 |
 | 审核通知 | `SKILLFEED_REVIEW_WEBHOOK` 或后台「页面配置」里的 webhook | 进 pending 后推运营（飞书自定义机器人）；都不配则只落库，投稿人只看页内「审核中」 |
-| 官方管理后台 | `/op` 与 `/admin`（运营 login 白名单） | 四 tab：数据 KPI（**卡片可点进明细**）、**路径**（会话操作链 / 按日 / **分渠道** / 时间线 / CSV）、审批队列、页面配置（口号 / 搜索占位 / logo / 审核 webhook） |
-| 操作路径 | `POST /api/events`（**免登录**，限流）、`GET /api/op/journeys`（运营） | 首页记进入/开 tab/搜索/看卡/赞藏/GitHub/登录/发布/关注；**`session_start` 记渠道**：`utm_*` / `referrer` / `landing` → `channel`（`direct` / `organic_search` / `geo_agent` / `social` / `referral` / `paid` / `campaign` / `internal`）。曝光与停留不进路径视图；登录后 device 挂到 GitHub login。不记 IP / UA |
+| 官方管理后台 | `/op` 与 `/admin`（运营 login 白名单） | 五 tab：数据 KPI（**卡片可点进明细**）、**路径**（会话操作链 / 按日 / **分渠道** / 时间线 / CSV）、**渠道配置**、审批队列、页面配置（口号 / 搜索占位 / logo / 审核 webhook） |
+| 操作路径 | `POST /api/events`（**免登录**，限流）、`GET /api/op/journeys`（运营） | 首页记进入/开 tab/搜索/看卡/赞藏/GitHub/登录/发布/关注；**`session_start` 记渠道**：`utm_*` / `referrer` / `landing` → `channel`（`direct` / `organic_search` / `geo_agent` / `social` / `referral` / `paid` / `campaign` / `internal`）。没带 utm 也没 referrer = `direct`。归类规则见下行「渠道配置」。曝光与停留不进路径视图；登录后 device 挂到 GitHub login。不记 IP / UA |
+| 渠道配置 | 页 `/op#channels`；`GET /api/op/channels`、`POST /api/op/channels/rules`、`POST /api/op/channels/rules/reset`、`POST /api/op/channels/preview`、`POST /api/op/channels/presets`、`DELETE /api/op/channels/presets/{id}`（全部运营白名单） | **归因规则**：代码默认（`server/attribution.py`：来源域名表 搜索/模型GEO/社交/自家域名；utm_source 别名；utm_medium 表含付费媒介）+ SQLite `channel_rules` 逐条覆盖（改归属渠道 / 停用默认 / 新增；删覆盖 = 恢复默认）。默认项标「默认」，可停用、可恢复。优先级：utm 先于 referrer；多条命中时 付费 > 模型GEO > 搜索SEO > 社交；域名侧自家域名最先；带 utm 但都没命中 = `campaign`。进程内缓存 30 秒，写入即失效；读表失败退回代码默认。**只作用于新进站**，历史 `events` / `devices` 的 `channel` 不重算。**推广链接**：`channel_presets` 存预设（名称 + utm_source 必填 + utm_medium + utm_campaign + 落地路径，默认 `/`），页面实时拼 `https://skillfeeder.cn/…?utm_…`、一键复制、并用同一套规则预览会归到哪个渠道；首次建表预置 小红书笔记 / 微信群 / 公众号文章 / 抖音 / 即刻 / Twitter·X，运营删光不再补。校验：渠道必须在枚举内；域名只收字母数字点横线；utm 值只收字母数字下划线点横线（≤80）；落地路径必须 `/` 开头、无空格引号、不收 `//`。上限：自定义规则 500、预设 100 |
 | KPI 下钻 | `GET /api/op/users`、`/api/op/devices`、`/api/op/backups`、`/api/op/events/today`；帖子进 `#review?status=` | 数据页八张卡均可点：用户卡含**登录用户 + 游客设备抓手**（首触渠道）；今日事件/会话/备份就地明细；帖子跳审批筛选 |
 | 游客身份 | 本机 `sf_device_id` + 服务端 `device_token`；进站 `session_start` 写首触渠道到 `devices`；登录后 `POST /api/profile/claim` 并档 | 游客可召回的抓手是 device；登录后画像/赞藏/渠道挂到 `users.id`。不记 IP / UA |
 | 第二钥匙 | 已登录再走 `/auth/wechat` `/auth/sms/verify` `/auth/github` | 绑到同一个 `users.id`；钥匙已被别人占用则 409 / `bind=taken`。不自建密码 |
@@ -556,6 +557,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 1. Actions 自动刷新公开站，或手动 `refresh`  
 2. 调 `config.json` 门禁档位、Search Token  
 3. 看 funnel / rejected / feedback  
+4. 往外发链接前在 `/op#channels` 生成带 utm 的推广链接；新出现的来源域名在同页补规则  
 
 ---
 
@@ -670,6 +672,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-10-13 | 运营后台新增「渠道配置」tab：归因规则（来源域名 / utm_source / utm_medium）由代码默认 + 后台逐条覆盖，可改归属、停用、恢复默认、新增；推广链接预设生成带 utm 的外发链接并预览归属渠道。只影响新进站，历史渠道不重算 | §6.2、`server/attribution.py`、`db.py`、`app.py`、`ranking_service.py`、`templates/admin.html`、`docs/deploy-api.md` |
 | 2026-10-08 | 微信扫码层：手机贴底，电脑居中成卡片并盖住底栏，避免和开通按钮挤在一行 | §5.1、`feed_dashboard.py` |
 | 2026-10-08 | SEO 落地页：每条 Skill 出 `/s/{slug}.html` 详情、每个场景出 `/scene/{key}.html`、加 `/skills.html` 总目录，全部服务端直出中文并进 sitemap；静态页补 `session_start` 埋点，搜索落地可归因 | §6.3、`geo.py`、`skillfeed.py`、`pages.yml`、`deploy_to_aliyun.ps1` |
 | 2026-10-08 | 微信支付 Native 扫码下单；回调验签解密成功才开通并占席。订单记下要占用的场景 | §3.1、§5.1、`server/wechat_pay.py`、`pay.py`、`app.py`、`feed_dashboard.py` |
