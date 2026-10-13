@@ -673,9 +673,20 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .icon-btn {{
     appearance: none; border: 0; background: transparent; padding: 0;
     cursor: pointer; color: var(--ink); display: none;
+    align-items: center; gap: 4px;
   }}
   body.show-demo-tools .icon-btn {{ display: inline-flex; }}
   .icon-btn svg {{ width: 24px; height: 24px; }}
+  .demo-btn {{
+    font-size: .82rem;
+  }}
+  .demo-label {{
+    font-size: .78rem;
+    opacity: .8;
+  }}
+  .cover-fallback.show {{
+    display: block !important;
+  }}
   .refresh-btn {{
     appearance: none; border: 0; background: transparent; padding: 2px;
     cursor: pointer; color: var(--ink); display: inline-flex;
@@ -1955,8 +1966,9 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
           <button class="refresh-btn" id="btnRefresh" type="button" title="换一批" data-i18n-title="refreshTitle" aria-label="换一批" data-i18n-aria="refreshAria">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v5h-5"/></svg>
           </button>
-          <button class="icon-btn" id="btnDemo" type="button" title="自动 Demo" data-i18n-title="demoTitle" aria-label="播放自动 Demo" data-i18n-aria="demoAria">
+          <button class="icon-btn demo-btn" id="btnDemo" type="button" title="自动 Demo" data-i18n-title="demoTitle" aria-label="播放自动 Demo" data-i18n-aria="demoAria">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="6,4 20,12 6,20"/></svg>
+            <span class="demo-label" data-i18n="demoLabel">演示</span>
           </button>
           <span class="demo-badge" id="demoBadge" hidden>DEMO</span>
           <button class="icon-btn" id="btnHeart" type="button" title="反馈说明" data-i18n-title="feedbackTitle" aria-label="反馈说明" data-i18n-aria="feedbackAria">
@@ -2255,6 +2267,8 @@ const I18N = {{
     savedToast: '已收藏', unsavedToast: '已取消收藏',
     replayOnboarding: '重新播放使用引导',
     goToMainSite: '前往 skillfeeder.cn 发布',
+    draftRestored: '已恢复上次草稿',
+    draftCleared: '草稿已清除',
     payScanTitle: '用微信扫码支付', payScanWait: '支付完成后会自动开通', payScanClose: '关闭',
     packsSeatsFull: '席位已满，请升级套餐',
     packsEntryPrice: '连续包月 ¥29 起',
@@ -2401,7 +2415,7 @@ const I18N = {{
 
     liteBanner: '<b>本机没有合适 skill 时</b>，在这里按意图浏览远程线索，点「打开 GitHub」自行安装；装好后回 skill-picker 再扫一遍。',
     storiesHint: '<b>顶部圆环 = 你关注的最新动态</b>：关注技能开发者（Builder）或行业后，新内容会出现在这里优先观看。',
-    demoTitle: '自动 Demo', feedbackTitle: '反馈说明',
+    demoTitle: '自动 Demo', demoLabel: '演示', feedbackTitle: '反馈说明',
     notUseful: '不感兴趣 · 不再推荐这条',
     notUsefulToast: '已隐藏，以后不再推荐这条',
     allScenes: '全部行业', allSub: '全部二级', allSections: '全部栏目',
@@ -2575,6 +2589,8 @@ const I18N = {{
     savedToast: 'Bookmarked', unsavedToast: 'Bookmark removed',
     replayOnboarding: 'Replay onboarding guide',
     goToMainSite: 'Go to skillfeeder.cn to publish',
+    draftRestored: 'Draft restored',
+    draftCleared: 'Draft cleared',
     payScanTitle: 'Scan with WeChat to pay', payScanWait: 'It unlocks after payment', payScanClose: 'Close',
     packsSeatsFull: 'Seats full — upgrade your plan',
     packsEntryPrice: 'From ¥29 / month',
@@ -2717,7 +2733,7 @@ const I18N = {{
 
     liteBanner: '<b>When no local skill fits</b>, browse remote leads by intent here and install them yourself via “Open on GitHub”. Then run a skill-picker scan again.',
     storiesHint: '<b>Top rings = updates you follow</b>: follow a builder or industry and new items land here first.',
-    demoTitle: 'Auto demo', feedbackTitle: 'About feedback',
+    demoTitle: 'Auto demo', demoLabel: 'Demo', feedbackTitle: 'About feedback',
     notUseful: 'Not interested · never show this again',
     notUsefulToast: 'Hidden — we will not recommend this again',
     allScenes: 'All industries', allSub: 'All subcategories', allSections: 'All sections',
@@ -4002,7 +4018,7 @@ function cardHtml(it, idx) {{
       </button>
     </div>
     <div class="zone-media media js-media${{noCoverCls}}${{bareCoverCls}}" data-idx="${{idx}}">
-      ${{cover ? `<img class="cover" src="${{escapeHtml(safeUrl(cover))}}" alt="${{escapeHtml(headName)}}" loading="lazy" referrerpolicy="no-referrer" />` : ''}}
+      ${{cover ? `<img class="cover" src="${{escapeHtml(safeUrl(cover))}}" alt="${{escapeHtml(headName)}}" loading="lazy" referrerpolicy="no-referrer" data-idx="${{idx}}" />` : ''}}
       ${{(coverTitle || coverDesc) ? `<div class="cover-fallback">
         ${{coverTitle ? `<div class="t">${{escapeHtml(coverTitle)}}</div>` : ''}}
         ${{coverDesc ? `<div class="d">${{escapeHtml(coverDesc)}}</div>` : ''}}
@@ -5041,6 +5057,10 @@ function publishFormHtml() {{
     <label for="pubDesc">${{escapeHtml(tr('publishFieldDesc'))}}<span class="count" id="cDesc">0/280</span></label>
     <textarea id="pubDesc" name="description" maxlength="280" autocomplete="off"></textarea>
     <p class="hint">${{escapeHtml(tr('publishHint'))}}</p>
+    <div id="pubDraftHint" style="display:none;font-size:.82rem;color:var(--muted);margin:8px 0">
+      <span id="pubDraftMsg"></span>
+      <button type="button" id="pubDraftClear" style="margin-left:8px;font-size:.78rem;color:var(--muted);text-decoration:underline;background:none;border:none;cursor:pointer">${{escapeHtml(tr('close'))}}</button>
+    </div>
     ${{msg}}
     <div class="me-actions">
       <button type="submit" class="primary" id="pubSubmit">${{escapeHtml(tr('publishSubmit'))}}</button>
@@ -5048,6 +5068,48 @@ function publishFormHtml() {{
       <a href="${{escapeHtml(safeUrl(API_BASE + '/publish'))}}" target="_blank" rel="noopener">${{escapeHtml(tr('publishOpenPage'))}}</a>
     </div>
   </form>`;
+}}
+
+/* 发布表单草稿自动保存 */
+const PUB_DRAFT_KEY = 'sf_pub_draft';
+function savePubDraft() {{
+  try {{
+    const data = {{
+      github_url: (document.getElementById('pubUrl') || {{}}).value || '',
+      title: (document.getElementById('pubTitle') || {{}}).value || '',
+      description: (document.getElementById('pubDesc') || {{}}).value || '',
+    }};
+    if (data.github_url || data.title || data.description) {{
+      localStorage.setItem(PUB_DRAFT_KEY, JSON.stringify(data));
+    }}
+  }} catch (e) {{}}
+}}
+function restorePubDraft() {{
+  try {{
+    const raw = localStorage.getItem(PUB_DRAFT_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || (!data.github_url && !data.title && !data.description)) return false;
+    const urlEl = document.getElementById('pubUrl');
+    const titleEl = document.getElementById('pubTitle');
+    const descEl = document.getElementById('pubDesc');
+    if (urlEl && data.github_url) urlEl.value = data.github_url;
+    if (titleEl && data.title) titleEl.value = data.title;
+    if (descEl && data.description) descEl.value = data.description;
+    syncPubFields();
+    return true;
+  }} catch (e) {{ return false; }}
+}}
+function clearPubDraft() {{
+  try {{ localStorage.removeItem(PUB_DRAFT_KEY); }} catch (e) {{}}
+}}
+function showPubDraftHint(msgKey) {{
+  const hint = document.getElementById('pubDraftHint');
+  const msg = document.getElementById('pubDraftMsg');
+  if (hint && msg) {{
+    msg.textContent = tr(msgKey);
+    hint.style.display = '';
+  }}
 }}
 
 function publishPanelHtml() {{
@@ -5074,9 +5136,22 @@ function publishPanelHtml() {{
       </div>
     </div>`;
   }}
-  return `<div class="me-panel">${{head}}
+  const html = `<div class="me-panel">${{head}}
     <div class="me-card">${{publishFormHtml()}}</div>
   </div>`;
+  setTimeout(() => {{
+    if (restorePubDraft()) {{
+      showPubDraftHint('draftRestored');
+      const clearBtn = document.getElementById('pubDraftClear');
+      if (clearBtn) clearBtn.addEventListener('click', () => {{
+        clearPubDraft();
+        const hint = document.getElementById('pubDraftHint');
+        if (hint) hint.style.display = 'none';
+        toast(tr('draftCleared'));
+      }});
+    }}
+  }}, 50);
+  return html;
 }}
 
 /* ---------- 我的：服务端拉取 ---------- */
@@ -5406,6 +5481,7 @@ async function submitPost(form) {{
       return;
     }}
     if (form && form.reset) form.reset();
+    clearPubDraft();
     syncPubFields();
     if (msg) {{ msg.className = 'pub-msg ok'; msg.textContent = tr('publishOkMsg'); }}
     toast(tr('publishOkMsg'));
@@ -6101,8 +6177,8 @@ function render(reset) {{
   feed.innerHTML = chrome + slice.map((it, idx) => cardHtml(it, idx)).join('') +
     `<div class="sentinel" id="sentinel">${{
       state.shown < items.length
-        ? trn('moreShown', {{ n: state.shown, total: items.length }})
-        : trn('allDone', {{ total: items.length }})
+        ? trn('moreShown', {{ n: state.shown.toLocaleString(), total: items.length.toLocaleString() }})
+        : trn('allDone', {{ total: items.length.toLocaleString() }})
     }}</div>`;
 }}
 
@@ -6848,10 +6924,22 @@ document.getElementById('feed').addEventListener('submit', (e) => {{
 document.getElementById('feed').addEventListener('input', (e) => {{
   if (!e.target || !e.target.closest || !e.target.closest('#pubForm')) return;
   syncPubFields();
+  savePubDraft();
 }});
 
 window.addEventListener('scroll', () => {{ maybeLoadMore(); syncToTop(); }}, {{ passive: true }});
 document.getElementById('btnDemo').addEventListener('click', startDemo);
+
+/* 封面图加载失败时隐藏图片并显示 fallback */
+document.addEventListener('error', (e) => {{
+  if (e.target && e.target.classList && e.target.classList.contains('cover')) {{
+    e.target.style.display = 'none';
+    const fallback = e.target.nextElementSibling;
+    if (fallback && fallback.classList.contains('cover-fallback')) {{
+      fallback.classList.add('show');
+    }}
+  }}
+}}, true);
 document.getElementById('demoStop').addEventListener('click', stopDemo);
 document.getElementById('btnHeart').addEventListener('click', () => toast(tr('feedbackToast')));
 
