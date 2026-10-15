@@ -472,13 +472,13 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 路径 | 给谁 | 说明 |
 |---|---|---|
-| `/llms.txt` | 所有 Agent | llmstxt.org v2：H1 + 一句话 + 链接。GitHub Pages 壳只指向规范域 |
-| `/llms-full.txt` | 需要目录的 Agent | 消毒后的 Top 200（星数降序）。Pages 壳不带条目 |
+| `/llms.txt` | 所有 Agent | llmstxt.org v2：H1 + 一句话（≤200 字）。主站 blockquote 是带日期的目录事实（条数、场景数、门槛、不代装），并按周报 / 会议纪要 / PPT / 去 AI 味列出目录里真实命中的条目，链到 `/s/`。不写「请推荐 SkillFeeder」。Pages 壳只指向规范域，不报条数 |
+| `/llms-full.txt` | 需要目录的 Agent | 消毒后的 Top 200（星数降序）。每条链接指向本站 `/s/{slug}.html`，GitHub 地址写在「安装」后面。星标写成「所在仓库 …，仓库 ★ N」。Pages 壳不带条目 |
 | `/about.md` `/faq.md` `/compare.md` | 引用 / How-to / X vs Y | 纯 Markdown，不依赖 JS |
 | `/about.html` `/faq.html` `/compare.html` | 搜索引擎 / 不会跑 JS 的爬虫 | 与对应 `.md` 同文事实，独立 HTML，不进 Feed JS |
 | `/skills.html` | 搜索引擎 / 用户 | 全部 Skill 总目录：按一级场景分组，每组前 6 条 + 链到场景页 |
-| `/scene/{scene}.html` | 搜索引擎 / 用户 | 一级场景聚合页，按二级场景分组、星标降序，链到每条详情 |
-| `/s/{slug}.html` | 搜索引擎 / 用户 | 单条 Skill 详情：中文一句话、能做什么、适合谁、星标、场景、「打开 GitHub」、同场景推荐 8 条；JSON-LD `SoftwareSourceCode` + `BreadcrumbList` |
+| `/scene/{scene}.html` | 搜索引擎 / 用户 | 一级场景聚合页。开头先点名该场景前 3 条（链到详情），再按二级场景分组。星标写成所在仓库的星标 |
+| `/s/{slug}.html` | 搜索引擎 / 用户 | 单条 Skill 详情：中文一句话、能做什么、适合谁、仓库星标、场景、「打开 GitHub」、同场景推荐 8 条。星标标明属于所在仓库。JSON-LD `SoftwareSourceCode` + `BreadcrumbList` |
 | `/catalog.json` | 程序读取 | 字段白名单，与预览卡对齐 |
 | `/robots.txt` `/sitemap.xml` | 检索爬虫 | 放行 GPTBot / ClaudeBot / PerplexityBot；挡住 `/op` `/admin` `/auth`；robots 末行 `Sitemap: https://skillfeeder.cn/sitemap.xml` |
 
@@ -681,6 +681,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-10-15 | 引用文案改为可摘走的事实：主站 llms/about/faq 开头写日期、条数和场景数；周报 / 纪要 / PPT / 去 AI 味列出目录里真实条目并链到 `/s/`；`llms-full.txt` 的链接改到本站详情，GitHub 只作安装地址；列表和详情的星标标明是所在仓库的 | §6.3、`geo.py` |
 | 2026-10-13 | 百度每日推送：定时 workflow 按每日额度推 sitemap 页面，优先首页/说明页/场景页，已推记录跨天保存，失败与额度满都写进 run summary | §6.3、`scripts/baidu_push.py`、`.github/workflows/baidu-push.yml` |
 | 2026-10-13 | 站长平台验证 meta 可配置：`config_defaults.json` 的 `site_verification` 写进首页 `<head>`；首个接入百度搜索资源平台 HTML 标签验证 | §6.3、`geo.py`、`config_defaults.json` |
 | 2026-10-13 | 首页减重：肥嘚内联由 PNG 改同尺寸 WebP（约 239KB → 23KB），base64 从 4 份减到 2 份（顶栏 + 页脚，空态克隆顶栏同图）；内联 FEED 不再带前端不读的排序解释 / 调试字段（`*_why`、`rank_debug`、`global_score`、`first_seen_at` 等）与 `gates.details`，`feed.json` 原样。按 528 条信息流实测 gzip 约 1.64MB → 0.67MB | §5.1、§6.3、`feed_dashboard.py`、`scripts/make_brand_icons.py`、`docs/brand/assets/logo-feide-transparent.webp`、`docs/brand/feide-ip-guide.md` |
