@@ -458,15 +458,14 @@ class TestCardDedupeJs(unittest.TestCase):
 
 
 class TestFirstScreenChrome(unittest.TestCase):
-    """七个角色对「门口是空壳」的共识：没关注就不放圆环，Demo/反馈默认藏。"""
+    """门口不放空壳：Demo/反馈默认藏；没关注时圆环只留两个引导环。"""
 
-    def test_template_hides_empty_rings_and_demo_chrome(self):
+    def test_template_hides_demo_chrome(self):
         html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
         self.assertIn("aspect-ratio: 16 / 7", html)
         self.assertIn("mobile-badges-below-cover", html)
         self.assertIn("position: static", html)
         self.assertIn("min-width: 0", html)
-        self.assertIn("nFollow === 0", html)
         self.assertIn("body.show-demo-tools .icon-btn", html)
         self.assertRegex(html, r"\.icon-btn \{[^}]*display: none;")
         self.assertNotIn('id="genStatus"', html)
@@ -485,11 +484,17 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertIn("target: '#tab-publish'", html)
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
-    def test_empty_follows_hide_story_rings(self):
+    def test_empty_follows_keep_guide_rings(self):
         html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
-        hidden = JsHarness(html).eval(
-            "(renderStories(), document.getElementById('storiesWrap').classList.contains('hidden'))")
-        self.assertTrue(hidden)
+        got = JsHarness(html).eval(
+            "(renderStories(), {"
+            "hidden: document.getElementById('storiesWrap').classList.contains('hidden'),"
+            "html: document.getElementById('stories').innerHTML"
+            "})")
+        self.assertFalse(got["hidden"])
+        self.assertIn('data-value="builder"', got["html"])
+        self.assertIn('data-value="industry"', got["html"])
+        self.assertNotIn('data-kind="following"', got["html"])
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
     def test_followed_builder_shows_story_rings(self):

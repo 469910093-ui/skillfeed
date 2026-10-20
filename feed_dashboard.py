@@ -4286,11 +4286,9 @@ function renderStories() {{
   }}
   const hide = state.mode === 'me' || state.mode === 'saved' || state.mode === 'publisher';
   const nFollow = followBuilders.size + followIndustries.size;
-  const coaching = !!(document.body && document.body.classList
-    && document.body.classList.contains('coaching'));
-  // 没关注时默认藏圆环；首访引导蒙版期间例外，让用户看见「关注后落在这里」。
-  wrap.classList.toggle('hidden', hide || (nFollow === 0 && !coaching));
-  if (hide || (nFollow === 0 && !coaching)) {{ el.innerHTML = ''; return; }}
+  // 没关注时也留「+ 开发者」「+ 行业」两个引导环：这是关注的冷启动入口，藏了就没人能开始关注。
+  wrap.classList.toggle('hidden', hide);
+  if (hide) {{ el.innerHTML = ''; return; }}
 
   const rings = [];
   if (nFollow > 0) {{
