@@ -1749,6 +1749,65 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             rows = db.list_op_users(conn, limit=limit)
         return {"ok": True, "users": rows, "count": len(rows)}
 
+    def _sku_titles() -> dict[str, str]:
+        titles = {sid: s.title for sid, s in pay.catalog(settings).items()}
+        titles.setdefault("subscriber_year", titles.get(pay.resolve_sku_id("subscriber_year"), ""))
+        return titles
+
+    @app.get("/api/op/orders")
+    def api_op_orders(
+        request: Request,
+        status: str = Query("all"),
+        days: int = Query(0, ge=0, le=3650),
+        limit: int = Query(200, ge=1, le=1000),
+    ) -> dict[str, Any]:
+        _op_user(request)
+        titles = _sku_titles()
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_op_orders(conn, status=status, days=days, limit=limit)
+            summary = db.op_pay_summary(conn)
+        for r in rows:
+            r["sku_title"] = titles.get(r["sku"], r["sku"])
+        for s in summary["by_sku"]:
+            s["title"] = titles.get(s["sku"], s["sku"])
+        return {"ok": True, "orders": rows, "count": len(rows), "summary": summary}
+
+    @app.get("/api/op/orders.csv")
+    def api_op_orders_csv(
+        request: Request,
+        status: str = Query("all"),
+        days: int = Query(0, ge=0, le=3650),
+    ) -> Response:
+        _op_user(request)
+        titles = _sku_titles()
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_op_orders(conn, status=status, days=days, limit=1000)
+
+        def cell(v: Any) -> str:
+            s = str(v if v is not None else "")
+            if s[:1] in ("=", "+", "-", "@"):
+                s = "'" + s
+            return '"' + s.replace('"', '""') + '"'
+
+        lines = [
+            (
+                "created_at,out_trade_no,user_login,sku,sku_title,amount_yuan,status,"
+                "test,paid_at,plan_until,assign_pack"
+            ),
+        ]
+        for r in rows:
+            lines.append(",".join(cell(v) for v in (
+                r["created_at"], r["out_trade_no"], r["user_login"], r["sku"],
+                titles.get(r["sku"], r["sku"]), f"{r['amount_fen'] / 100:.2f}",
+                r["status"], "1" if r["test"] else "", r["paid_at"],
+                r["plan_until"], r["assign_pack"],
+            )))
+        return Response(
+            "\ufeff" + "\n".join(lines) + "\n",
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=skillfeeder-orders.csv"},
+        )
+
     @app.get("/api/op/devices")
     def api_op_devices(
         request: Request,

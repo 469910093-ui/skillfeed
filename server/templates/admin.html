@@ -115,6 +115,9 @@
   .ch-table td button { font-size: .72rem; padding: 4px 10px; }
   .inline-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
   .inline-add input { flex: 1 1 200px; width: auto; }
+  .grid.pay-grid { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 860px) { .grid.pay-grid { grid-template-columns: 1fr; } }
+  #payDays { width: auto; }
 </style>
 </head>
 <body>
@@ -124,6 +127,7 @@
     <nav class="tabs" id="tabs">
       <a href="#overview" data-tab="overview" class="on">数据</a>
       <a href="#path" data-tab="path">路径</a>
+      <a href="#pay" data-tab="pay">付费</a>
       <a href="#channels" data-tab="channels">渠道配置</a>
       <a href="#review" data-tab="review">审批</a>
       <a href="#site" data-tab="site">页面配置</a>
@@ -166,6 +170,36 @@
         </div>
       </div>
       <aside class="panel" id="pathPanel" style="margin-top:16px">点一行看时间线。</aside>
+    </section>
+
+    <section id="view-pay" class="hide">
+      <div class="kpis" id="payKpis"></div>
+      <div class="grid pay-grid">
+        <div class="card" id="payBySku"></div>
+        <div class="card" id="payByDay"></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="views" id="payViews">
+          <button type="button" data-pay-status="all" class="on">全部</button>
+          <button type="button" data-pay-status="paid">已支付</button>
+          <button type="button" data-pay-status="pending">待支付</button>
+          <select id="payDays" aria-label="时间范围">
+            <option value="0">全部时间</option>
+            <option value="1">近 24 小时</option>
+            <option value="7">近 7 天</option>
+            <option value="30" selected>近 30 天</option>
+            <option value="90">近 90 天</option>
+          </select>
+          <a class="ghost" id="payCsv" href="/api/op/orders.csv?days=30">导出 CSV</a>
+        </div>
+        <p class="hint" style="margin-top:10px">收到微信到账通知后才算已支付。测试单不计入收入。</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>下单</th><th>用户</th><th>商品</th><th>金额</th><th>状态</th><th>到账</th><th>会员到期</th><th>选用场景</th><th>订单号</th></tr></thead>
+            <tbody id="payRows"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <section id="view-channels" class="hide">
@@ -286,7 +320,7 @@ let pathHours = 72;
 let pathSessions = [];
 let pathSelected = 0;
 
-const TABS = ["overview", "path", "channels", "review", "site"];
+const TABS = ["overview", "path", "pay", "channels", "review", "site"];
 function tabFromHash() {
   const raw = (location.hash || "#overview").replace("#", "");
   const base = raw.split("?")[0].split("/")[0];
@@ -303,6 +337,7 @@ function showTab(tab) {
   });
   document.querySelectorAll("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
   if (tab === "channels") loadChannels();
+  if (tab === "pay") loadOrders();
   if (tab === "review") {
     const st = hashParams().get("status");
     if (st) status = st;
@@ -623,6 +658,81 @@ function renderPathPanel() {
         ${e.source ? (" · " + esc(e.source)) : ""}</li>`
     ).join("")}</ol>`;
 }
+
+// —— 付费 ——
+let payStatus = "all";
+let payDays = 30;
+
+function yuan(fen) {
+  const v = (Number(fen) || 0) / 100;
+  return "¥" + (Number.isInteger(v) ? v.toLocaleString("zh-CN") : v.toFixed(2));
+}
+function payStatusLabel(o) {
+  if (o.test) return "<span class='tag off'>测试单</span>";
+  if (o.status === "paid") return "<span class='tag ch'>已支付</span>";
+  if (o.status === "pending") return "<span class='tag edit'>待支付</span>";
+  return `<span class="tag off">${esc(o.status)}</span>`;
+}
+function shortTs(ts) {
+  return esc((ts || "").replace("T", " ").slice(0, 16) || "—");
+}
+
+async function loadOrders() {
+  const qs = "status=" + encodeURIComponent(payStatus) + "&days=" + payDays;
+  const r = await fetch("/api/op/orders?" + qs + "&limit=300", { credentials: "include" });
+  if (r.status === 403 || r.status === 401) { location.href = "/login?next=/op#pay"; return; }
+  const data = await r.json();
+  const s = data.summary || {};
+  const t = s.total || {}, today = s.today || {}, d7 = s.d7 || {}, d30 = s.d30 || {};
+  const items = [
+    [yuan(t.fen), "累计收入", `${t.orders || 0} 单`],
+    [yuan(today.fen), "今日收入", `${today.orders || 0} 单`],
+    [yuan(d7.fen), "近 7 天", `${d7.orders || 0} 单`],
+    [yuan(d30.fen), "近 30 天", `${d30.orders || 0} 单`],
+    [s.payers || 0, "付费用户", "累计"],
+    [s.active_subscribers || 0, "有效会员", "未到期"],
+    [s.pending || 0, "待支付", "下单未付"],
+  ];
+  document.getElementById("payKpis").innerHTML = items.map(([v, name, sub]) =>
+    `<div class="kpi"><b>${esc(v)}</b><span>${esc(name)}</span><span class="hint-go">${esc(sub)}</span></div>`
+  ).join("");
+  const skus = s.by_sku || [];
+  document.getElementById("payBySku").innerHTML = `<strong>按商品</strong>` + (skus.length
+    ? `<div class="table-scroll"><table><thead><tr><th>商品</th><th>单数</th><th>收入</th></tr></thead><tbody>${
+        skus.map(x => `<tr><td>${esc(x.title || x.sku)}</td><td>${esc(x.orders)}</td><td>${esc(yuan(x.fen))}</td></tr>`).join("")
+      }</tbody></table></div>`
+    : `<p class="hint" style="margin-top:8px">还没有到账订单。</p>`);
+  const days = s.by_day || [];
+  document.getElementById("payByDay").innerHTML = `<strong>近 30 天按日</strong>` + (days.length
+    ? `<div class="table-scroll"><table><thead><tr><th>日期</th><th>单数</th><th>收入</th></tr></thead><tbody>${
+        days.map(x => `<tr><td>${esc(x.day)}</td><td>${esc(x.orders)}</td><td>${esc(yuan(x.fen))}</td></tr>`).join("")
+      }</tbody></table></div>`
+    : `<p class="hint" style="margin-top:8px">近 30 天没有到账。</p>`);
+  const orders = data.orders || [];
+  document.getElementById("payRows").innerHTML = orders.map(o => `<tr>
+      <td>${shortTs(o.created_at)}</td>
+      <td>${o.user_login ? ("@" + esc(o.user_login)) : ("#" + esc(o.user_id))}${o.user_name ? ("<br><span class='hint'>" + esc(o.user_name) + "</span>") : ""}</td>
+      <td>${esc(o.sku_title || o.sku)}</td>
+      <td>${esc(yuan(o.amount_fen))}</td>
+      <td>${payStatusLabel(o)}</td>
+      <td>${shortTs(o.paid_at)}</td>
+      <td>${esc((o.plan_until || "").slice(0, 10) || "—")}</td>
+      <td>${esc(o.assign_pack || "—")}</td>
+      <td><code>${esc(o.out_trade_no)}</code></td>
+    </tr>`).join("") || "<tr><td colspan='9'>这个范围内没有订单。</td></tr>";
+  document.querySelectorAll("#payViews [data-pay-status]").forEach(b =>
+    b.classList.toggle("on", b.dataset.payStatus === payStatus));
+  document.getElementById("payDays").value = String(payDays);
+  document.getElementById("payCsv").href = "/api/op/orders.csv?" + qs;
+}
+
+document.querySelectorAll("#payViews [data-pay-status]").forEach(b => {
+  b.onclick = () => { payStatus = b.dataset.payStatus; loadOrders(); };
+});
+document.getElementById("payDays").onchange = e => {
+  payDays = Number(e.target.value) || 0;
+  loadOrders();
+};
 
 // —— 渠道配置 ——
 let chData = null;
@@ -1038,7 +1148,7 @@ document.getElementById("siteForm").addEventListener("submit", async e => {
 });
 
 const q = new URLSearchParams(location.search);
-if (["review", "path", "channels", "site"].includes(q.get("tab") || "")) location.hash = q.get("tab");
+if (["review", "path", "pay", "channels", "site"].includes(q.get("tab") || "")) location.hash = q.get("tab");
 window.addEventListener("hashchange", () => showTab(tabFromHash()));
 document.getElementById("kpiDetail").addEventListener("click", e => {
   const a = e.target.closest('a[href^="#"]');

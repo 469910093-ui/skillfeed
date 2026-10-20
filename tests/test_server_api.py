@@ -12,6 +12,7 @@ import re
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -1502,11 +1503,58 @@ class TestAdminSite(unittest.TestCase):
         all_posts = self.client.get("/api/op/queue?status=all")
         self.assertEqual(all_posts.status_code, 200)
 
+    def test_operator_orders_and_revenue(self):
+        self.client.get("/auth/dev-login")
+        now = datetime.now(timezone.utc).isoformat()
+        with db.db_session(self.settings.db_path) as conn:
+            uid = conn.execute("SELECT id FROM users WHERE login='dev-user'").fetchone()["id"]
+            base = {"user_id": uid, "created_at": now, "updated_at": now}
+            db.insert_order(conn, {
+                **base, "out_trade_no": "SFPAID1", "sku": "subscriber_month_cont",
+                "amount_fen": 2900, "status": "paid", "provider_txn_id": "4200001",
+                "paid_at": now, "assign_pack": "weekly-report",
+            })
+            db.insert_order(conn, {
+                **base, "out_trade_no": "SFPEND1", "sku": "subscriber_year_cont",
+                "amount_fen": 22800, "status": "pending",
+            })
+            db.insert_order(conn, {
+                **base, "out_trade_no": "SFTEST1", "sku": "subscriber_month_cont",
+                "amount_fen": 2900, "status": "paid", "provider_txn_id": "dev-SFTEST1",
+                "paid_at": now,
+            })
+        r = self.client.get("/api/op/orders")
+        self.assertEqual(r.status_code, 200, r.text)
+        data = r.json()
+        self.assertEqual(data["count"], 3)
+        s = data["summary"]
+        self.assertEqual(s["total"], {"orders": 1, "fen": 2900})
+        self.assertEqual(s["today"]["fen"], 2900)
+        self.assertEqual(s["payers"], 1)
+        self.assertEqual(s["pending"], 1)
+        self.assertEqual(s["test_paid"], 1)
+        self.assertEqual(s["by_sku"][0]["title"], "连续包月")
+        by_no = {o["out_trade_no"]: o for o in data["orders"]}
+        self.assertTrue(by_no["SFTEST1"]["test"])
+        self.assertEqual(by_no["SFPAID1"]["user_login"], "dev-user")
+        self.assertEqual(by_no["SFPEND1"]["sku_title"], "连续包年")
+        self.assertNotIn("provider_txn_id", by_no["SFPAID1"])
+
+        paid = self.client.get("/api/op/orders?status=pending").json()
+        self.assertEqual([o["out_trade_no"] for o in paid["orders"]], ["SFPEND1"])
+
+        csv = self.client.get("/api/op/orders.csv?status=paid")
+        self.assertEqual(csv.status_code, 200)
+        self.assertIn("SFPAID1", csv.text)
+        self.assertIn("29.00", csv.text)
+        self.assertNotIn("SFPEND1", csv.text)
+
     def test_stranger_cannot_read_kpi_details(self):
         self.client.get("/auth/dev-login?login=other-user")
         for path in (
             "/api/op/users", "/api/op/backups",
             "/api/op/events/today", "/api/op/devices",
+            "/api/op/orders", "/api/op/orders.csv",
         ):
             self.assertEqual(self.client.get(path).status_code, 403, path)
 
