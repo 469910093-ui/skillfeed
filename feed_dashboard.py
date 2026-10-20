@@ -920,6 +920,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .media {{
     position: relative;
     width: 100%;
+    --cover-ratio: 16 / 7;
     aspect-ratio: 16 / 7;
     overflow: hidden;
     cursor: pointer;
@@ -962,6 +963,42 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
      用中性深色而不是绿色：它是一条装前提醒，不是「已装好」的成功态。 */
   .media .badge.local {{ background: rgba(17,17,17,.82); border-color: rgba(255,255,255,.3); cursor: help; }}
   .media .badge.local.drift {{ background: rgba(var(--like-rgb), .9); border-color: transparent; }}
+  /* mobile-badges-below-cover：手机封面是一条横幅，左上角标签会挡住社交图里的仓库名。
+     标签改排到图下方，封面比例不变。 */
+  @media (max-width: 719px) {{
+    .media {{
+      display: flex;
+      flex-direction: column;
+      aspect-ratio: auto;
+      height: auto;
+    }}
+    .media .cover {{
+      position: relative;
+      inset: auto;
+      order: 1;
+      width: 100%;
+      height: auto;
+      aspect-ratio: var(--cover-ratio);
+      flex: 0 0 auto;
+    }}
+    .media .cover-fallback {{
+      position: relative;
+      inset: auto;
+      order: 1;
+    }}
+    .media.no-cover.bare {{
+      min-height: 0;
+    }}
+    .media .badges {{
+      position: static;
+      order: 2;
+      left: auto;
+      top: auto;
+      padding: 8px 12px 6px;
+      max-width: 100%;
+      background: var(--card);
+    }}
+  }}
   .heart-burst {{
     position: absolute; left: 50%; top: 50%; width: 90px; height: 90px;
     margin: -45px 0 0 -45px; opacity: 0; pointer-events: none; z-index: 3;
