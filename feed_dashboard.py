@@ -976,9 +976,13 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
       position: relative;
       inset: auto;
       order: 1;
+      display: block;
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
       height: auto;
-      aspect-ratio: var(--cover-ratio);
+      aspect-ratio: 16 / 7;
+      object-fit: cover;
       flex: 0 0 auto;
     }}
     .media .cover-fallback {{

@@ -465,6 +465,7 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertIn("aspect-ratio: 16 / 7", html)
         self.assertIn("mobile-badges-below-cover", html)
         self.assertIn("position: static", html)
+        self.assertIn("min-width: 0", html)
         self.assertIn("nFollow === 0", html)
         self.assertIn("body.show-demo-tools .icon-btn", html)
         self.assertRegex(html, r"\.icon-btn \{[^}]*display: none;")
