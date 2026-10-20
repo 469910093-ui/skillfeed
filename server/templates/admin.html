@@ -298,6 +298,8 @@
         <input id="oa_name" name="oa_name" maxlength="32" placeholder="Skill Man">
         <label for="oa_qr_url">公众号二维码图片</label>
         <input id="oa_qr_url" name="oa_qr_url" maxlength="400" placeholder="/static/oa-skill-man.jpg 或 https://…">
+        <label for="oa_follow_url">公众号关注链接</label>
+        <input id="oa_follow_url" name="oa_follow_url" maxlength="400" placeholder="https://weixin.qq.com/r/mp/…">
         <p class="hint">游客刷到第 10 张卡（回访用户第 5 张）、第一次收藏时，会看到关注公众号的提示。两项都清空就不再提示关注。</p>
         <div class="actions">
           <button type="submit">保存配置</button>
@@ -1072,7 +1074,7 @@ async function loadSettings() {
   if (!r.ok) return;
   const data = await r.json();
   const cfg = data.config || {};
-  ["slogan", "search_placeholder", "logo_url", "review_webhook", "oa_name", "oa_qr_url"].forEach(k => {
+  ["slogan", "search_placeholder", "logo_url", "review_webhook", "oa_name", "oa_qr_url", "oa_follow_url"].forEach(k => {
     const el = document.getElementById(k);
     if (el) el.value = cfg[k] || "";
   });
@@ -1138,7 +1140,7 @@ document.getElementById("panel").addEventListener("click", async e => {
 document.getElementById("siteForm").addEventListener("submit", async e => {
   e.preventDefault();
   const body = {};
-  ["slogan", "search_placeholder", "logo_url", "review_webhook", "oa_name", "oa_qr_url"].forEach(k => {
+  ["slogan", "search_placeholder", "logo_url", "review_webhook", "oa_name", "oa_qr_url", "oa_follow_url"].forEach(k => {
     body[k] = document.getElementById(k).value.trim();
   });
   const r = await fetch("/api/op/settings", {
