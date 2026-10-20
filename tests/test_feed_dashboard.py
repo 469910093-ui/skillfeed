@@ -463,6 +463,8 @@ class TestFirstScreenChrome(unittest.TestCase):
     def test_template_hides_empty_rings_and_demo_chrome(self):
         html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
         self.assertIn("aspect-ratio: 16 / 7", html)
+        self.assertIn("mobile-badges-below-cover", html)
+        self.assertIn("position: static", html)
         self.assertIn("nFollow === 0", html)
         self.assertIn("body.show-demo-tools .icon-btn", html)
         self.assertRegex(html, r"\.icon-btn \{[^}]*display: none;")
