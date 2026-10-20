@@ -1653,6 +1653,19 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .recall-bar-actions a.primary, .recall-bar-actions button.primary {{
     border-color: var(--ink); background: var(--ink); color: #fff;
   }}
+  .guest-card {{ margin: 0 0 14px; }}
+  .gn-snack {{
+    position: fixed; left: 50%; transform: translateX(-50%); z-index: 70;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    width: min(420px, calc(100% - 24px));
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .14);
+    padding: 10px 12px; display: flex; gap: 10px; align-items: center;
+  }}
+  .gn-snack p {{ margin: 0; flex: 1; font-size: .78rem; color: var(--ink); line-height: 1.4; }}
+  .gn-snack .recall-bar-actions {{ flex: 0 0 auto; flex-wrap: nowrap; }}
+  .oa-qr {{ display: flex; justify-content: center; margin-top: 12px; }}
+  .oa-qr img {{ width: 220px; height: 220px; object-fit: contain; }}
   .email-opt label.check {{
     display: flex; gap: 8px; align-items: flex-start;
     font-size: .78rem; color: var(--ink); font-weight: 600; margin: 8px 0;
@@ -2436,6 +2449,18 @@ const I18N = {{
     bindNudgeEmailBody: '换设备也能找到你，有重要更新时通知你。',
     bindNudgeEmailCta: '去填写',
     bindNudgeLater: '以后再说',
+    guestOaTitle: '关注公众号 {{name}}',
+    guestOaBody: '在微信里随时回来，看新上的 Skill。',
+    guestBackTitle: '欢迎回来',
+    guestBackBody: '关注公众号 {{name}}，下次在微信里直接打开。',
+    guestOaCta: '关注公众号',
+    guestLoginCta: '登录',
+    guestWechatLoginCta: '微信登录',
+    guestSavedLogin: '已收藏在这台设备。登录后换手机也在。',
+    guestSavedOa: '已收藏。关注公众号，下次在微信里直接回来。',
+    guestOaSheetWx: '长按二维码，识别后关注',
+    guestOaSheetScan: '用微信扫一扫，关注后随时回来',
+    guestOaDone: '好了',
     recallSavedTitle: '你收藏了 {{n}} 条',
     recallSavedCta: '查看收藏',
     emailOptTitle: '邮件提醒',
@@ -2754,6 +2779,18 @@ const I18N = {{
     bindNudgeEmailBody: 'So we can reach you across devices with important updates.',
     bindNudgeEmailCta: 'Add email',
     bindNudgeLater: 'Not now',
+    guestOaTitle: 'Follow {{name}} on WeChat',
+    guestOaBody: 'Come back from WeChat any time for new skills.',
+    guestBackTitle: 'Welcome back',
+    guestBackBody: 'Follow {{name}} on WeChat to open this in one tap next time.',
+    guestOaCta: 'Follow on WeChat',
+    guestLoginCta: 'Log in',
+    guestWechatLoginCta: 'Log in with WeChat',
+    guestSavedLogin: 'Saved on this device. Log in to keep it on any phone.',
+    guestSavedOa: 'Saved. Follow us on WeChat to come back in one tap.',
+    guestOaSheetWx: 'Press and hold the QR code to follow',
+    guestOaSheetScan: 'Scan with WeChat to follow',
+    guestOaDone: 'Done',
     recallSavedTitle: 'You saved {{n}} items',
     recallSavedCta: 'View saves',
     emailOptTitle: 'Email updates',
@@ -5412,7 +5449,16 @@ async function bootGuestIdentity() {{
     const me = await acctFetch('/auth/me', {{ headers: {{ 'Accept': 'application/json' }} }});
     if (me && me.ok) {{
       const data = await me.json();
+      ACCT.wechat = !!(data && data.wechat);
+      ACCT.sms = !!(data && data.sms);
+      ACCT.oauth = !!(data && data.oauth);
+      GUEST.loggedIn = !!(data && data.user);
+      GUEST.checked = true;
       if (data && data.user) await claimGuestDevice();
+      else {{
+        gnCountVisit();
+        if (state.mode === 'all') render(false);
+      }}
     }}
   }} catch (e) {{}}
 }}
@@ -5752,6 +5798,167 @@ function recallSavedHtml() {{
   </div>`;
 }}
 
+/* ---------- 游客召回：不挡首屏、不弹窗 ----------
+   每次访问最多出一种提示；点「以后再说」7 天内不再出；点过关注 / 登录 30 天内不再出。
+   只在主站（API 同源）出现，Pages 镜像与 lite 不出。 */
+const GUEST = {{ checked: false, loggedIn: false, oaName: '', oaQr: '' }};
+const GN_KEY = 'sf_guest_nudge';
+const GN_FEED_AT = 10;
+const GN_BACK_AT = 5;
+
+function inWechat() {{
+  return /MicroMessenger/i.test(navigator.userAgent || '');
+}}
+function gnState() {{
+  try {{ return JSON.parse(localStorage.getItem(GN_KEY) || '{{}}') || {{}}; }} catch (e) {{ return {{}}; }}
+}}
+function gnSave(s) {{
+  try {{ localStorage.setItem(GN_KEY, JSON.stringify(s)); }} catch (e) {{}}
+}}
+function gnSnooze(days) {{
+  try {{ sessionStorage.setItem('sf_gn_kind', 'done'); }} catch (e) {{}}
+  const s = gnState();
+  s.until = Date.now() + days * 864e5;
+  gnSave(s);
+}}
+function gnCountVisit() {{
+  try {{
+    if (sessionStorage.getItem('sf_gn_visit')) return;
+    sessionStorage.setItem('sf_gn_visit', '1');
+  }} catch (e) {{ return; }}
+  const s = gnState();
+  s.visits = (Number(s.visits) || 0) + 1;
+  gnSave(s);
+}}
+function gnShownKind() {{
+  try {{ return sessionStorage.getItem('sf_gn_kind') || ''; }} catch (e) {{ return 'x'; }}
+}}
+function gnMarkShown(kind) {{
+  try {{ sessionStorage.setItem('sf_gn_kind', kind); }} catch (e) {{}}
+  track('guest_nudge', {{ item_key: kind + ':show' }});
+}}
+/** 游客能走的登录：微信里只有微信登录走得通，GitHub 授权在微信内置浏览器里会断。 */
+function gnLoginHref() {{
+  const next = encodeURIComponent(location.pathname + location.search);
+  if (ACCT.wechat) return {{ href: API_BASE + '/auth/wechat?next=' + next, label: tr('guestWechatLoginCta') }};
+  if (inWechat()) return null;
+  if (ACCT.sms || ACCT.oauth) return {{ href: API_BASE + '/login?next=' + next, label: tr('guestLoginCta') }};
+  return null;
+}}
+function gnAllowed(kind) {{
+  if (typeof IS_LITE !== 'undefined' && IS_LITE) return false;
+  if (accountMode() !== 'live' || !GUEST.checked || GUEST.loggedIn) return false;
+  if (!GUEST.oaQr && !gnLoginHref()) return false;
+  const shown = gnShownKind();
+  if (shown === 'done') return false;
+  if (shown) return shown === kind;
+  return Date.now() >= (Number(gnState().until) || 0);
+}}
+/** 信息流里插一张同款卡：回访用户第 5 张后，其余第 10 张后。 */
+function gnFeedSlot() {{
+  const back = (Number(gnState().visits) || 0) >= 2;
+  const kind = back ? 'back' : 'feed';
+  if (!gnAllowed(kind)) return null;
+  return {{ kind, at: back ? GN_BACK_AT : GN_FEED_AT }};
+}}
+function guestCardHtml(kind) {{
+  const name = GUEST.oaName || 'SkillFeeder';
+  const title = kind === 'back' ? tr('guestBackTitle') : trn('guestOaTitle', {{ name }});
+  const body = kind === 'back' ? trn('guestBackBody', {{ name }}) : tr('guestOaBody');
+  const login = gnLoginHref();
+  let actions = '';
+  if (GUEST.oaQr) actions += `<button type="button" class="primary js-gn-oa" data-kind="${{escapeHtml(kind)}}">${{escapeHtml(tr('guestOaCta'))}}</button>`;
+  if (login) actions += `<a class="${{GUEST.oaQr ? '' : 'primary'}} js-gn-login" data-kind="${{escapeHtml(kind)}}" href="${{escapeHtml(safeUrl(login.href))}}">${{escapeHtml(login.label)}}</a>`;
+  return `<div class="recall-bar guest-card" role="region" data-kind="${{escapeHtml(kind)}}">
+    <div><b>${{escapeHtml(title)}}</b><p>${{escapeHtml(body)}}</p></div>
+    <div class="recall-bar-actions">
+      ${{actions}}
+      <button type="button" class="js-gn-later" data-kind="${{escapeHtml(kind)}}">${{escapeHtml(tr('bindNudgeLater'))}}</button>
+    </div>
+  </div>`;
+}}
+/** 卡片进了屏幕才算出过：没刷到的卡不占这次访问的名额。 */
+function watchGuestCard() {{
+  const card = document.querySelector('#feed .guest-card');
+  if (!card || gnShownKind() === card.dataset.kind) return;
+  if (typeof IntersectionObserver === 'undefined') {{ gnMarkShown(card.dataset.kind); return; }}
+  const io = new IntersectionObserver((entries) => {{
+    if (!entries.some(e => e.isIntersecting)) return;
+    io.disconnect();
+    if (!gnShownKind()) gnMarkShown(card.dataset.kind);
+  }}, {{ threshold: 0.6 }});
+  io.observe(card);
+}}
+function closeGuestSnack() {{
+  const el = document.getElementById('gn-snack');
+  if (el) el.remove();
+}}
+/** 第一次赞 / 藏之后的轻提示：贴底、不遮内容、8 秒自己收起。 */
+function maybeGuestSnack() {{
+  if (!gnAllowed('save') || gnShownKind() === 'save') return;
+  const login = gnLoginHref();
+  if (!login && !GUEST.oaQr) return;
+  gnMarkShown('save');
+  closeGuestSnack();
+  const wrap = document.createElement('div');
+  wrap.id = 'gn-snack';
+  wrap.className = 'gn-snack';
+  wrap.setAttribute('role', 'status');
+  const text = login ? tr('guestSavedLogin') : tr('guestSavedOa');
+  const cta = login
+    ? `<a class="primary js-gn-login" data-kind="save" href="${{escapeHtml(safeUrl(login.href))}}">${{escapeHtml(login.label)}}</a>`
+    : `<button type="button" class="primary js-gn-oa" data-kind="save">${{escapeHtml(tr('guestOaCta'))}}</button>`;
+  wrap.innerHTML = `<p>${{escapeHtml(text)}}</p><div class="recall-bar-actions">${{cta}}</div>`;
+  document.body.appendChild(wrap);
+  setTimeout(closeGuestSnack, 8000);
+}}
+function closeOaSheet() {{
+  const el = document.getElementById('oa-sheet');
+  if (el) el.remove();
+}}
+function openOaSheet() {{
+  if (!GUEST.oaQr) return;
+  closeOaSheet();
+  const name = GUEST.oaName || 'SkillFeeder';
+  const wrap = document.createElement('div');
+  wrap.id = 'oa-sheet';
+  wrap.className = 'pay-sheet';
+  wrap.innerHTML = '<div class="pay-sheet-card" role="dialog" aria-modal="true">'
+    + '<p class="pay-sheet-title">' + escapeHtml(trn('guestOaTitle', {{ name }})) + '</p>'
+    + '<div class="oa-qr"><img alt="' + escapeHtml(name) + '" src="' + escapeHtml(safeUrl(GUEST.oaQr)) + '"></div>'
+    + '<p class="pay-sheet-sub">' + escapeHtml(tr(inWechat() ? 'guestOaSheetWx' : 'guestOaSheetScan')) + '</p>'
+    + '<button type="button" class="pay-sheet-close">' + escapeHtml(tr('guestOaDone')) + '</button>'
+    + '</div>';
+  document.body.appendChild(wrap);
+  wrap.querySelector('.pay-sheet-close').addEventListener('click', closeOaSheet);
+  wrap.addEventListener('click', (e) => {{ if (e.target === wrap) closeOaSheet(); }});
+}}
+function onGuestNudgeClick(t) {{
+  const oa = t.closest('.js-gn-oa');
+  if (oa) {{
+    track('guest_nudge', {{ item_key: (oa.dataset.kind || '') + ':oa' }});
+    gnSnooze(30);
+    closeGuestSnack();
+    openOaSheet();
+    return true;
+  }}
+  const login = t.closest('.js-gn-login');
+  if (login) {{
+    track('guest_nudge', {{ item_key: (login.dataset.kind || '') + ':login' }});
+    gnSnooze(30);
+    return true;
+  }}
+  const later = t.closest('.js-gn-later');
+  if (later) {{
+    track('guest_nudge', {{ item_key: (later.dataset.kind || '') + ':dismiss' }});
+    gnSnooze(7);
+    const card = later.closest('.guest-card');
+    if (card) card.remove();
+    return true;
+  }}
+  return false;
+}}
+
 function acctPacksHtml() {{
   if (accountMode() !== 'live' || !ACCT.user) return '';
   const ids = ACCT.packs || [];
@@ -6058,6 +6265,9 @@ async function hydrateSiteConfig() {{
     if (line && cfg.slogan) line.textContent = cfg.slogan;
     const intent = document.getElementById('intent');
     if (intent && cfg.search_placeholder) intent.placeholder = cfg.search_placeholder;
+    GUEST.oaName = String(cfg.oa_name || '').slice(0, 32);
+    GUEST.oaQr = String(cfg.oa_qr_url || '');
+    if (GUEST.oaQr && GUEST.checked && !GUEST.loggedIn && state.mode === 'all') render(false);
     if (cfg.logo_url) {{
       let img = document.getElementById('logoCustom');
       if (!img) {{
@@ -6235,12 +6445,15 @@ function render(reset) {{
   const chrome = (state.mode === 'all' || state.mode === 'saved')
     ? (bindNudgeHtml() + (state.mode === 'all' ? recallSavedHtml() : ''))
     : '';
-  feed.innerHTML = chrome + slice.map((it, idx) => cardHtml(it, idx)).join('') +
+  const gn = state.mode === 'all' ? gnFeedSlot() : null;
+  feed.innerHTML = chrome + slice.map((it, idx) =>
+    cardHtml(it, idx) + (gn && idx === gn.at - 1 ? guestCardHtml(gn.kind) : '')).join('') +
     `<div class="sentinel" id="sentinel">${{
       state.shown < items.length
         ? trn('moreShown', {{ n: state.shown.toLocaleString(), total: items.length.toLocaleString() }})
         : trn('allDone', {{ total: items.length.toLocaleString() }})
     }}</div>`;
+  if (gn) watchGuestCard();
 }}
 
 function maybeLoadMore() {{
@@ -6285,6 +6498,7 @@ function toggleLike(fn, idx, postEl, feedback) {{
   if (now) {{
     burstAt(idx);
     if (feedback !== false) sendFeedback('useful', itemPayload(postEl));
+    maybeGuestSnack();
   }}
 }}
 
@@ -6298,8 +6512,14 @@ function toggleSave(fn, postEl) {{
     btn.classList.toggle('saved', now);
     btn.innerHTML = bookmarkSvg(now);
   }}
+  if (now) {{
+    sendFeedback('useful', itemPayload(postEl));
+    if (gnAllowed('save') && gnShownKind() !== 'save') {{
+      maybeGuestSnack();
+      return;
+    }}
+  }}
   toast(now ? tr('savedToast') : tr('unsavedToast'));
-  if (now) sendFeedback('useful', itemPayload(postEl));
 }}
 
 function rotateSessionSeed() {{
@@ -6736,6 +6956,7 @@ document.getElementById('feed').addEventListener('click', (e) => {{
   const t = e.target;
   if (!(t instanceof Element)) return;
 
+  if (onGuestNudgeClick(t)) return;
   if (t.closest('.js-bind-nudge-later')) {{
     try {{ localStorage.setItem('sf_bind_nudge', '1'); }} catch (err) {{}}
     track('bind_nudge', {{ item_key: 'dismiss' }});

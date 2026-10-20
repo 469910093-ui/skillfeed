@@ -294,6 +294,11 @@
         <label for="review_webhook">审核通知 Webhook（飞书自定义机器人）</label>
         <input id="review_webhook" name="review_webhook" maxlength="500" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…">
         <p class="hint">群设置 → 自定义机器人 → 复制 webhook。不要发到聊天。配好后新投稿会推一条到群里。</p>
+        <label for="oa_name">公众号名称</label>
+        <input id="oa_name" name="oa_name" maxlength="32" placeholder="Skill Man">
+        <label for="oa_qr_url">公众号二维码图片</label>
+        <input id="oa_qr_url" name="oa_qr_url" maxlength="400" placeholder="/static/oa-skill-man.jpg 或 https://…">
+        <p class="hint">游客刷到第 10 张卡（回访用户第 5 张）、第一次收藏时，会看到关注公众号的提示。两项都清空就不再提示关注。</p>
         <div class="actions">
           <button type="submit">保存配置</button>
         </div>
@@ -572,6 +577,7 @@ function actionLabel(action) {
     bad: "不感兴趣", login_click: "去登录", publish_view: "看发布",
     publish_submit: "投稿", follow: "关注", unfollow: "取关", coach: "引导",
     expand_detail: "展开",
+    bind_nudge: "绑定提示", recall_strip: "收藏召回", guest_nudge: "游客召回",
   })[action] || action;
 }
 
@@ -1066,7 +1072,7 @@ async function loadSettings() {
   if (!r.ok) return;
   const data = await r.json();
   const cfg = data.config || {};
-  ["slogan", "search_placeholder", "logo_url", "review_webhook"].forEach(k => {
+  ["slogan", "search_placeholder", "logo_url", "review_webhook", "oa_name", "oa_qr_url"].forEach(k => {
     const el = document.getElementById(k);
     if (el) el.value = cfg[k] || "";
   });
@@ -1132,7 +1138,7 @@ document.getElementById("panel").addEventListener("click", async e => {
 document.getElementById("siteForm").addEventListener("submit", async e => {
   e.preventDefault();
   const body = {};
-  ["slogan", "search_placeholder", "logo_url", "review_webhook"].forEach(k => {
+  ["slogan", "search_placeholder", "logo_url", "review_webhook", "oa_name", "oa_qr_url"].forEach(k => {
     body[k] = document.getElementById(k).value.trim();
   });
   const r = await fetch("/api/op/settings", {
