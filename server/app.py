@@ -100,6 +100,8 @@ class SiteSettingsBody(BaseModel):
     search_placeholder: str = ""
     logo_url: str = ""
     review_webhook: str = ""
+    oa_name: Optional[str] = None
+    oa_qr_url: Optional[str] = None
 
 
 class ChannelRuleBody(BaseModel):
@@ -1877,6 +1879,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(400, "logo 只接受 https 或站内路径")
         if updates["review_webhook"] and not updates["review_webhook"].startswith("https://"):
             raise HTTPException(400, "webhook 必须是 https")
+        if body.oa_name is not None:
+            updates["oa_name"] = body.oa_name.strip()[:32]
+        if body.oa_qr_url is not None:
+            qr = body.oa_qr_url.strip()[:400]
+            if qr and (
+                not qr.startswith(("https://", "/"))
+                or qr.startswith("//")
+                or any(ch in qr for ch in " \t\r\n\"'<>")
+            ):
+                raise HTTPException(400, "公众号二维码只接受 https 或站内路径")
+            updates["oa_qr_url"] = qr
         with db.db_session(settings.db_path) as conn:
             for key, value in updates.items():
                 db.set_site_setting(conn, key, value)

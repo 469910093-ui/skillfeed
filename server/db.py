@@ -2015,8 +2015,12 @@ SITE_SETTING_DEFAULTS: dict[str, str] = {
     "search_placeholder": "短关键词更好，如：去AI味 / 剪视频",
     "logo_url": "",
     "review_webhook": "",
+    "oa_name": "Skill Man",
+    "oa_qr_url": "/static/oa-skill-man.jpg",
 }
-PUBLIC_SITE_KEYS: tuple[str, ...] = ("slogan", "search_placeholder", "logo_url")
+PUBLIC_SITE_KEYS: tuple[str, ...] = (
+    "slogan", "search_placeholder", "logo_url", "oa_name", "oa_qr_url",
+)
 
 
 def get_site_setting(conn: sqlite3.Connection, key: str) -> str:

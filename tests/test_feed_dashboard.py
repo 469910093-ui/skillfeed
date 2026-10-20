@@ -2845,6 +2845,72 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
             "(ACCT.user.email_opt_in = true, bindNudgeHtml())")
         self.assertEqual("", opted)
 
+    def _guest(self, ua="Mozilla/5.0", **acct):
+        js = _script_source(self.html)
+        flags = ", ".join(f"{k}: {json.dumps(v)}" for k, v in acct.items())
+        return self.harness(
+            api_base="https://skillfeeder.cn",
+            extra="\n".join([
+                _grab(js, r"^const GUEST = \{[^\n]*\};"),
+                _grab(js, r"^const GN_KEY = '[^']*';"),
+                _grab(js, r"^const GN_FEED_AT = \d+;"),
+                _grab(js, r"^const GN_BACK_AT = \d+;"),
+                "const location = { pathname: '/', search: '' };",
+                f"Object.defineProperty(globalThis, 'navigator', {{ value: {{ userAgent: {json.dumps(ua)} }} }});",
+                f"Object.assign(ACCT, {{ {flags} }});",
+                "Object.assign(GUEST, { checked: true, loggedIn: false,"
+                " oaName: 'Skill Man', oaQr: '/static/oa-skill-man.jpg' });",
+            ]),
+        )
+
+    def test_guest_card_waits_until_the_tenth_card(self):
+        js = self._guest(oauth=True)
+        slot = js.eval("gnFeedSlot()")
+        self.assertEqual({"kind": "feed", "at": 10}, slot)
+        html = js.eval("guestCardHtml('feed')")
+        self.assertIn("关注公众号 Skill Man", html)
+        self.assertIn("js-gn-oa", html)
+        self.assertIn("/login?next=", html)
+        self.assertIn("js-gn-later", html)
+
+    def test_returning_guest_sees_welcome_back_earlier(self):
+        js = self._guest(oauth=True)
+        slot = js.eval(
+            "(localStorage.setItem(GN_KEY, JSON.stringify({ visits: 2 })), gnFeedSlot())")
+        self.assertEqual({"kind": "back", "at": 5}, slot)
+        self.assertIn("欢迎回来", js.eval("(localStorage.setItem(GN_KEY, '{\"visits\":2}'), guestCardHtml('back'))"))
+
+    def test_guest_nudge_respects_snooze_and_one_kind_per_visit(self):
+        js = self._guest(oauth=True)
+        got = js.eval(
+            "[gnAllowed('feed'),"
+            " (gnMarkShown('feed'), gnAllowed('save')),"
+            " gnAllowed('feed'),"
+            " (gnSnooze(7), gnAllowed('feed')),"
+            " (sessionStorage.removeItem('sf_gn_kind'), gnAllowed('feed'))]")
+        self.assertEqual([True, False, True, False, False], got)
+
+    def test_wechat_guest_gets_no_github_login(self):
+        """微信内置浏览器走不通 GitHub 授权：只给关注公众号。"""
+        js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True, wechat=False)
+        html = js.eval("guestCardHtml('feed')")
+        self.assertIn("js-gn-oa", html)
+        self.assertNotIn("js-gn-login", html)
+        wx = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True, wechat=True)
+        self.assertIn("/auth/wechat?next=", wx.eval("guestCardHtml('feed')"))
+
+    def test_logged_in_users_and_pages_mirror_get_no_guest_nudge(self):
+        js = self._guest(oauth=True)
+        self.assertFalse(js.eval("(GUEST.loggedIn = true, gnAllowed('feed'))"))
+        mirror = self._guest(oauth=True)
+        mirror.prelude = mirror.prelude.replace(
+            'const API_BASE = "https://skillfeeder.cn";', "const API_BASE = '';")
+        self.assertFalse(mirror.eval("gnAllowed('feed')"))
+
+    def test_guest_nudge_needs_a_way_back(self):
+        js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True)
+        self.assertFalse(js.eval("(GUEST.oaQr = '', gnAllowed('feed'))"))
+
     def test_recall_saved_strip_points_at_bookmarks(self):
         js = self.harness(
             extra=(

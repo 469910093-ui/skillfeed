@@ -1413,6 +1413,26 @@ class TestAdminSite(unittest.TestCase):
         self.assertEqual(public["slogan"], "测一口号")
         self.assertNotIn("review_webhook", public)
 
+    def test_official_account_is_public_and_validated(self):
+        cfg = self.client.get("/api/site-config").json()["config"]
+        self.assertEqual(cfg["oa_name"], "Skill Man")
+        self.assertEqual(cfg["oa_qr_url"], "/static/oa-skill-man.jpg")
+        self.client.get("/auth/dev-login")
+        for bad in ("javascript:alert(1)", "//evil.example/qr.png", "/x\" onerror=\"y"):
+            r = self.client.post("/api/op/settings", json={"oa_qr_url": bad})
+            self.assertEqual(r.status_code, 400, bad)
+        ok = self.client.post("/api/op/settings", json={
+            "slogan": "s", "oa_name": "新号", "oa_qr_url": "https://cdn.example.com/qr.png",
+        })
+        self.assertEqual(ok.status_code, 200, ok.text)
+        cfg = self.client.get("/api/site-config").json()["config"]
+        self.assertEqual(cfg["oa_name"], "新号")
+        self.assertEqual(cfg["oa_qr_url"], "https://cdn.example.com/qr.png")
+        # 旧表单不带这两项时不清空
+        self.client.post("/api/op/settings", json={"slogan": "s2"})
+        self.assertEqual(
+            self.client.get("/api/site-config").json()["config"]["oa_name"], "新号")
+
     def test_anonymous_cannot_write_settings(self):
         r = self.client.post("/api/op/settings", json={"slogan": "x"})
         self.assertEqual(r.status_code, 302)
@@ -1502,6 +1522,26 @@ class TestAdminSite(unittest.TestCase):
 
         all_posts = self.client.get("/api/op/queue?status=all")
         self.assertEqual(all_posts.status_code, 200)
+
+    def test_recall_prompt_clicks_are_kept(self):
+        r = self.client.post("/api/events", json={
+            "device_id": "web-gn", "session_id": "s-gn", "events": [
+                {"action": "guest_nudge", "item_key": "feed:show", "client_ts": "g1"},
+                {"action": "guest_nudge", "item_key": "feed:oa", "client_ts": "g2"},
+                {"action": "bind_nudge", "item_key": "show", "client_ts": "g3"},
+                {"action": "recall_strip", "item_key": "saved", "client_ts": "g4"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        with db.db_session(self.settings.db_path) as conn:
+            rows = conn.execute(
+                "SELECT action, item_key FROM events WHERE device_id='web-gn' ORDER BY id"
+            ).fetchall()
+        self.assertEqual(
+            [(x["action"], x["item_key"]) for x in rows],
+            [("guest_nudge", "feed:show"), ("guest_nudge", "feed:oa"),
+             ("bind_nudge", "show"), ("recall_strip", "saved")],
+        )
 
     def test_operator_orders_and_revenue(self):
         self.client.get("/auth/dev-login")

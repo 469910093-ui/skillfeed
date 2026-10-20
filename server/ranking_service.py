@@ -26,12 +26,14 @@ ALLOWED_ACTIONS = frozenset({
     "view_tab", "search", "open_card", "close_card",
     "login_click", "publish_view", "publish_submit",
     "follow", "unfollow", "coach",
+    "bind_nudge", "recall_strip", "guest_nudge",
 })
 
 JOURNEY_ACTIONS = frozenset({
     "view_tab", "search", "open_card", "close_card",
     "login_click", "publish_view", "publish_submit",
     "follow", "unfollow", "coach",
+    "bind_nudge", "recall_strip", "guest_nudge",
 })
 
 # 必须带 item_key 才有意义的动作。session_start / focus_set 是会话级和设备级的，
