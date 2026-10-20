@@ -1433,6 +1433,25 @@ class TestAdminSite(unittest.TestCase):
         self.assertEqual(
             self.client.get("/api/site-config").json()["config"]["oa_name"], "新号")
 
+    def test_follow_redirect_only_goes_to_wechat(self):
+        r = self.client.get("/auth/follow", follow_redirects=False)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(
+            r.headers["location"], "https://weixin.qq.com/r/mp/_SdYQLjEZ_UYrfwj93Lr")
+        self.client.get("/auth/dev-login")
+        for bad in ("https://evil.example/x", "//weixin.qq.com/r/x",
+                    "https://weixin.qq.com.evil.example/x", "https://weixin.qq.com/a\r\nb"):
+            r = self.client.post("/api/op/settings", json={"oa_follow_url": bad})
+            self.assertEqual(r.status_code, 400, bad)
+        ok = self.client.post("/api/op/settings", json={
+            "slogan": "s", "oa_follow_url": "https://mp.weixin.qq.com/mp/profile_ext?x=1"})
+        self.assertEqual(ok.status_code, 200, ok.text)
+        r = self.client.get("/auth/follow", follow_redirects=False)
+        self.assertEqual(r.headers["location"], "https://mp.weixin.qq.com/mp/profile_ext?x=1")
+        self.client.post("/api/op/settings", json={"slogan": "s", "oa_follow_url": ""})
+        r = self.client.get("/auth/follow", follow_redirects=False)
+        self.assertEqual(r.headers["location"], "/")
+
     def test_anonymous_cannot_write_settings(self):
         r = self.client.post("/api/op/settings", json={"slogan": "x"})
         self.assertEqual(r.status_code, 302)

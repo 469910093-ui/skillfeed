@@ -448,7 +448,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 游客身份 | 本机 `sf_device_id` + 服务端 `device_token`；进站 `session_start` 写首触渠道到 `devices`；登录后 `POST /api/profile/claim` 并档 | 游客可召回的抓手是 device；登录后画像/赞藏/渠道挂到 `users.id`。不记 IP / UA |
 | 第二钥匙 | 已登录再走 `/auth/wechat` `/auth/sms/verify` `/auth/github` | 绑到同一个 `users.id`；钥匙已被别人占用则 409 / `bind=taken`。不自建密码 |
 | 召回抓手 | 发现流/「我的」绑定条；收藏召回条；`POST /api/me/email` | **只登 GitHub 不能外发消息**。主路径：引导绑微信/手机。**微信·短信未开时**：绑定条改引导「留下邮箱」→「我的」同意入库。站内：有收藏时提示「查看收藏」。补充：用户主动填邮箱并勾选同意后入库（掩码对外，暂不发信） |
-| 游客召回 | 发现流同款卡、首次赞/藏贴底提示、二维码弹层；`/api/site-config` 公开 `oa_name` `oa_qr_url`（`/op`「页面配置」可改，默认 Skill Man + `/static/oa-skill-man.jpg`）；事件 `guest_nudge` | **不挡首屏、不弹窗**，只对主站（API 同源）未登录访客出。三个位置：① 信息流第 10 张卡后插一张同款卡（回访用户第 5 张后，文案「欢迎回来」）；② 第一次点赞或收藏时贴底提示，8 秒自收；③ 点「关注公众号」开二维码弹层，微信里写「长按识别」，其他浏览器写「微信扫一扫」。登录入口按环境给：开了微信登录给「微信登录」；在微信内置浏览器且只有 GitHub 时不给登录（走不通），只给关注公众号；其他浏览器给「登录」。频控：每次访问最多一种；信息流卡进屏幕 60% 才算出过；点「以后再说」7 天内不出，点过关注或登录 30 天内不出（`localStorage.sf_guest_nudge`，本次访问 `sessionStorage.sf_gn_kind`）。既没二维码也没可用登录时不出。埋点 `item_key` = 位置:动作（位置 feed / back / save，动作 show / oa / login / dismiss），`bind_nudge` / `recall_strip` 一并补进事件白名单，此前被服务端丢弃 |
+| 游客召回 | 发现流同款卡、首次赞/藏贴底提示、二维码弹层；`/api/site-config` 公开 `oa_name` `oa_qr_url` `oa_follow_url`（`/op`「页面配置」可改，默认 Skill Man + `/static/oa-skill-man.jpg` + 服务号二维码解出的关注链接）；`GET /auth/follow` 302 到关注链接（只放行 `https://weixin.qq.com/`、`https://mp.weixin.qq.com/`，空则回首页）；事件 `guest_nudge` | **不挡首屏、不弹窗**，只对主站（API 同源）未登录访客出。三个位置：① 信息流第 10 张卡后插一张同款卡（回访用户第 5 张后，文案「欢迎回来」）；② 第一次点赞或收藏时贴底提示，8 秒自收；③ **微信内置浏览器里一键直达**：开了微信登录时按钮是「一键登录并关注」，链到 `/auth/wechat?next=/auth/follow`，授权完建号、写登录态，直接落到 Skill Man 关注页（网页不能代关注，用户在关注页点一下）；游客设备画像在下次进站时由 `/api/profile/claim` 并档；没开微信登录时按钮直接链 `/auth/follow`。④ 微信外点「关注公众号」开二维码弹层，写「微信扫一扫」。登录入口按环境给：开了微信登录给「微信登录」；在微信内置浏览器且只有 GitHub 时不给登录（走不通），只给关注公众号；其他浏览器给「登录」。频控：每次访问最多一种；信息流卡进屏幕 60% 才算出过；点「以后再说」7 天内不出，点过关注或登录 30 天内不出（`localStorage.sf_guest_nudge`，本次访问 `sessionStorage.sf_gn_kind`）。既没二维码也没可用登录时不出。埋点 `item_key` = 位置:动作（位置 feed / back / save，动作 show / oa / follow / login / dismiss），`bind_nudge` / `recall_strip` 一并补进事件白名单，此前被服务端丢弃 |
 | 账本导出 | `GET /api/me/export` | 登录用户下载自己的帖/反应/绑定状态（手机号/邮箱掩码）；仓仍在 GitHub |
 | 库备份 | `python skillfeed.py backup-db`、`POST /api/op/backup`、每日 timer | SQLite 一致副本轮转到 `SKILLFEED_BACKUP_DIR`（默认库旁 `backups/`） |
 | 卡片短链 | `/p/{仓库名}` | 免登录 302 到 `/?card=` 编码后的 public_id；聊天里不要贴带 `::` 的长链 |
@@ -683,6 +683,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-10-20 | 关注公众号改成一键直达：微信里点一下＝微信授权认人 + 跳 Skill Man 关注页（`/auth/wechat?next=/auth/follow`）；未开微信登录时直接跳关注页；关注链接进 `/op` 页面配置（`oa_follow_url`，仅微信域名）；修贴底提示按钮点击无响应 | §6.2、`feed_dashboard.py`、`server/app.py`、`server/db.py`、`templates/admin.html` |
 | 2026-10-20 | 游客召回：信息流第 10 张卡后（回访第 5 张）插关注公众号卡，首次赞/藏贴底提示，二维码弹层；微信内置浏览器不给 GitHub 登录；每次访问一种、7/30 天冷却；公众号名与二维码进 `/op` 页面配置；`guest_nudge` `bind_nudge` `recall_strip` 进事件白名单 | §6.2、`feed_dashboard.py`、`server/db.py`、`server/app.py`、`server/ranking_service.py`、`templates/admin.html` |
 | 2026-10-20 | 运营后台新增「付费」tab：收入 KPI（累计 / 今日 / 7 天 / 30 天）、付费用户、有效会员、待支付；按商品与按日汇总；订单流水可筛选、导出 CSV；测试单单列不计收入 | §6.2、`server/db.py`、`server/app.py`、`templates/admin.html` |
 | 2026-10-15 | 引用文案改为可摘走的事实：主站 llms/about/faq 开头写日期、条数和场景数；周报 / 纪要 / PPT / 去 AI 味列出目录里真实条目并链到 `/s/`；`llms-full.txt` 的链接改到本站详情，GitHub 只作安装地址；列表和详情的星标标明是所在仓库的 | §6.3、`geo.py` |

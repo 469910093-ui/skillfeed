@@ -2017,9 +2017,10 @@ SITE_SETTING_DEFAULTS: dict[str, str] = {
     "review_webhook": "",
     "oa_name": "Skill Man",
     "oa_qr_url": "/static/oa-skill-man.jpg",
+    "oa_follow_url": "https://weixin.qq.com/r/mp/_SdYQLjEZ_UYrfwj93Lr",
 }
 PUBLIC_SITE_KEYS: tuple[str, ...] = (
-    "slogan", "search_placeholder", "logo_url", "oa_name", "oa_qr_url",
+    "slogan", "search_placeholder", "logo_url", "oa_name", "oa_qr_url", "oa_follow_url",
 )
 
 

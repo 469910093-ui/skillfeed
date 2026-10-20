@@ -2859,9 +2859,32 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
                 f"Object.defineProperty(globalThis, 'navigator', {{ value: {{ userAgent: {json.dumps(ua)} }} }});",
                 f"Object.assign(ACCT, {{ {flags} }});",
                 "Object.assign(GUEST, { checked: true, loggedIn: false,"
-                " oaName: 'Skill Man', oaQr: '/static/oa-skill-man.jpg' });",
+                " oaName: 'Skill Man', oaQr: '/static/oa-skill-man.jpg',"
+                " oaFollow: 'https://weixin.qq.com/r/mp/x' });",
             ]),
         )
+
+    def test_one_tap_in_wechat_logs_in_then_opens_follow_page(self):
+        wx = "Mozilla/5.0 MicroMessenger/8.0"
+        html = self._guest(ua=wx, wechat=True).eval("guestCardHtml('feed')")
+        self.assertIn("js-gn-follow", html)
+        self.assertIn(
+            "https://skillfeeder.cn/auth/wechat?next=%2Fauth%2Ffollow", html)
+        self.assertIn("一键登录并关注", html)
+        self.assertNotIn("js-gn-oa", html)
+        self.assertNotIn("js-gn-login", html)
+
+    def test_wechat_without_login_still_jumps_to_follow_page(self):
+        js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0")
+        html = js.eval("guestCardHtml('feed')")
+        self.assertIn('href="https://skillfeeder.cn/auth/follow"', html)
+        self.assertTrue(js.eval("gnAllowed('feed')"))
+
+    def test_outside_wechat_keeps_qr_and_login(self):
+        html = self._guest(oauth=True).eval("guestCardHtml('feed')")
+        self.assertNotIn("js-gn-follow", html)
+        self.assertIn("js-gn-oa", html)
+        self.assertIn("js-gn-login", html)
 
     def test_guest_card_waits_until_the_tenth_card(self):
         js = self._guest(oauth=True)
@@ -2893,10 +2916,11 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
     def test_wechat_guest_gets_no_github_login(self):
         """微信内置浏览器走不通 GitHub 授权：只给关注公众号。"""
         js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True, wechat=False)
-        html = js.eval("guestCardHtml('feed')")
+        html = js.eval("(GUEST.oaFollow = '', guestCardHtml('feed'))")
         self.assertIn("js-gn-oa", html)
         self.assertNotIn("js-gn-login", html)
         wx = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True, wechat=True)
+        self.assertNotIn("/auth/github", wx.eval("guestCardHtml('feed')"))
         self.assertIn("/auth/wechat?next=", wx.eval("guestCardHtml('feed')"))
 
     def test_logged_in_users_and_pages_mirror_get_no_guest_nudge(self):
@@ -2909,7 +2933,7 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
 
     def test_guest_nudge_needs_a_way_back(self):
         js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True)
-        self.assertFalse(js.eval("(GUEST.oaQr = '', gnAllowed('feed'))"))
+        self.assertFalse(js.eval("(GUEST.oaQr = '', GUEST.oaFollow = '', gnAllowed('feed'))"))
 
     def test_recall_saved_strip_points_at_bookmarks(self):
         js = self.harness(

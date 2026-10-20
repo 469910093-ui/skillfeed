@@ -2454,6 +2454,7 @@ const I18N = {{
     guestBackTitle: '欢迎回来',
     guestBackBody: '关注公众号 {{name}}，下次在微信里直接打开。',
     guestOaCta: '关注公众号',
+    guestFollowLoginCta: '一键登录并关注',
     guestLoginCta: '登录',
     guestWechatLoginCta: '微信登录',
     guestSavedLogin: '已收藏在这台设备。登录后换手机也在。',
@@ -2784,6 +2785,7 @@ const I18N = {{
     guestBackTitle: 'Welcome back',
     guestBackBody: 'Follow {{name}} on WeChat to open this in one tap next time.',
     guestOaCta: 'Follow on WeChat',
+    guestFollowLoginCta: 'Log in & follow',
     guestLoginCta: 'Log in',
     guestWechatLoginCta: 'Log in with WeChat',
     guestSavedLogin: 'Saved on this device. Log in to keep it on any phone.',
@@ -5801,7 +5803,7 @@ function recallSavedHtml() {{
 /* ---------- 游客召回：不挡首屏、不弹窗 ----------
    每次访问最多出一种提示；点「以后再说」7 天内不再出；点过关注 / 登录 30 天内不再出。
    只在主站（API 同源）出现，Pages 镜像与 lite 不出。 */
-const GUEST = {{ checked: false, loggedIn: false, oaName: '', oaQr: '' }};
+const GUEST = {{ checked: false, loggedIn: false, oaName: '', oaQr: '', oaFollow: '' }};
 const GN_KEY = 'sf_guest_nudge';
 const GN_FEED_AT = 10;
 const GN_BACK_AT = 5;
@@ -5845,10 +5847,21 @@ function gnLoginHref() {{
   if (ACCT.sms || ACCT.oauth) return {{ href: API_BASE + '/login?next=' + next, label: tr('guestLoginCta') }};
   return null;
 }}
+/** 微信里点一下：开了微信登录就先认人再跳关注页，没开就直接跳关注页。 */
+function gnFollowLink() {{
+  if (!GUEST.oaFollow || !inWechat()) return null;
+  if (ACCT.wechat) {{
+    return {{
+      href: API_BASE + '/auth/wechat?next=' + encodeURIComponent('/auth/follow'),
+      label: tr('guestFollowLoginCta'),
+    }};
+  }}
+  return {{ href: API_BASE + '/auth/follow', label: tr('guestOaCta') }};
+}}
 function gnAllowed(kind) {{
   if (typeof IS_LITE !== 'undefined' && IS_LITE) return false;
   if (accountMode() !== 'live' || !GUEST.checked || GUEST.loggedIn) return false;
-  if (!GUEST.oaQr && !gnLoginHref()) return false;
+  if (!GUEST.oaQr && !gnLoginHref() && !gnFollowLink()) return false;
   const shown = gnShownKind();
   if (shown === 'done') return false;
   if (shown) return shown === kind;
@@ -5865,9 +5878,11 @@ function guestCardHtml(kind) {{
   const name = GUEST.oaName || 'SkillFeeder';
   const title = kind === 'back' ? tr('guestBackTitle') : trn('guestOaTitle', {{ name }});
   const body = kind === 'back' ? trn('guestBackBody', {{ name }}) : tr('guestOaBody');
-  const login = gnLoginHref();
+  const follow = gnFollowLink();
+  const login = follow ? null : gnLoginHref();
   let actions = '';
-  if (GUEST.oaQr) actions += `<button type="button" class="primary js-gn-oa" data-kind="${{escapeHtml(kind)}}">${{escapeHtml(tr('guestOaCta'))}}</button>`;
+  if (follow) actions += `<a class="primary js-gn-follow" data-kind="${{escapeHtml(kind)}}" href="${{escapeHtml(safeUrl(follow.href))}}">${{escapeHtml(follow.label)}}</a>`;
+  else if (GUEST.oaQr) actions += `<button type="button" class="primary js-gn-oa" data-kind="${{escapeHtml(kind)}}">${{escapeHtml(tr('guestOaCta'))}}</button>`;
   if (login) actions += `<a class="${{GUEST.oaQr ? '' : 'primary'}} js-gn-login" data-kind="${{escapeHtml(kind)}}" href="${{escapeHtml(safeUrl(login.href))}}">${{escapeHtml(login.label)}}</a>`;
   return `<div class="recall-bar guest-card" role="region" data-kind="${{escapeHtml(kind)}}">
     <div><b>${{escapeHtml(title)}}</b><p>${{escapeHtml(body)}}</p></div>
@@ -5896,16 +5911,19 @@ function closeGuestSnack() {{
 /** 第一次赞 / 藏之后的轻提示：贴底、不遮内容、8 秒自己收起。 */
 function maybeGuestSnack() {{
   if (!gnAllowed('save') || gnShownKind() === 'save') return;
-  const login = gnLoginHref();
-  if (!login && !GUEST.oaQr) return;
+  const follow = gnFollowLink();
+  const login = follow ? null : gnLoginHref();
+  if (!follow && !login && !GUEST.oaQr) return;
   gnMarkShown('save');
   closeGuestSnack();
   const wrap = document.createElement('div');
   wrap.id = 'gn-snack';
   wrap.className = 'gn-snack';
   wrap.setAttribute('role', 'status');
-  const text = login ? tr('guestSavedLogin') : tr('guestSavedOa');
-  const cta = login
+  const text = (login || (follow && ACCT.wechat)) ? tr('guestSavedLogin') : tr('guestSavedOa');
+  const cta = follow
+    ? `<a class="primary js-gn-follow" data-kind="save" href="${{escapeHtml(safeUrl(follow.href))}}">${{escapeHtml(follow.label)}}</a>`
+    : login
     ? `<a class="primary js-gn-login" data-kind="save" href="${{escapeHtml(safeUrl(login.href))}}">${{escapeHtml(login.label)}}</a>`
     : `<button type="button" class="primary js-gn-oa" data-kind="save">${{escapeHtml(tr('guestOaCta'))}}</button>`;
   wrap.innerHTML = `<p>${{escapeHtml(text)}}</p><div class="recall-bar-actions">${{cta}}</div>`;
@@ -5940,6 +5958,12 @@ function onGuestNudgeClick(t) {{
     gnSnooze(30);
     closeGuestSnack();
     openOaSheet();
+    return true;
+  }}
+  const follow = t.closest('.js-gn-follow');
+  if (follow) {{
+    track('guest_nudge', {{ item_key: (follow.dataset.kind || '') + ':follow' }});
+    gnSnooze(30);
     return true;
   }}
   const login = t.closest('.js-gn-login');
@@ -6267,7 +6291,8 @@ async function hydrateSiteConfig() {{
     if (intent && cfg.search_placeholder) intent.placeholder = cfg.search_placeholder;
     GUEST.oaName = String(cfg.oa_name || '').slice(0, 32);
     GUEST.oaQr = String(cfg.oa_qr_url || '');
-    if (GUEST.oaQr && GUEST.checked && !GUEST.loggedIn && state.mode === 'all') render(false);
+    GUEST.oaFollow = String(cfg.oa_follow_url || '');
+    if ((GUEST.oaQr || GUEST.oaFollow) && GUEST.checked && !GUEST.loggedIn && state.mode === 'all') render(false);
     if (cfg.logo_url) {{
       let img = document.getElementById('logoCustom');
       if (!img) {{
@@ -6950,6 +6975,11 @@ document.getElementById('feed').addEventListener('submit', (e) => {{
     e.preventDefault();
     saveEmailOpt(form);
   }}
+}});
+
+document.addEventListener('click', (e) => {{
+  const t = e.target;
+  if (t instanceof Element && t.closest('#gn-snack')) onGuestNudgeClick(t);
 }});
 
 document.getElementById('feed').addEventListener('click', (e) => {{

@@ -102,6 +102,7 @@ class SiteSettingsBody(BaseModel):
     review_webhook: str = ""
     oa_name: Optional[str] = None
     oa_qr_url: Optional[str] = None
+    oa_follow_url: Optional[str] = None
 
 
 class ChannelRuleBody(BaseModel):
@@ -202,6 +203,13 @@ GATE_PUBLIC_PREFIXES = (
 
 def _is_gate_public(path: str) -> bool:
     return path in GATE_PUBLIC_EXACT or path.startswith(GATE_PUBLIC_PREFIXES)
+
+
+def _is_wechat_follow_url(url: str) -> bool:
+    """`/auth/follow` 会把它写进 302 Location，只放行微信自家的关注页域名。"""
+    if any(ch in url for ch in " \t\r\n\"'<>\\"):
+        return False
+    return url.startswith(("https://weixin.qq.com/", "https://mp.weixin.qq.com/"))
 
 
 def _safe_next(raw: str) -> str:
@@ -880,6 +888,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         auth.set_session_cookie(resp, settings, int(user["id"]), user["login"])
         auth.clear_state_cookie(resp, "wechat")
         resp.delete_cookie(LOGIN_NEXT_COOKIE, path="/")
+        return resp
+
+    @app.get("/auth/follow")
+    def auth_follow() -> RedirectResponse:
+        """跳公众号关注页。微信登录的 next 指向这里，点一下就是登录 + 关注。"""
+        with db.db_session(settings.db_path) as conn:
+            url = db.get_site_setting(conn, "oa_follow_url").strip()
+        resp = RedirectResponse(url if _is_wechat_follow_url(url) else "/", status_code=302)
+        resp.headers["Cache-Control"] = "no-store"
         return resp
 
     # —— 手机号验证码兜底（小红书 / 抖音内置浏览器里微信授权走不通时用）——
@@ -1890,6 +1907,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             ):
                 raise HTTPException(400, "公众号二维码只接受 https 或站内路径")
             updates["oa_qr_url"] = qr
+        if body.oa_follow_url is not None:
+            follow = body.oa_follow_url.strip()[:400]
+            if follow and not _is_wechat_follow_url(follow):
+                raise HTTPException(400, "关注链接只接受 https://weixin.qq.com/ 或 https://mp.weixin.qq.com/")
+            updates["oa_follow_url"] = follow
         with db.db_session(settings.db_path) as conn:
             for key, value in updates.items():
                 db.set_site_setting(conn, key, value)
