@@ -5382,6 +5382,8 @@ function track(action, extra) {{
     utm_source: String(row.utm_source || '').slice(0, 80),
     utm_medium: String(row.utm_medium || '').slice(0, 40),
     utm_campaign: String(row.utm_campaign || '').slice(0, 80),
+    position: Number.isFinite(row.position) ? row.position : undefined,
+    dwell_ms: Number.isFinite(row.dwell_ms) ? row.dwell_ms : undefined,
     client_ts: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
   }});
   if (st.q.length >= 8) {{ flushJourney(); return; }}
@@ -6440,6 +6442,8 @@ function mePanelHtml() {{
 }}
 
 function render(reset) {{
+  // 渲染完再对一遍曝光：离开的卡结算，新卡开始观察（早退分支也要走到）
+  if (typeof queueMicrotask === 'function') queueMicrotask(watchSeen);
   // 当前模式若已无内容，回退到发现
   if (['skills', 'ai', 'oss'].includes(state.mode) && countMode(state.mode) === 0) {{
     state.mode = 'all';
@@ -6520,6 +6524,84 @@ function render(reset) {{
   if (gn) watchGuestCard();
 }}
 
+/* ---------- 曝光与停留 ----------
+   卡片露出 60% 起计时，离屏 / 切后台 / 重渲染时结算。每次访问每张卡只记一次曝光，
+   停留每段都记。按 data-id 计时，加载更多重建 DOM 时同一张卡不会被切成两段。 */
+function seenState() {{
+  const g = typeof globalThis !== 'undefined' ? globalThis : window;
+  if (!g.__sfSeen) g.__sfSeen = {{ shown: new Set(), since: new Map(), io: null }};
+  return g.__sfSeen;
+}}
+function seenMeta(card) {{
+  const m = /^post-(\\d+)$/.exec(card.id || '');
+  return {{
+    item_key: card.dataset.id || card.dataset.fn || '',
+    full_name: card.dataset.fn || '',
+    source: card.dataset.src || '',
+    scene: card.dataset.scene || '',
+    owner: card.dataset.owner || '',
+    position: m ? Number(m[1]) : undefined,
+  }};
+}}
+function settleSeen(key, now) {{
+  const st = seenState();
+  const run = st.since.get(key);
+  if (!run) return;
+  st.since.delete(key);
+  const ms = Math.min(Math.round(now - run.t0), 600000);
+  if (ms < 200) return;
+  const row = Object.assign({{}}, run.meta, {{ dwell_ms: ms }});
+  if (!st.shown.has(key)) {{
+    st.shown.add(key);
+    track('impression', row);
+  }}
+  track('dwell', row);
+}}
+function settleAllSeen() {{
+  const now = Date.now();
+  for (const key of [...seenState().since.keys()]) settleSeen(key, now);
+}}
+function watchSeen() {{
+  if (typeof IS_LITE !== 'undefined' && IS_LITE) return;
+  if (typeof IntersectionObserver === 'undefined' || typeof document === 'undefined') return;
+  const st = seenState();
+  const cards = [...document.querySelectorAll('#feed article.post')];
+  const live = new Set(cards.map(c => c.dataset.id || c.dataset.fn || ''));
+  const now = Date.now();
+  for (const key of [...st.since.keys()]) if (!live.has(key)) settleSeen(key, now);
+  if (!st.io) {{
+    st.io = new IntersectionObserver((entries) => {{
+      const t = Date.now();
+      for (const e of entries) {{
+        const meta = seenMeta(e.target);
+        if (!meta.item_key) continue;
+        if (e.isIntersecting && e.intersectionRatio >= 0.6) {{
+          if (document.visibilityState !== 'hidden' && !st.since.has(meta.item_key)) {{
+            st.since.set(meta.item_key, {{ t0: t, meta }});
+          }}
+        }} else {{
+          settleSeen(meta.item_key, t);
+        }}
+      }}
+    }}, {{ threshold: [0, 0.6] }});
+  }}
+  st.io.disconnect();
+  cards.forEach(c => st.io.observe(c));
+}}
+if (typeof document !== 'undefined' && document.addEventListener) {{
+  document.addEventListener('visibilitychange', () => {{
+    if (document.visibilityState === 'hidden') {{
+      settleAllSeen();
+      flushJourney();
+    }} else {{
+      watchSeen();
+    }}
+  }});
+}}
+if (typeof window !== 'undefined' && window.addEventListener) {{
+  window.addEventListener('pagehide', () => {{ settleAllSeen(); flushJourney(); }});
+}}
+
 function maybeLoadMore() {{
   const items = filtered();
   if (state.shown >= items.length) return;
@@ -6541,6 +6623,7 @@ function burstAt(idx) {{
 
 function itemPayload(card) {{
   return {{
+    id: card.dataset.id || '',
     full_name: card.dataset.fn || '',
     source: card.dataset.src || '',
     scene: card.dataset.scene || '',
@@ -6577,7 +6660,7 @@ function toggleSave(fn, postEl) {{
     btn.innerHTML = bookmarkSvg(now);
   }}
   if (now) {{
-    sendFeedback('useful', itemPayload(postEl));
+    sendFeedback('save', itemPayload(postEl), {{ silent: true }});
     if (gnAllowed('save') && gnShownKind() !== 'save') {{
       maybeGuestSnack();
       return;

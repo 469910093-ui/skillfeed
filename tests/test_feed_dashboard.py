@@ -2939,6 +2939,23 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
             'const API_BASE = "https://skillfeeder.cn";', "const API_BASE = '';")
         self.assertFalse(mirror.eval("gnAllowed('feed')"))
 
+    def test_card_on_screen_reports_one_impression_and_dwell(self):
+        js = self.harness(api_base="https://skillfeeder.cn")
+        got = js.eval(
+            "(() => {"
+            " const st = seenState();"
+            " const meta = { item_key: 'acme/x', full_name: 'acme/x', position: 4 };"
+            " st.since.set('acme/x', { t0: 1000, meta }); settleSeen('acme/x', 2500);"
+            " st.since.set('acme/x', { t0: 3000, meta }); settleSeen('acme/x', 4200);"
+            " st.since.set('acme/x', { t0: 5000, meta }); settleSeen('acme/x', 5100);"
+            " return journeyState().q.map(e => [e.action, e.item_key, e.position, e.dwell_ms]);"
+            "})()")
+        self.assertEqual(got, [
+            ["impression", "acme/x", 4, 1500],
+            ["dwell", "acme/x", 4, 1500],
+            ["dwell", "acme/x", 4, 1200],
+        ])
+
     def test_guest_nudge_needs_a_way_back(self):
         js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True)
         self.assertFalse(js.eval("(GUEST.oaQr = '', GUEST.oaFollow = '', gnAllowed('feed'))"))
