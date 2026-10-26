@@ -1562,6 +1562,50 @@ class TestAdminSite(unittest.TestCase):
              ("bind_nudge", "show"), ("recall_strip", "saved")],
         )
 
+    def test_every_frontend_event_is_whitelisted(self):
+        import re
+        from pathlib import Path
+
+        import feedback as feedback_mod
+        from server import ranking_service
+
+        src = (Path(__file__).resolve().parents[1] / "feed_dashboard.py").read_text(encoding="utf-8")
+        sent = set(re.findall(r"\btrack\('([a-z_]+)'", src))
+        sent |= set(re.findall(r"\bsendFeedback\('([a-z_]+)'", src))
+        sent |= set(re.findall(r"track\(now \? '([a-z_]+)' : '([a-z_]+)'", src)[0])
+        sent = {feedback_mod.ACTION_ALIASES.get(a, a) for a in sent}
+        self.assertIn("impression", sent)
+        self.assertIn("save", sent)
+        self.assertEqual(sent - ranking_service.ALLOWED_ACTIONS, set(),
+                         "前端在报、服务端会静默丢弃的事件")
+
+    def test_pack_and_view_events_are_stored(self):
+        r = self.client.post("/api/events", json={
+            "device_id": "web-pk", "session_id": "s-pk", "events": [
+                {"action": "packs_view", "source": "tab", "client_ts": "p1"},
+                {"action": "pack_open", "item_key": "cross-border", "client_ts": "p2"},
+                {"action": "pack_buy_click", "item_key": "cross-border", "client_ts": "p3"},
+                {"action": "impression", "item_key": "acme/x", "position": 3,
+                 "dwell_ms": 1800, "client_ts": "p4"},
+                {"action": "dwell", "item_key": "acme/x", "position": 3,
+                 "dwell_ms": 1800, "client_ts": "p5"},
+                {"action": "save", "item_key": "acme/x", "client_ts": "p6"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        with db.db_session(self.settings.db_path) as conn:
+            rows = conn.execute(
+                "SELECT action, item_key, position, dwell_ms FROM events"
+                " WHERE device_id='web-pk' ORDER BY id"
+            ).fetchall()
+            stats = conn.execute(
+                "SELECT SUM(impressions) AS n FROM item_stats WHERE item_key='acme/x'"
+            ).fetchone()
+        self.assertEqual([x["action"] for x in rows], [
+            "packs_view", "pack_open", "pack_buy_click", "impression", "dwell", "save"])
+        self.assertEqual((rows[3]["position"], rows[3]["dwell_ms"]), (3, 1800))
+        self.assertEqual(stats["n"], 1)
+
     def test_operator_orders_and_revenue(self):
         self.client.get("/auth/dev-login")
         now = datetime.now(timezone.utc).isoformat()

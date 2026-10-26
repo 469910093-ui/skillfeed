@@ -458,12 +458,14 @@ class TestCardDedupeJs(unittest.TestCase):
 
 
 class TestFirstScreenChrome(unittest.TestCase):
-    """七个角色对「门口是空壳」的共识：没关注就不放圆环，Demo/反馈默认藏。"""
+    """门口不放空壳：Demo/反馈默认藏；没关注时圆环只留两个引导环。"""
 
-    def test_template_hides_empty_rings_and_demo_chrome(self):
+    def test_template_hides_demo_chrome(self):
         html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
         self.assertIn("aspect-ratio: 16 / 7", html)
-        self.assertIn("nFollow === 0", html)
+        self.assertIn("mobile-badges-below-cover", html)
+        self.assertIn("position: static", html)
+        self.assertIn("min-width: 0", html)
         self.assertIn("body.show-demo-tools .icon-btn", html)
         self.assertRegex(html, r"\.icon-btn \{[^}]*display: none;")
         self.assertNotIn('id="genStatus"', html)
@@ -499,11 +501,17 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
-    def test_empty_follows_hide_story_rings(self):
+    def test_empty_follows_keep_guide_rings(self):
         html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
-        hidden = JsHarness(html).eval(
-            "(renderStories(), document.getElementById('storiesWrap').classList.contains('hidden'))")
-        self.assertTrue(hidden)
+        got = JsHarness(html).eval(
+            "(renderStories(), {"
+            "hidden: document.getElementById('storiesWrap').classList.contains('hidden'),"
+            "html: document.getElementById('stories').innerHTML"
+            "})")
+        self.assertFalse(got["hidden"])
+        self.assertIn('data-value="builder"', got["html"])
+        self.assertIn('data-value="industry"', got["html"])
+        self.assertNotIn('data-kind="following"', got["html"])
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
     def test_followed_builder_shows_story_rings(self):
@@ -2948,6 +2956,23 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
         mirror.prelude = mirror.prelude.replace(
             'const API_BASE = "https://skillfeeder.cn";', "const API_BASE = '';")
         self.assertFalse(mirror.eval("gnAllowed('feed')"))
+
+    def test_card_on_screen_reports_one_impression_and_dwell(self):
+        js = self.harness(api_base="https://skillfeeder.cn")
+        got = js.eval(
+            "(() => {"
+            " const st = seenState();"
+            " const meta = { item_key: 'acme/x', full_name: 'acme/x', position: 4 };"
+            " st.since.set('acme/x', { t0: 1000, meta }); settleSeen('acme/x', 2500);"
+            " st.since.set('acme/x', { t0: 3000, meta }); settleSeen('acme/x', 4200);"
+            " st.since.set('acme/x', { t0: 5000, meta }); settleSeen('acme/x', 5100);"
+            " return journeyState().q.map(e => [e.action, e.item_key, e.position, e.dwell_ms]);"
+            "})()")
+        self.assertEqual(got, [
+            ["impression", "acme/x", 4, 1500],
+            ["dwell", "acme/x", 4, 1500],
+            ["dwell", "acme/x", 4, 1200],
+        ])
 
     def test_guest_nudge_needs_a_way_back(self):
         js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True)
