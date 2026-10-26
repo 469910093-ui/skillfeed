@@ -670,11 +670,19 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     border-bottom: 1px solid var(--line);
   }}
   .top-row {{
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
   }}
   .top-left {{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }}
+  .top-pitch {{
+    margin: 6px 0 0;
+    font-size: .78rem;
+    font-weight: 650;
+    line-height: 1.35;
+    letter-spacing: .01em;
+    color: var(--ink);
+  }}
   .value-line {{
-    margin: 3px 0 0;
+    margin: 2px 0 0;
     font-family: var(--logo);
     font-size: .8rem;
     font-weight: 650;
@@ -711,7 +719,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     background-clip: text;
     -webkit-text-fill-color: transparent;
   }}
-  .top-actions {{ display: flex; gap: 14px; align-items: center; flex-shrink: 0; }}
+  .top-actions {{ display: flex; gap: 14px; align-items: center; flex-shrink: 0; padding-top: 6px; }}
   .icon-btn {{
     appearance: none; border: 0; background: transparent; padding: 0;
     cursor: pointer; color: var(--ink); display: none;
@@ -1899,7 +1907,18 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .coach-card h3 {{ margin: 0 0 6px; font-size: 1.02rem; color: var(--ink); }}
   .coach-card p {{ margin: 0 0 12px; font-size: .82rem; line-height: 1.45; color: var(--muted); }}
-  .coach-actions {{ display: flex; justify-content: space-between; gap: 8px; }}
+  .coach-progress {{
+    height: 3px; border-radius: 99px; background: #e6ebf5;
+    overflow: hidden; margin: 0 0 10px;
+  }}
+  .coach-progress > span {{
+    display: block; height: 100%; width: 0; background: var(--ink);
+  }}
+  @keyframes coachTick {{ to {{ width: 100%; }} }}
+  @media (prefers-reduced-motion: reduce) {{
+    .coach-spot {{ transition: none; }}
+  }}
+  .coach-actions {{ display: flex; justify-content: flex-start; gap: 8px; }}
   .coach-actions button {{
     appearance: none; border: 1px solid var(--line); background: #fff;
     border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 700;
@@ -1929,6 +1948,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   /* 手机：铺满 + 安全区。平板：居中加宽单列。电脑：左侧导航 + 更宽阅读栏。 */
   @media (max-width: 380px) {{
     .logo {{ font-size: 1.22rem; }}
+    .top-pitch {{ font-size: .72rem; }}
     .value-line {{ font-size: .72rem; letter-spacing: .04em; }}
     .site-foot {{ display: none; }}
   }}
@@ -2074,6 +2094,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
           </button>
         </div>
       </div>
+      <p class="top-pitch" id="productPitch" data-i18n="topPitch">把GitHub做成好刷的社交媒体，搜索信息更简单！</p>
       <div class="search-wrap" id="searchWrap">
         <input class="search" id="intent" type="search" placeholder="短关键词更好，如：去AI味 / 剪视频" maxlength="40" />
         <div class="intent-keys" id="intentKeys" hidden></div>
@@ -2155,9 +2176,9 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
       <p class="step" id="coachStep"></p>
       <h3 id="coachTitle"></h3>
       <p id="coachBody"></p>
+      <div class="coach-progress" aria-hidden="true"><span id="coachBar"></span></div>
       <div class="coach-actions">
         <button type="button" id="coachSkip" data-i18n="coachSkip">Skip</button>
-        <button type="button" class="primary" id="coachNext" data-i18n="coachNext">下一步</button>
       </div>
     </div>
   </div>
@@ -2340,8 +2361,11 @@ const I18N = {{
     searchPlaceholder: '短关键词更好，如：去AI味 / 剪视频',
     navDiscover: '发现', navTopics: '主题分类', navPacks: '场景包', navPublish: '发布', navMe: '我的',
     valueLine: '每刷一下，就快人一步',
-    coachSkip: 'Skip', coachNext: '下一步', coachDone: '开始刷',
+    topPitch: '把GitHub做成好刷的社交媒体，搜索信息更简单！',
+    coachSkip: 'Skip',
     coachStepOf: '{{n}} / {{total}}',
+    coachReadTitle: '先看它解决什么',
+    coachReadBody: '最大的这句，就是这张卡能帮你办的事。',
     coach1Title: '关注之后去哪找',
     coach1Body: '点卡片上的作者或行业就能关注。关注过的最新动态会出现在顶部圆环，也可以到「我的」里管理。',
     coach2Title: '下滑继续刷',
@@ -2676,8 +2700,11 @@ const I18N = {{
     searchPlaceholder: 'Short keywords work best, e.g. de-slop / short video',
     navDiscover: 'Discover', navTopics: 'Topics', navPacks: 'Packs', navPublish: 'Post', navMe: 'Me',
     valueLine: 'Every swipe, one step ahead',
-    coachSkip: 'Skip', coachNext: 'Next', coachDone: 'Start',
+    topPitch: 'Turn GitHub into a feed you can swipe. Search gets simpler.',
+    coachSkip: 'Skip',
     coachStepOf: '{{n}} / {{total}}',
+    coachReadTitle: 'See what it solves',
+    coachReadBody: 'The big line is the job this card can do.',
     coach1Title: 'Where follows live',
     coach1Body: 'Follow an author or topic from a card. New posts show up in the top rings, and you can manage them under Me.',
     coach2Title: 'Swipe for more',
@@ -7465,16 +7492,21 @@ if (previewHost) previewHost.addEventListener('click', (e) => {{
   if (e.target === previewHost) closeCardPreview();
 }});
 
-/* ---------- 首访引导蒙版 ---------- */
+/* ---------- 首访引导蒙版 ----------
+   顺序跟新人要做的决定走：先看这张卡解决什么，再去 GitHub 看用法，
+   没对上再换下一张。关注和发布留到后面。每步自动跳，不用点「下一步」。 */
 const COACH_KEY = 'sf_onboard_v1';
+const COACH_MS = 2500;
 const COACH_STEPS = [
-  {{ id: 'follow', target: '#storiesWrap', title: 'coach1Title', body: 'coach1Body' }},
+  {{ id: 'read', target: '#feed .zone-read, #feed .post', title: 'coachReadTitle', body: 'coachReadBody' }},
+  {{ id: 'github', target: '#feed .coach-github', title: 'coach4Title', body: 'coach4Body' }},
   {{ id: 'swipe', target: '#feed .post, #feed', title: 'coach2Title', body: 'coach2Body' }},
   {{ id: 'react', target: '#feed .coach-react', title: 'coach3Title', body: 'coach3Body' }},
-  {{ id: 'github', target: '#feed .coach-github', title: 'coach4Title', body: 'coach4Body' }},
+  {{ id: 'follow', target: '#storiesWrap', title: 'coach1Title', body: 'coach1Body' }},
   {{ id: 'publish', target: '#tab-publish', title: 'coach5Title', body: 'coach5Body' }},
 ];
 let coachIndex = 0;
+let coachTimer = 0;
 
 function coachShouldStart() {{
   if (IS_LITE) return false;
@@ -7502,14 +7534,12 @@ function coachPlace() {{
   const host = document.getElementById('coach');
   const spot = document.getElementById('coachSpot');
   const card = document.getElementById('coachCard');
-  const next = document.getElementById('coachNext');
   if (!step || !host || !spot || !card) return;
   document.getElementById('coachStep').textContent = trn('coachStepOf', {{
     n: coachIndex + 1, total: COACH_STEPS.length,
   }});
   document.getElementById('coachTitle').textContent = tr(step.title);
   document.getElementById('coachBody').textContent = tr(step.body);
-  if (next) next.textContent = coachIndex === COACH_STEPS.length - 1 ? tr('coachDone') : tr('coachNext');
   const el = coachPick(step.target);
   const pad = 6;
   const shell = document.querySelector('.shell');
@@ -7562,6 +7592,29 @@ function coachPlace() {{
   card.style.top = cardTop + 'px';
 }}
 
+function coachClearTimer() {{
+  if (coachTimer) {{
+    clearTimeout(coachTimer);
+    coachTimer = 0;
+  }}
+}}
+
+function coachArm() {{
+  coachClearTimer();
+  const bar = document.getElementById('coachBar');
+  if (bar) {{
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    bar.style.animation = 'none';
+    void bar.offsetWidth;
+    if (reduce) bar.style.width = '0';
+    else {{
+      bar.style.width = '';
+      bar.style.animation = 'coachTick ' + (COACH_MS / 1000) + 's linear forwards';
+    }}
+  }}
+  coachTimer = setTimeout(coachNext, COACH_MS);
+}}
+
 function coachShow(i) {{
   coachIndex = i;
   const host = document.getElementById('coach');
@@ -7576,9 +7629,11 @@ function coachShow(i) {{
   }}
   coachPlace();
   requestAnimationFrame(coachPlace);
+  coachArm();
 }}
 
 function coachFinish() {{
+  coachClearTimer();
   const host = document.getElementById('coach');
   if (host) host.hidden = true;
   if (document.body && document.body.classList) document.body.classList.remove('coaching');
@@ -7596,9 +7651,7 @@ function bindCoach() {{
   const host = document.getElementById('coach');
   if (!host || IS_LITE) return;
   const skip = document.getElementById('coachSkip');
-  const next = document.getElementById('coachNext');
   if (skip) skip.addEventListener('click', coachFinish);
-  if (next) next.addEventListener('click', coachNext);
   window.addEventListener('resize', () => {{
     if (!host.hidden) coachPlace();
   }});

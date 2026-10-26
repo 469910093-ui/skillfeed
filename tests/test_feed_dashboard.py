@@ -476,12 +476,29 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertIn('id="productLine"', header)
         self.assertIn("每刷一下，就快人一步", header)
         self.assertIn('data-i18n="valueLine"', header)
+        self.assertIn("把GitHub做成好刷的社交媒体，搜索信息更简单！", header)
+        self.assertIn('data-i18n="topPitch"', header)
+        self.assertLess(
+            header.find('id="productLine"'),
+            header.find('id="productPitch"'),
+            "定位句在左上角顶栏里，紧挨在口号下面",
+        )
         self.assertIn('id="coach"', html)
         self.assertIn('id="coachSkip"', html)
-        self.assertIn("target: '#storiesWrap'", html)
-        self.assertIn("target: '#feed .coach-react'", html)
-        self.assertIn("target: '#feed .coach-github'", html)
-        self.assertIn("target: '#tab-publish'", html)
+        self.assertNotIn('id="coachNext"', html)
+        self.assertIn("setTimeout(coachNext, COACH_MS)", html)
+        self.assertIn("const COACH_MS = 2500", html)
+        order = [
+            "id: 'read'",
+            "id: 'github'",
+            "id: 'swipe'",
+            "id: 'react'",
+            "id: 'follow'",
+            "id: 'publish'",
+        ]
+        positions = [html.find(token) for token in order]
+        self.assertTrue(all(p >= 0 for p in positions), order)
+        self.assertEqual(positions, sorted(positions))
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
     def test_empty_follows_keep_guide_rings(self):
@@ -2478,7 +2495,8 @@ NEW_I18N_KEYS = (
     "previewClose", "acctPostPending", "acctPostLive",
     "cardPreviewPending", "cardPreviewRejected",
     "refreshAria", "refreshTitle", "reshuffleToast",
-    "valueLine", "coachSkip", "coachNext", "coachDone", "coachStepOf",
+    "valueLine", "topPitch", "coachSkip", "coachStepOf",
+    "coachReadTitle", "coachReadBody",
     "coach1Title", "coach1Body", "coach2Title", "coach2Body",
     "coach3Title", "coach3Body", "coach4Title", "coach4Body",
     "coach5Title", "coach5Body",
