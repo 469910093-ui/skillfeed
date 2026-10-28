@@ -4,10 +4,12 @@ from pathlib import Path
 from unittest import mock
 
 import feed_dashboard
+import corpus
 import github_search
 import i18n
 import rank
 import scene
+import skillfeed
 
 
 class TestSceneL2(unittest.TestCase):
@@ -525,6 +527,174 @@ class TestGitHubSearch(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["full_name"], "acme/agent-skills")
         self.assertEqual(meta["returned"], 1)
+
+    def test_recent_queries_use_twenty_star_floor(self):
+        qs = github_search.recent_repo_queries(days=180, min_stars=20)
+        self.assertTrue(qs)
+        self.assertTrue(all("stars:>=20" in q for q in qs))
+        self.assertTrue(all("created:>=" in q for q in qs))
+
+    def test_recent_lane_survives_cap(self):
+        popular = [{
+            "full_name": f"pop/repo{i}",
+            "url": f"https://github.com/pop/repo{i}",
+            "description": "old skill",
+            "language": "MD",
+            "stars": 5000 - i,
+            "stars_today": 0,
+            "source": "github-search",
+            "kind": "skill",
+            "search_score": 1,
+        } for i in range(30)]
+        recent = [{
+            "full_name": "new/fresh-skill",
+            "url": "https://github.com/new/fresh-skill",
+            "description": "new skill",
+            "language": "MD",
+            "stars": 20,
+            "stars_today": 0,
+            "source": "github-search",
+            "kind": "skill",
+            "search_score": 1,
+        }]
+
+        def fake_search(user_agent, token="", *, queries=None, per_page=20, sleep_s=0.4, sort="stars"):
+            if sort == "updated":
+                return recent, {"returned": 1}
+            return popular, {"returned": len(popular)}
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            github_search, "search_repos", side_effect=fake_search,
+        ):
+            items, meta = github_search.fetch_search_candidates(
+                Path(tmp), user_agent="ua", token="", force=True,
+                per_page=10, max_repos=8, recent_max=5, recent_min_stars=20,
+            )
+        names = [r["full_name"] for r in items]
+        self.assertIn("new/fresh-skill", names)
+        self.assertLessEqual(len(items), 8)
+        self.assertEqual(items[0]["search_lane"], "recent")
+        self.assertIn("recent_search", meta)
+
+    def test_probe_reserves_recent_lane(self):
+        rows = [{
+            "full_name": f"old/repo{i}",
+            "stars": 1000 - i,
+        } for i in range(10)]
+        rows.append({"full_name": "new/fresh", "stars": 20, "search_lane": "recent"})
+        picked = skillfeed._pick_probe_rows(
+            rows, limit=4, reserve_lane="recent", reserve_limit=1,
+        )
+        names = [r["full_name"] for r in picked]
+        self.assertIn("new/fresh", names)
+        self.assertLessEqual(len(names), 5)
+
+    def test_band_queries_cover_mid_stars(self):
+        qs = github_search.band_repo_queries(min_stars=20)
+        self.assertTrue(any("stars:3000..7999" in q for q in qs))
+        self.assertTrue(all(".." in q for q in qs))
+
+    def test_band_lane_survives_head_cap(self):
+        popular = [{
+            "full_name": f"pop/repo{i}",
+            "url": f"https://github.com/pop/repo{i}",
+            "description": "head skill",
+            "language": "MD",
+            "stars": 200000 - i,
+            "stars_today": 0,
+            "source": "github-search",
+            "kind": "skill",
+            "search_score": 1,
+        } for i in range(30)]
+        mid = [{
+            "full_name": "Zeejay0/gathered-scenes-zine-skill",
+            "url": "https://github.com/Zeejay0/gathered-scenes-zine-skill",
+            "description": "zine skill",
+            "language": "Python",
+            "stars": 5537,
+            "stars_today": 0,
+            "source": "github-search",
+            "kind": "skill",
+            "search_score": 1,
+        }]
+
+        def fake_search(user_agent, token="", *, queries=None, per_page=20, sleep_s=0.4, sort="stars"):
+            q = (queries or [""])[0]
+            if ".." in q:
+                return mid, {"returned": 1, "statuses": [200]}
+            if sort == "updated":
+                return [], {"returned": 0, "statuses": [200]}
+            return popular, {"returned": len(popular), "statuses": [200]}
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            github_search, "search_repos", side_effect=fake_search,
+        ):
+            items, meta = github_search.fetch_search_candidates(
+                Path(tmp), user_agent="ua", token="", force=True,
+                per_page=10, max_repos=8, recent_max=0, band_max=10, band_per_slice=4,
+            )
+        names = [r["full_name"] for r in items]
+        self.assertIn("Zeejay0/gathered-scenes-zine-skill", names)
+        self.assertLessEqual(names.index("Zeejay0/gathered-scenes-zine-skill"), len(names) - 1)
+        self.assertGreater(len(names), 8)
+        self.assertEqual(meta["band_search"]["returned"], 1)
+
+    def test_band_retries_after_rate_limit(self):
+        calls = {"n": 0}
+
+        def fake_search(user_agent, token="", *, queries=None, per_page=20, sleep_s=0.4, sort="stars"):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return [], {"statuses": [403], "warn": "rate limited", "returned": 0}
+            return [{
+                "full_name": "mid/retry",
+                "stars": 500,
+                "source": "github-search",
+            }], {"statuses": [200], "returned": 1}
+
+        with mock.patch.object(github_search, "search_repos", side_effect=fake_search), \
+                mock.patch.object(github_search.time, "sleep") as slept:
+            rows, meta = github_search._search_repos_retry(
+                "ua", queries=['"SKILL.md" in:readme stars:200..999'], attempts=3, wait_s=65,
+            )
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(rows[0]["full_name"], "mid/retry")
+        self.assertEqual(meta["statuses"], [200])
+        slept.assert_called_once_with(65)
+
+
+class TestStarSpread(unittest.TestCase):
+    def test_window_walks_past_the_head(self):
+        items = [{
+            "full_name": f"mid/r{i}",
+            "stars": 7000 - i * 100,
+            "kind": "skill",
+            "skill_path": "skills",
+        } for i in range(16)]
+        items.append({
+            "full_name": "mega/head",
+            "stars": 300000,
+            "kind": "skill",
+            "skill_path": "SKILL.md",
+        })
+        picked = corpus.select_star_spread(
+            items, bands=((3000, 8000),), per_band=4, page=2,
+        )
+        self.assertEqual(
+            [p["full_name"] for p in picked],
+            ["mid/r8", "mid/r9", "mid/r10", "mid/r11"],
+        )
+
+    def test_same_repo_keeps_skill_file(self):
+        items = [
+            {"full_name": "a/b", "stars": 5000, "kind": "skill", "skill_path": "skills"},
+            {"full_name": "a/b", "stars": 5000, "kind": "skill", "skill_path": "skills/x/SKILL.md"},
+        ]
+        picked = corpus.select_star_spread(
+            items, bands=((3000, 8000),), per_band=4, page=0,
+        )
+        self.assertEqual(len(picked), 1)
+        self.assertEqual(picked[0]["skill_path"], "skills/x/SKILL.md")
 
 
 class TestFeedUI(unittest.TestCase):

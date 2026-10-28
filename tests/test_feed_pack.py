@@ -95,6 +95,23 @@ class TestFeedPack(unittest.TestCase):
             self.assertIn(key, feed_pack.KEEP_KEYS)
             self.assertGreater(item["global_score"], 0)
 
+    def test_carry_forward_keeps_previous_page(self):
+        current = [{
+            "id": "new/repo::SKILL.md",
+            "full_name": "new/repo",
+            "skill_path": "SKILL.md",
+        }]
+        previous = [
+            {"id": "new/repo::SKILL.md", "full_name": "new/repo", "skill_path": "SKILL.md"},
+            {"id": "old/repo::skills/a/SKILL.md", "full_name": "old/repo", "skill_path": "skills/a/SKILL.md"},
+        ]
+        merged, kept = feed_pack.carry_forward(current, previous)
+        self.assertEqual(kept, 1)
+        self.assertEqual(
+            [it["id"] for it in merged],
+            ["new/repo::SKILL.md", "old/repo::skills/a/SKILL.md"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

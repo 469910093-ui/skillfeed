@@ -264,6 +264,88 @@ def load_skill_candidates(data_dir: Path, *, limit: int = 80) -> list[dict]:
     return load_corpus_items(data_dir, limit=limit, skill_priority=True)
 
 
+# 左闭右开。20 星以下仍由门禁处理；2 万星以上交给按星数取榜首的搜索。
+STAR_BANDS = (
+    (20, 200),
+    (200, 1000),
+    (1000, 3000),
+    (3000, 8000),
+    (8000, 20000),
+)
+
+
+def spread_window(rows: list, k: int, page: int) -> list:
+    """按星数从高到低排，再用页码取一窗。
+
+    每轮只拿固定条数，页码往后走，下一轮换下一批。这样中段热门不会永远
+    排在榜首窗口外面。
+    """
+    ranked = sorted(rows, key=lambda r: int(r.get("stars") or 0), reverse=True)
+    if k <= 0 or not ranked:
+        return []
+    if len(ranked) <= k:
+        return ranked
+    start = (max(int(page), 0) * k) % len(ranked)
+    return [ranked[(start + i) % len(ranked)] for i in range(k)]
+
+
+def _skill_row(obj: dict) -> bool:
+    kind = obj.get("kind") or ""
+    sec = obj.get("hg_section") or ""
+    return kind in ("skill", "mcp") or sec == "Skills"
+
+
+def select_star_spread(
+    items: list[dict],
+    *,
+    bands: tuple[tuple[int, int], ...] = STAR_BANDS,
+    per_band: int = 8,
+    page: int = 0,
+) -> list[dict]:
+    """每个星数档取一窗。同一仓有多条时，留下指向 SKILL.md 的那条。"""
+    chosen: list[dict] = []
+    seen: set[str] = set()
+    for lo, hi in bands:
+        best: dict[str, dict] = {}
+        for it in items:
+            if not _skill_row(it):
+                continue
+            stars = int(it.get("stars") or 0)
+            if stars < lo or stars >= hi:
+                continue
+            fn = (it.get("full_name") or "").strip()
+            if not fn:
+                continue
+            prev = best.get(fn)
+            if prev is None:
+                best[fn] = it
+                continue
+            prev_file = str(prev.get("skill_path") or "").lower().endswith("skill.md")
+            cur_file = str(it.get("skill_path") or "").lower().endswith("skill.md")
+            if cur_file and not prev_file:
+                best[fn] = it
+        for it in spread_window(list(best.values()), per_band, page):
+            fn = (it.get("full_name") or "").strip()
+            if fn in seen:
+                continue
+            seen.add(fn)
+            chosen.append(it)
+    return chosen
+
+
+def next_spread_page(data_dir: Path) -> int:
+    """刷新一次，分档窗口往后翻一页。返回本轮要用的页码。"""
+    path = data_dir / "cache" / "star_spread_page.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cur = 0
+    try:
+        cur = int(path.read_text(encoding="utf-8").strip() or "0")
+    except (OSError, ValueError):
+        cur = 0
+    path.write_text(str(cur + 1), encoding="utf-8")
+    return cur
+
+
 def attach_body_previews(data_dir: Path, items: list[dict]) -> list[dict]:
     """从 corpus/github/repos/*/meta.json 或 SKILL.preview.md 回填正文预览。"""
     root = corpus_root(data_dir) / "github" / "repos"

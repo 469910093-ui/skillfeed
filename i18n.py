@@ -484,6 +484,37 @@ def attach(item: dict, fields: dict) -> dict:
     return item
 
 
+def attach_cached(data_dir: Path, items: list[dict]) -> int:
+    """把缓存里已有的译稿贴回还没带双语字段的条目。不调模型。
+
+    内容指纹一致才贴。简介改过的仓不贴过期译文，免得中文和仓库对不上。
+    已经带齐译稿的条目不动。
+    """
+    cache = load_cache(data_dir)
+    if not cache:
+        return 0
+    attached = 0
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        fn = str(it.get("full_name") or "")
+        if not fn:
+            continue
+        if _valid_fields({key: it.get(key) for key in FIELDS}):
+            continue
+        hit = cache.get(cache_key(it)) or cache.get(fn)
+        if not hit or hit.get("degraded"):
+            continue
+        if str(hit.get("hash") or "") != content_hash(it):
+            continue
+        fields = _valid_fields(hit.get("fields") or {})
+        if not fields:
+            continue
+        attach(it, fields)
+        attached += 1
+    return attached
+
+
 def enrich_items(
     data_dir: Path,
     items: list[dict],

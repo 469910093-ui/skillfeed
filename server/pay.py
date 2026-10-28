@@ -183,6 +183,7 @@ def order_public(row: dict[str, Any]) -> dict[str, Any]:
         "provider": row.get("provider") or PROVIDER_WECHAT,
         "paid_at": row.get("paid_at") or "",
         "plan_until": row.get("plan_until") or "",
+        "assign_pack": row.get("assign_pack") or "",
         "created_at": row["created_at"],
     }
 
@@ -295,6 +296,76 @@ def apply_paid_notify(
         plan_until=until,
     )
     return paid, False
+
+
+def reconcile_order(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    out_trade_no: str,
+    settings: Settings,
+) -> Optional[dict[str, Any]]:
+    """只核对这一笔。不是本人的单返回 None。微信没成功或查询失败时保持原状态。"""
+    trade = (out_trade_no or "").strip()
+    order = db.get_order_by_trade_no(conn, trade) if trade else None
+    if order is None or int(order["user_id"]) != int(user_id):
+        return None
+    if order.get("status") != STATUS_PENDING:
+        return order
+    try:
+        ready = bool(settings.wechat_pay_configured)
+    except AttributeError:
+        ready = False
+    if not ready:
+        return order
+    from server import wechat_pay
+    try:
+        found = wechat_pay.query_by_out_trade_no(settings, trade)
+    except PayError:
+        return order
+    if found.get("trade_state") != "SUCCESS":
+        return order
+    txn = str(found.get("transaction_id") or "").strip()
+    if not txn:
+        return order
+    try:
+        paid, _replay = apply_paid_notify(
+            conn,
+            out_trade_no=trade,
+            provider_txn_id=txn,
+            amount_fen=found.get("amount_fen"),
+            settings=settings,
+        )
+    except PayError:
+        return order
+    return paid
+
+
+def reconcile_pending_orders(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    settings: Settings,
+    limit: int = 3,
+) -> int:
+    """向微信核对最近几笔还没标成已付的订单。
+
+    支付通知没送到时，微信侧已经成功的单在这里开通。查询失败就保持待支付。
+    返回这次新开通的笔数。
+    """
+    rows = db.list_orders_for_user(conn, int(user_id), limit=50)
+    pending = [r for r in rows if r.get("status") == STATUS_PENDING][: max(1, int(limit))]
+    opened = 0
+    for row in pending:
+        updated = reconcile_order(
+            conn,
+            user_id=int(user_id),
+            out_trade_no=str(row.get("out_trade_no") or ""),
+            settings=settings,
+        )
+        if updated and updated.get("status") == STATUS_PAID:
+            opened += 1
+    return opened
 
 
 def verify_wechat_notify(raw: bytes, headers: Any, settings: Settings) -> dict[str, Any]:

@@ -1,38 +1,106 @@
 {
   "id": "design-media",
   "title": "平面设计自媒体",
-  "md": "# 平面设计自媒体\n\n封面、主图、详情页按风格批量出图\n\n## 技能排序\n\n1. GPT-Image2-Skill · 封面与海报\n2. ecommerce-image-suite · 电商主图\n3. detail-flow · 详情页设计\n4. LinkFox AI · 跨境商品视觉\n\n## 应用介绍\n\n### GPT-Image2-Skill\n小红书封面、品牌视觉、海报、配图\n\n### ecommerce-image-suite\n批量商品图/主图\n\n### detail-flow\n专门做详情页\n\n### LinkFox AI\n商品视觉生产和转视频\n\n## 知识库\n\n- 营销拆解室：封面与海报\n  https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9\n- 大厂刘饱饱：电商主图、详情页设计\n  https://www.xiaohongshu.com/discovery/item/6a50d275000000001702f721\n- 原来是这样啊：跨境商品视觉\n  https://www.xiaohongshu.com/discovery/item/6a5f8be4000000000f00495b\n- 废话老洪：主图详情套装\n  https://www.xiaohongshu.com/discovery/item/69fa869c000000003701fdea\n- YANG：8张详情直出\n  https://www.xiaohongshu.com/discovery/item/6a55b3ec00000000070296d3\n",
+  "md": "# 平面设计自媒体\n\n封面、主图、详情页按风格批量出图\n\n## 技能排序\n\n1. ecommerce-image-suite · 电商主图\n2. detail-flow · 详情页设计\n3. LinkFox AI · 跨境商品视觉\n4. GPT-Image2-Skill · 封面与海报\n\n5. gc-minimal-zine-poster · 杂志风海报\n6. gbro-cover-design · 真人出境封面\n7. atutun-xhs-cover · 爆款封面\n8. guizang-social-card-skill · 封面与轮播\n9. xhs-visual-director-skill · 封面内页结构\n10. baoyu-skills · 文章配图\n11. ian-xiaohei-illustrations · 正文插图\n12. jimeng-infographic-skill · 信息图\n13. html-anything · 杂志风卡片\n14. Mono-color Skill · 单色海报\n15. canvas-design · 海报构图\n16. huashu-design · 视觉原型\n## 应用介绍\n\n### ecommerce-image-suite\n批量商品图/主图\n\n### detail-flow\n专门做详情页\n\n### LinkFox AI\n商品视觉生产和转视频\n\n### GPT-Image2-Skill\n小红书封面、品牌视觉、海报、配图\n\n### gc-minimal-zine-poster\n先定留白和主次，再出海报\n\n### gbro-cover-design\n按爆款封面的构图做真人出镜封面\n\n### atutun-xhs-cover\n复刻高点击封面的版式\n\n### guizang-social-card-skill\n把长文拆成封面、轮播和知识卡片\n\n### xhs-visual-director-skill\n先定封面和内页，再出图\n\n### baoyu-skills\n封面、信息图、结构图用同一套风格\n\n### ian-xiaohei-illustrations\n把观点和步骤画成插图\n\n### jimeng-infographic-skill\n把教程收成信息图\n\n### html-anything\n把文章收成卡片和海报\n\n### Mono-color Skill\n用单色和留白做海报\n\n### canvas-design\n处理海报的字体、构图和留白\n\n### huashu-design\n出原型、演示页和动效\n## 知识库\n",
   "skills": [
     {
       "order": 1,
-      "name": "GPT-Image2-Skill",
-      "step": "封面与海报",
-      "intro": "小红书封面、品牌视觉、海报、配图"
-    },
-    {
-      "order": 2,
       "name": "ecommerce-image-suite",
       "step": "电商主图",
       "intro": "批量商品图/主图"
     },
     {
-      "order": 3,
+      "order": 2,
       "name": "detail-flow",
       "step": "详情页设计",
       "intro": "专门做详情页"
     },
     {
-      "order": 4,
+      "order": 3,
       "name": "LinkFox AI",
       "step": "跨境商品视觉",
       "intro": "商品视觉生产和转视频"
+    },
+    {
+      "order": 4,
+      "name": "GPT-Image2-Skill",
+      "step": "封面与海报",
+      "intro": "小红书封面、品牌视觉、海报、配图"
+    },
+    {
+      "order": 5,
+      "name": "gc-minimal-zine-poster",
+      "step": "杂志风海报",
+      "intro": "先定留白和主次，再出海报"
+    },
+    {
+      "order": 6,
+      "name": "gbro-cover-design",
+      "step": "真人出境封面",
+      "intro": "按爆款封面的构图做真人出镜封面"
+    },
+    {
+      "order": 7,
+      "name": "atutun-xhs-cover",
+      "step": "爆款封面",
+      "intro": "复刻高点击封面的版式"
+    },
+    {
+      "order": 8,
+      "name": "guizang-social-card-skill",
+      "step": "封面与轮播",
+      "intro": "把长文拆成封面、轮播和知识卡片"
+    },
+    {
+      "order": 9,
+      "name": "xhs-visual-director-skill",
+      "step": "封面内页结构",
+      "intro": "先定封面和内页，再出图"
+    },
+    {
+      "order": 10,
+      "name": "baoyu-skills",
+      "step": "文章配图",
+      "intro": "封面、信息图、结构图用同一套风格"
+    },
+    {
+      "order": 11,
+      "name": "ian-xiaohei-illustrations",
+      "step": "正文插图",
+      "intro": "把观点和步骤画成插图"
+    },
+    {
+      "order": 12,
+      "name": "jimeng-infographic-skill",
+      "step": "信息图",
+      "intro": "把教程收成信息图"
+    },
+    {
+      "order": 13,
+      "name": "html-anything",
+      "step": "杂志风卡片",
+      "intro": "把文章收成卡片和海报"
+    },
+    {
+      "order": 14,
+      "name": "Mono-color Skill",
+      "step": "单色海报",
+      "intro": "用单色和留白做海报"
+    },
+    {
+      "order": 15,
+      "name": "canvas-design",
+      "step": "海报构图",
+      "intro": "处理海报的字体、构图和留白"
+    },
+    {
+      "order": 16,
+      "name": "huashu-design",
+      "step": "视觉原型",
+      "intro": "出原型、演示页和动效"
     }
   ],
   "apps": [
-    {
-      "name": "GPT-Image2-Skill",
-      "intro": "小红书封面、品牌视觉、海报、配图"
-    },
     {
       "name": "ecommerce-image-suite",
       "intro": "批量商品图/主图"
@@ -44,6 +112,58 @@
     {
       "name": "LinkFox AI",
       "intro": "商品视觉生产和转视频"
+    },
+    {
+      "name": "GPT-Image2-Skill",
+      "intro": "小红书封面、品牌视觉、海报、配图"
+    },
+    {
+      "name": "gc-minimal-zine-poster",
+      "intro": "先定留白和主次，再出海报"
+    },
+    {
+      "name": "gbro-cover-design",
+      "intro": "按爆款封面的构图做真人出镜封面"
+    },
+    {
+      "name": "atutun-xhs-cover",
+      "intro": "复刻高点击封面的版式"
+    },
+    {
+      "name": "guizang-social-card-skill",
+      "intro": "把长文拆成封面、轮播和知识卡片"
+    },
+    {
+      "name": "xhs-visual-director-skill",
+      "intro": "先定封面和内页，再出图"
+    },
+    {
+      "name": "baoyu-skills",
+      "intro": "封面、信息图、结构图用同一套风格"
+    },
+    {
+      "name": "ian-xiaohei-illustrations",
+      "intro": "把观点和步骤画成插图"
+    },
+    {
+      "name": "jimeng-infographic-skill",
+      "intro": "把教程收成信息图"
+    },
+    {
+      "name": "html-anything",
+      "intro": "把文章收成卡片和海报"
+    },
+    {
+      "name": "Mono-color Skill",
+      "intro": "用单色和留白做海报"
+    },
+    {
+      "name": "canvas-design",
+      "intro": "处理海报的字体、构图和留白"
+    },
+    {
+      "name": "huashu-design",
+      "intro": "出原型、演示页和动效"
     }
   ],
   "kb": [

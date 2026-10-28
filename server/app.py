@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import secrets
+import threading
 from html import escape as html_escape
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,6 +21,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import geo
+import i18n
+import md_store
 import ranking
 import ranking_path
 from server import (
@@ -35,7 +39,7 @@ from server import (
     sms,
     ugc,
 )
-from server.config import Settings, get_settings
+from server.config import Settings, data_home, get_settings
 from server.ratelimit import EventLimiter, GeoLimiter, SmsLimiter
 
 ROOT = Path(__file__).resolve().parent
@@ -384,6 +388,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     app.state.ingest_metrics = metrics.IngestMetrics()
     app.state.channel_rules = attribution.RulesCache()
+    md_dir = getattr(settings, "md_dir", None) or (data_home() / "md")
+    app.state.md_lookup = md_store.MdLookup(md_dir)
+
+    def _warm_md() -> None:
+        try:
+            app.state.md_lookup.warm(
+                ugc.load_official_items_from_file(settings.official_feed_file)
+            )
+        except (OSError, ValueError):
+            pass
+
+    if settings.official_feed_file:
+        threading.Thread(target=_warm_md, daemon=True).start()
     app.state.sms_limiter = SmsLimiter(
         window_s=settings.sms_window_s,
         max_per_phone=settings.sms_max_per_phone,
@@ -489,10 +506,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "ingest_stale": bool(age is not None and age > stale_after),
         }
 
+    def _with_translations(items: list[dict]) -> list[dict]:
+        """feed.json 里后补的仓可能没带译稿。缓存对得上就贴回去，卡片才能跟语种走。"""
+        i18n.attach_cached(data_home(), items)
+        return items
+
     def _geo_items() -> list[dict[str, Any]]:
         official: list[dict] = []
         if settings.official_feed_file.exists():
-            official = ugc.load_official_items_from_file(settings.official_feed_file)
+            official = _with_translations(
+                ugc.load_official_items_from_file(settings.official_feed_file)
+            )
         ugc_items: list[dict] = []
         with db.db_session(settings.db_path) as conn:
             posts = db.list_published_posts(conn, limit=200, offset=0)
@@ -602,6 +626,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return blocked
         page, total = geo.search_items(
             _geo_items(), query=q, scene=scene, limit=limit, offset=offset,
+            md_lookup=app.state.md_lookup,
         )
         return {
             "brand": geo.BRAND,
@@ -1061,6 +1086,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "dev_auth": settings.dev_auth,
             "require_login": settings.require_login,
             "login_url": "/login",
+            "aftercare": settings.aftercare_public(),
         }
         uid = auth.session_user_id(request, settings)
         if uid is None:
@@ -1295,14 +1321,61 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(404, "这一包还没有手册")
         return {"ok": True, **doc}
 
+    @app.get("/api/packs/{pack_id}/package")
+    def pack_package(pack_id: str, request: Request) -> Response:
+        """安装包。订阅有效且占用了该席位才下载。"""
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        with db.db_session(settings.db_path) as conn:
+            if not db.user_can_access_pack(conn, uid, pack_id):
+                raise HTTPException(403, "需要订阅并选用这个场景")
+        built = pack_delivery.build_package(pack_id)
+        if built is None:
+            raise HTTPException(404, "这一包还没有安装包")
+        filename, blob = built
+        return Response(
+            content=blob,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     @app.get("/api/pay/orders")
     def pay_orders(request: Request) -> dict[str, Any]:
         uid = auth.session_user_id(request, settings)
         if uid is None:
             raise HTTPException(401, "login required")
         with db.db_session(settings.db_path) as conn:
-            rows = db.list_orders_for_user(conn, uid)
+            # 微信通知没到时，打开支付记录会主动问微信。已成功的单在这里开通。
+            try:
+                pay.reconcile_pending_orders(conn, user_id=uid, settings=settings, limit=3)
+            except Exception:
+                logging.getLogger("skillfeed.pay").exception("reconcile orders failed")
+            rows = db.list_orders_for_user(conn, uid, limit=50)
         return {"orders": [pay.order_public(r) for r in rows]}
+
+    @app.get("/api/pay/orders/{out_trade_no}")
+    def pay_order_status(out_trade_no: str, request: Request) -> dict[str, Any]:
+        """付款页只核对当前这一笔。微信已成功但通知没到时，当场开通。"""
+        uid = auth.session_user_id(request, settings)
+        if uid is None:
+            raise HTTPException(401, "login required")
+        trade = (out_trade_no or "").strip()
+        if not trade or len(trade) > 64:
+            raise HTTPException(404, "订单不存在")
+        with db.db_session(settings.db_path) as conn:
+            try:
+                row = pay.reconcile_order(
+                    conn, user_id=uid, out_trade_no=trade, settings=settings,
+                )
+            except Exception:
+                logging.getLogger("skillfeed.pay").exception("reconcile order failed")
+                row = db.get_order_by_trade_no(conn, trade)
+                if row is not None and int(row["user_id"]) != int(uid):
+                    row = None
+            if row is None:
+                raise HTTPException(404, "订单不存在")
+        return {"order": pay.order_public(row)}
 
     @app.post("/api/pay/dev-notify")
     def pay_dev_notify(request: Request, body: PayDevNotifyBody) -> dict[str, Any]:
@@ -1345,6 +1418,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.post("/api/pay/wechat/notify")
     async def pay_wechat_notify(request: Request) -> JSONResponse:
         raw = await request.body()
+        logging.getLogger("skillfeed.pay").info("wechat notify bytes=%s", len(raw or b""))
         try:
             payload = pay.verify_wechat_notify(raw, request.headers, settings)
             if payload.get("skip"):
@@ -1420,6 +1494,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 official = await ugc.load_official_items(settings.official_feed_url)
             else:
                 official = ugc.load_official_items_from_file(settings.official_feed_file)
+            official = _with_translations(official)
 
         # UGC 置顶是既有产品行为，排序在各自块内进行，不跨块打散
         if source == "ugc":
@@ -1471,6 +1546,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 scene_filter=scene,
                 scene_l2_filter=scene_l2,
                 session_seed=f"{device_id}:{session_id}",
+                md_lookup=app.state.md_lookup,
             )
             ranked.extend(ordered)
 
@@ -1500,6 +1576,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not debug:
             for it in page:
                 it.pop("rank_debug", None)
+                it.pop("match_why", None)
         for it in page:
             for k in ("_affinity", "_focus_hit", "_relevance"):
                 it.pop(k, None)

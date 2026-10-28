@@ -23,6 +23,7 @@ from typing import Any, Callable, Optional
 
 import rank as rank_mod
 import scene as scene_mod
+import skill_search
 
 # 默认值必须在代码侧齐备：config_defaults.json 缺字段时不能崩
 DEFAULTS: dict[str, Any] = {
@@ -973,10 +974,11 @@ def rank_feed(
     session_seed: str = "",
     now: Optional[datetime] = None,
     use_precomputed_global: bool = False,
+    md_lookup: Optional[Callable[[dict], str]] = None,
 ) -> list[dict]:
     """完整仲裁流程：硬过滤 → 查询筛选 → 打分 → 排序 → 多样性 → 探索位。
 
-    返回的是浅拷贝，不改原对象。
+    返回的是浅拷贝，不改原对象。md_lookup 给出 SKILL.md 全文时，搜索连正文一起搜。
     """
     cfg = config if config and "global_parts" in config else resolve_config(config)
     now = now or datetime.now(timezone.utc)
@@ -996,9 +998,12 @@ def rank_feed(
     w_f = float(w["focus"]) if (profile and profile.has_focus) else 0.0
 
     # 1. 搜索/筛选压过个性化：个性化降级成同档内的次级排序键
+    rel_map: dict[int, skill_search.Hit] = {}
     if searching:
         w_p *= float(cfg["search"]["personal_scale"])
         w_f *= float(cfg["search"]["focus_scale"])
+        # IDF 要按整批算，所以在逐条循环之前一次搜完
+        rel_map = skill_search.relevance_map(items, query, md_lookup=md_lookup)
 
     for raw in items:
         it = dict(raw)
@@ -1030,9 +1035,12 @@ def rank_feed(
 
         rel = 0.0
         if searching:
-            rel, _ = rank_mod.intent_overlap(it, query)
+            hit = rel_map.get(id(raw))
+            rel = hit.rel if hit else 0.0
             if rel < float(cfg["search"]["min_relevance"]):
                 continue
+            it["match_terms"] = [t for t, _f in hit.terms[:3]]
+            it["match_why"] = hit.why
         it["_relevance"] = rel
 
         eps = session_jitter(key, session_seed, float(cfg["session"]["jitter_amp"]))

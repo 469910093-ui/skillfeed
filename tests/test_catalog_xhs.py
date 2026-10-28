@@ -36,6 +36,21 @@ class XiaohongshuTest(unittest.TestCase):
             self.assertIn("github.com", rows[0]["url"])
             self.assertGreaterEqual(meta["returned"], 1)
 
+    def test_live_notes_come_before_seeds(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            payload = xiaohongshu.ensure_seed_mentions(data_dir)
+            payload["repos"].append({
+                "full_name": "newbie/fresh-skill",
+                "likes": 3,
+                "note_title": "刚出的 skill 很好用",
+                "note_url": "https://www.xiaohongshu.com/explore/abc",
+                "keyword": "新 skill",
+            })
+            xiaohongshu.save_mentions(data_dir, payload)
+            rows, _meta = xiaohongshu.candidates_from_mentions(data_dir, max_repos=5)
+            self.assertEqual(rows[0]["full_name"], "newbie/fresh-skill")
+
     def test_extract_repos_from_note(self):
         text = "推荐这个 https://github.com/hardikpandya/stop-slop 去 AI 味 skill"
         repos = xiaohongshu.extract_repos_from_text(text)

@@ -346,6 +346,44 @@ class DegradedRows(unittest.TestCase):
         self.assertTrue(target["i18n_ready"])
 
 
+class AttachCached(unittest.TestCase):
+    def test_matching_hash_fills_a_card_that_lost_its_translation(self):
+        item = _item()
+        fields = _fields()
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp)
+            row = {
+                "full_name": item["full_name"],
+                "skill_path": item["skill_path"],
+                "hash": i18n.content_hash(item),
+                "fields": fields,
+            }
+            path = i18n.cache_path(data)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+            n = i18n.attach_cached(data, [item])
+        self.assertEqual(n, 1)
+        self.assertEqual(item["one_liner_zh"], fields["one_liner_zh"])
+        self.assertEqual(item["one_liner_en"], fields["one_liner_en"])
+
+    def test_changed_description_does_not_reuse_the_old_translation(self):
+        item = _item()
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp)
+            row = {
+                "full_name": item["full_name"],
+                "skill_path": item["skill_path"],
+                "hash": "not-the-current-hash",
+                "fields": _fields(),
+            }
+            path = i18n.cache_path(data)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            n = i18n.attach_cached(data, [item])
+        self.assertEqual(n, 0)
+        self.assertNotIn("one_liner_zh", item)
+
+
 class Compaction(unittest.TestCase):
     def test_compaction_preserves_load_semantics(self):
         with tempfile.TemporaryDirectory() as tmp:

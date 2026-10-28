@@ -1,0 +1,9 @@
+{
+  "desc": "SkillFeeder",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

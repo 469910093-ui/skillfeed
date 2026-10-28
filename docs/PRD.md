@@ -8,7 +8,7 @@
 | 仓库 | https://github.com/469910093-ui/skillfeed |
 | 公开发现站 | https://469910093-ui.github.io/skillfeed/ |
 | 关联产品 | [skill-picker](https://github.com/469910093-ui/Skill-picker)（本机已装 skill 的扫描/匹配） |
-| 更新日期 | 2026-10-13 |
+| 更新日期 | 2026-10-15 |
 
 ---
 
@@ -148,11 +148,11 @@ skill-feed full（独立站）── 动态圆环/关注/UGC（可选 API）─�
 | **连续续费**（默认推，更便宜） | ¥29 | ¥78 | ¥228 | 2 / 3 / 5 |
 | **单独买同周期**（不自动续） | ¥39 | ¥105 | ¥299 | 2 / 3 / 5 |
 
-SKU：`subscriber_month_cont` / `quarter_cont` / `year_cont` · `subscriber_month_once` / `quarter_once` / `year_once`（旧 `subscriber_year` 等同连续包年）。收银台 `GET /api/pay/catalog`；下单 `POST /api/pay/checkout`（可带 `assign_pack` 顺带占席）；已订阅占席 `POST /api/me/seats/assign` 或整表 `PUT /api/me/seats`。交付 `GET /api/packs/{id}/delivery` 仅**订阅有效且席位占用**时下发四样：手册、技能排序、应用介绍、知识库。占用超过席位上限时，开通或读取会收掉多余项：保留最近占用，本次开通指定的场景优先留下。商详入口价：**连续包月 ¥29 起**；CTA 默认开连续包月并占用当前场景。即将推出不能下单。`SKILLFEED_DEV=1` 时 checkout 直接到账。生产配齐微信支付后走 Native 扫码：二维码来自微信 `code_url`，`/api/pay/wechat/notify` 验签解密且 `trade_state=SUCCESS` 后才开通并占席；半套配置或验签失败拒绝开通。目录真相源：飞书 Base `PCWZbMvydabY2Xs1yYSc2sc7nth` → `docs/packs/shelf_catalog.json`（`python scripts/sync_packs_shelf.py`）。深链：`?tab=packs` / `?tab=packs&pack=cross-border`。lite 不露出该 tab。
+SKU：`subscriber_month_cont` / `quarter_cont` / `year_cont` · `subscriber_month_once` / `quarter_once` / `year_once`（旧 `subscriber_year` 等同连续包年）。收银台 `GET /api/pay/catalog`；下单 `POST /api/pay/checkout`（可带 `assign_pack` 顺带占席）；已订阅占席 `POST /api/me/seats/assign` 或整表 `PUT /api/me/seats`。交付 `GET /api/packs/{id}/delivery` 仅**订阅有效且席位占用**时下发四样：手册、技能排序、应用介绍、知识库。知识库是整理后的正文（`docs/packs/kb/<id>.md`）：笔记里写到的做法和视频口播文稿都写进文档，页面和接口都不附小红书链接。同一条件可下载安装包 `GET /api/packs/{id}/package`（zip：手册、知识库、技能排序、安装说明、`scene.json`）；开通成功当页开始下载。购后同一页给「打开公众号」，跳到 Skill Man，不展示公众号二维码。点「我已关注」后再弹出小助手微信二维码，用来拉群。小助手图只收 https 地址，没配时不弹出空步骤。占用超过席位上限时，开通或读取会收掉多余项：保留最近占用，本次开通指定的场景优先留下。商详入口价：**连续包月 ¥29 起**；CTA 默认开连续包月并占用当前场景。即将推出不能下单。`SKILLFEED_DEV=1` 时 checkout 直接到账。生产配齐微信支付后走 Native 扫码：二维码来自微信 `code_url`，`/api/pay/wechat/notify` 验签解密且 `trade_state=SUCCESS` 后才开通并占席；半套配置或验签失败拒绝开通。目录真相源：飞书 Base `PCWZbMvydabY2Xs1yYSc2sc7nth` → `docs/packs/shelf_catalog.json`（`python scripts/sync_packs_shelf.py`）。深链：`?tab=packs` / `?tab=packs&pack=cross-border`。lite 不露出该 tab。登录后「我的」列出最近 50 笔支付：商品、金额、已支付或待支付、时间、单号、占用场景。接口读失败时写明读不到，不显示成没有订单。二维码还开着时，每 2 秒只向微信核对这一笔（`GET /api/pay/orders/{out_trade_no}`）；微信已成功但通知没送到的，当场开通并占席。打开支付记录时，最近 3 笔待支付再问一次微信。
 
-**增值层（利润，不替代订阅）：** ① **人工服务**——装机答疑 / 岗位陪跑 / 定制配齐（站内入口见下「找策展人」）；② **付费资讯**——飞得周讯。装机引导：订阅开通后提示「装到本机后，推荐会按你的上下文更新」。
+**增值层（利润，不替代订阅）：** ① **人工服务**——装机答疑 / 岗位陪跑 / 定制配齐（站内入口见下「找策展人」）；② **付费资讯**——飞得周讯。装机引导：订阅开通后下载安装包。本机 `python ~/.skill-picker/skillpick.py install-scene <zip> --yes` 写入一个场景技能，并把环节记成触发词。之后每一句任务只在本机打分：分够高就推荐这一个，等用户点选；分不够就用同一句请求 `GET /api/geo/skills?q=`，给出远程目录里的条目。整段对话不上云。同名目录已有别的内容时不覆盖。
 
-**找策展人（用户如何找到「我」）：** 主通道定为 **Skill Man 公众号后台**（资讯推送、人工预约、订阅答疑都在号内办；站内不另建客服系统优先）。公开站不在发现流挂私人微信号。站内触点只做「导到号」：技能包商详底部与开通成功页「去 Skill Man 问策展人」；「我的 → 场景席位」旁同入口（文案可带包名，方便用户复制到号内）；页脚 / `about`「谁在策展」出公众号名 + 二维码；你的发布者主页「合作 / 咨询」同链。号内菜单建议：`订阅答疑` / `预约人工` / `本周资讯` / `回技能货架`（链回 `?tab=packs`）。小红书等站外仍统一署名，最终收回 Skill Man。页上写清：工作日多久内公众号回复。
+**找策展人（用户如何找到「我」）：** 主通道定为 **Skill Man 公众号后台**（资讯推送、人工预约、订阅答疑都在号内办；站内不另建客服系统优先）。公开站不在发现流挂私人微信号，也不在页面上放公众号二维码。full 全页固定「联系客服」，点击用 `weixin://qr/mp/_SdYQLjEZ_UYrfwj93Lr` 打开 Skill Man 关注卡片；lite 不显示。不要用 `http://weixin.qq.com/r/mp/…` 短链：那一页在浏览器里会在约 1.5 秒后跳到微信下载页。开通成功页同一链接，文案「打开公众号」。号内菜单建议：`订阅答疑` / `预约人工` / `本周资讯` / `回技能货架`（链回 `?tab=packs`）。小红书等站外仍统一署名，最终收回 Skill Man。
 
 每次再打包：走 `docs/packs/PACKAGING.workflow.md`（Agent 入口 `.cursor/skills/packaging-scene-skills`）。采集 → 编目 → 打标 → 飞书候选 →（要卖再）`HOWTO` + `QUALITY`。禁止跳过打标把原文笔记当产品。
 
@@ -212,17 +212,18 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 模块 | 功能说明 | 优先级 |
 |---|---|---|
 | 发现 Feed | 无限下滑；嵌入 `feed.json`；本地/Pages 可独立打开 | P0 |
-| 意图搜索 | 顶栏输入，实时过滤 name/desc/场景等 | P0 |
+| 意图搜索 | 顶栏输入。联网时 280ms 防抖后打 `/api/feed?q=`，由统一引擎 `skill_search.py` 在**全量目录**里检索：分层字段（名称 > 摘要 > 详情 > **SKILL.md 全文** > 仓名）× 词权 × IDF + 场景加分（L2 +1.0 / L1 +0.4）。查询先理解再检索：近义簇扩展（`intent_expand`，含中/英/日/韩触发词，如「生图」→ 出图/配图/视觉海报/canvas-design；「周报」=「weekly report」=「週報」）→ 推断 L2/L1 场景 → 场景关键词作跨语种桥。卡片显示「匹配 · 词1 · 词2」。离线 / 请求失败 / 远端 0 条时回退本地 `intentMatch`。`/api/geo/skills?q=` 同一引擎 | P0 |
 | **动态圆环（关注动态）** | 见 5.4；圆环 = 关注的 Builder / 行业；点开看「最新」动态 或时间线 | P0 |
 | **Pills** | 仅作发现筛选：二级场景、栏目等；**空则隐藏**；不再放 Skills/AI/开源模式（与动态圆环脱钩） | P0 |
 | 信息流卡片 | 见 5.2 | P0 |
 | 底栏五入口 | **发现 / 主题分类 / 一站式配齐 / 发布 / 我的**；`role=tablist` + `aria-selected`，左右键/Home/End 可走，激活态除颜色外另有指示条 + 字重 | P0 |
 | **主题分类** | 一级场景各自成块（条目数 + 二级场景 chips + 按栏目浏览）；点进去落到发现流的对应筛选 | P0 |
-| **一站式配齐** | 货架顶部是场景订阅入口：两句亮点（本地部署后按上下文给更准的推荐和更简单的操作指导；按指定主题持续更新）+ 连续月/季/年（2 / 3 / 5 个场景）与单独买同周期。下方再选场景占席。未登录去登录再 `POST /api/pay/checkout`。生产弹出微信扫码：手机贴底，电脑居中成卡片并盖住底栏。付完同一页解锁手册。lite 隐藏 | P0 |
+| **一站式配齐** | 货架顶部是场景订阅入口：两句亮点（装到本机后，你说任务时会从这套场景里推荐一个技能；按指定主题持续更新）+ 连续月/季/年（2 / 3 / 5 个场景）与单独买同周期。下方再选场景占席。未登录去登录再 `POST /api/pay/checkout`。生产弹出微信扫码：手机贴底，电脑居中成卡片并盖住底栏。付完同一页解锁手册。lite 隐藏 | P0 |
 | 发布 | **接 `server/` 的 `POST /api/posts`**：同源时页内表单直接提交；跨源只给整页跳 `api_base/publish`；无 `api_base` 时：github.io 只出说明，**skillfeeder.cn 同源回退到本域**（防定时构建漏写环境变量） | P0 |
-| 我的 | 真实登录态（`/auth/me`）+ 我发布的（`/api/posts/me`，点开跳发现流卡片或审核中预览）+ 赞藏（`/api/profile/reactions`，读不到则退回本机）+ **关注管理**（Builder / 行业列表）。**不再放「发现站」说明行** | P0 |
+| 我的 | 真实登录态（`/auth/me`）+ 我发布的（`/api/posts/me`，点开跳发现流卡片或审核中预览）+ **支付记录**（`GET /api/pay/orders`，最近 50 笔：商品、金额、已支付/待支付、北京时间、单号、占用场景）+ 赞藏（`/api/profile/reactions`，读不到则退回本机）+ **关注管理**（Builder / 行业列表）。**不再放「发现站」说明行** | P0 |
 | 发布者主页 | Feed 内作品 + GitHub 仓库 + **关注/取消关注 Builder** | P0 |
 | **回到顶部** | 滚过一屏出现的悬浮按钮；平滑回顶，`prefers-reduced-motion` 下直接跳；隐藏时退出 Tab 序 | P1 |
+| **联系客服** | full 全页固定浮层，文案「联系客服」，点击打开 Skill Man 关注卡片（`weixin://qr/mp/…`）。不走会跳到微信下载页的 `weixin.qq.com/r/mp/` 短链，不展示二维码。位置避开底栏和回到顶部。lite 隐藏 | P0 |
 | Demo 巡演 | 顶栏播放键或 `?demo=1` | P1 |
 | 反馈 | 赞/踩/打开 GitHub；静态站 localStorage | P1 |
 | **浏览器小标** | tab favicon / 添加到主屏用肥嘚**慵懒躺沙发**造型：`/favicon.ico`（16/32/48）`/favicon.png`（192，视网膜）`/apple-touch-icon.png`（180）。源图 `docs/brand/assets/logo-feide-transparent.png`，由 `scripts/make_brand_icons.py` 高分辨率缩小，禁止平滑发糊 | P0 |
@@ -237,7 +238,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 形态 | 判据 | 发现 | 主题分类 | 一站式配齐 | 发布 | 我的 |
 |---|---|---|---|---|---|---|
-| **同源有后端** | `API_BASE` 且同源（含主站漏写 `api_base` 时回退 `https://skillfeeder.cn`） | ✅ | ✅ | 货架 + 登录后结账开通 | 页内表单 → `/api/posts` | 真实登录态 + 我发布的 |
+| **同源有后端** | `API_BASE` 且同源（含主站漏写 `api_base` 时回退 `https://skillfeeder.cn`） | ✅ | ✅ | 货架 + 登录后结账开通 | 页内表单 → `/api/posts` | 真实登录态 + 我发布的 + 支付记录 |
 | **Pages 静态镜像** | `API_BASE` 跨源 | ✅ | ✅ | 可浏览货架；购买引导回主站 | 只给「打开主站发布页」 | 只给「打开主站」（跨站 Cookie 是 `SameSite=Lax`，页内读不到登录态） |
 | **Pages 无后端** | 无 `API_BASE` 且不在主站 | ✅ | ✅ | 可浏览货架；购买提示去主站 | 只出说明，无按钮 | 本机态（赞/藏/关注） |
 | **lite embed** | `IS_LITE` | ✅ | ✅ | 不出现 | 不出现 | 不出现 |
@@ -263,8 +264,8 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 
 | 区块 | 视觉 | 可否点击 |
 |---|---|---|
-| **图** `.zone-media` | 封面占满，深底 | 可点（双击赞 / 打开） |
-| **自动总结** `.zone-read` | 浅底 `#eef2fb` + 上下浅线，字更小 | **只读**（解决 / 亮点 / 适合谁） |
+| **图** `.zone-media` | 封面压矮（16:5），深底 | 可点（双击赞 / 打开） |
+| **自动总结** `.zone-read` | 浅底 `#eef2fb` + 上下浅线；**「解决」是卡片上最大的一句正文** | **只读**（解决 / 亮点 / 适合谁） |
 | **互动 + GitHub** `.zone-hit.zone-engage` | 白底，主 CTA 用 accent | 可点：赞/藏、打开 GitHub |
 
 | 区块 | 要求 |
@@ -272,7 +273,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 发布者行 | 头像 + skill 名 + `@owner`；点进发布者主页；可快捷「关注」；无 `···` |
 | 封面 | GitHub OG；失败短文案兜底 |
 | 场景标签 | 一/二级；标签可点「关注该行业」（见 5.4）。手机上排在封面下面，不压住社交图里的仓库名 |
-| **解决** / **亮点** | 一句话 + 3–4 要点，落在只读总结区 |
+| **解决** / **亮点** | 一句话 + 3–4 要点，落在只读总结区。跟顶栏语种走：中文用中文译稿，英文用英文译稿。译稿在、亮点暂时没有时，仍显示这句译稿，不退回仓库原文。封面是 GitHub 社交图，图里的英文简介翻不了，所以图压矮，让「解决」成为阅读重心 |
 | 互动 | 赞、踩、收藏，与 CTA 同属可点区 |
 | 主 CTA | **打开 GitHub** |
 | **空结果兜底** | Feed 内无匹配时：跳转 GitHub；代码搜用 `path:**/SKILL.md {{关键词}}`（勿用已失效的 `filename:`）；仓库搜 `SKILL.md in:name,description,readme`；**不代装** |
@@ -292,7 +293,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 ### 5.5 lite 嵌入契约（skill-picker）
 
 - **有：** 意图搜、pills、信息流卡片、打开 GitHub、`?q=` 预填、lite 顶栏说明  
-- **运行时向主站要：** 发现流 `GET https://skillfeeder.cn/api/feed`、货架 `GET /api/packs/shelf`。安装包里的列表只是快照，下次打开用主站的新结果。推荐就是这份按意图筛过的发现流。  
+- **运行时向主站要：** 发现流 `GET https://skillfeeder.cn/api/feed`、货架 `GET /api/packs/shelf`。安装包里的列表只是快照，下次打开用主站的新结果。发现子页上的推荐仍是这份按意图筛过的发现流。装进本机的场景另走 skill-picker：`install-scene` 写入场景技能；对话里只拿最新一句在本机打分，分不够再请求 `GET /api/geo/skills?q=`。  
 - **仍在主站登录态：** 场景手册 `GET /api/packs/{id}/delivery`、订阅状态 `/auth/me`。会话 Cookie 不出 skillfeeder.cn，本机页不代读。  
 - **无：** 动态圆环、关注、发布、我的、Demo  
 - picker：`discover.py` → `~/.skill-picker/discover.html`；看板第三 tab iframe；空匹配 CTA 切入  
@@ -411,10 +412,10 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 |---|---|
 | `github.com/trending` | 热度爆发 |
 | `hellogithub` | Skills / AI 月刊稳定供给 |
-| `github-search` | SKILL.md / agent-skills 召回（建议 Token） |
+| `github-search` | SKILL.md / agent-skills 召回（建议 Token）。另留一条近 180 天新仓，`stars:>=20`（与 `min_stars` 对齐），按更新时间排序，探测配额里给新仓留位。再按星数分档各取一窗（`20–199`、`200–999`、`1000–2999`、`3000–7999`、`8000–19999`），加在榜首 Top 40 外面，不跟 10 万星仓抢名额。这一段若返回 403，等一分钟再试，不把空结果当成这一页没有仓 |
 | `catalog` | awesome 列表 / skills.sh 热榜映射 / 官方 skills 仓 |
-| `xiaohongshu` | 小红书近一周 skill 热议（媒讯助手 CSV 或 `xhs-crawl`） |
-| `corpus` / soft | 知识库补货线索卡 |
+| `xiaohongshu` | 小红书近一周 skill 热议（媒讯助手 CSV 或 `xhs-crawl`）。笔记里点名的仓优先于种子；探测后补齐星数，已知星数仍要 ≥20 |
+| `corpus` / soft | 知识库补货线索卡。另按上面同一组分档，每轮每档取一窗（默认 8 条），页码随 refresh 往后翻。`skill_path` 已是 `SKILL.md` 的直接进门禁；只记了目录的仓先展开再进门禁。上一轮已经在信息流里的卡片留着，新的一页往上加 |
 | `ugc` | 用户发布（API） |
 
 **门禁与排序（要点）**
@@ -455,6 +456,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 卡片短链 | `/p/{仓库名}` | 免登录 302 到 `/?card=` 编码后的 public_id；聊天里不要贴带 `::` 的长链 |
 | 站点配置 | `GET /api/site-config`（公开）、`GET/POST /api/op/settings` | 首页拉公开文案与 logo；webhook 不对外 |
 | 我的帖子 | `GET /api/posts/me` | 点「我发布的」始终出卡片预览，不切发现流、不重刷首页；审核中/拒绝带状态条 |
+| 支付记录 | `GET /api/pay/orders`；付款页 `GET /api/pay/orders/{out_trade_no}` | 登录后「我的」列出最近 50 笔。付款二维码开着时每 2 秒只核对这一笔。待支付表示微信还没确认成功 |
 | 反应 | `POST /api/posts/{id}/react` | like/save/bad |
 | 混排 Feed | `GET /api/feed` | **免登录**；只混已过审 UGC + 官方 `feed.json` |
 | Agent Surface | `GET /llms.txt` 等、`GET /api/geo/skills` | **免登录**；给模型读的目录与 FAQ。见 §6.3 |
@@ -480,8 +482,8 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 | `/about.md` `/faq.md` `/compare.md` | 引用 / How-to / X vs Y | 纯 Markdown，不依赖 JS |
 | `/about.html` `/faq.html` `/compare.html` | 搜索引擎 / 不会跑 JS 的爬虫 | 与对应 `.md` 同文事实，独立 HTML，不进 Feed JS |
 | `/skills.html` | 搜索引擎 / 用户 | 全部 Skill 总目录：按一级场景分组，每组前 6 条 + 链到场景页 |
-| `/scene/{scene}.html` | 搜索引擎 / 用户 | 一级场景聚合页。开头先点名该场景前 3 条（链到详情），再按二级场景分组。星标写成所在仓库的星标 |
-| `/s/{slug}.html` | 搜索引擎 / 用户 | 单条 Skill 详情：中文一句话、能做什么、适合谁、仓库星标、场景、「打开 GitHub」、同场景推荐 8 条。星标标明属于所在仓库。JSON-LD `SoftwareSourceCode` + `BreadcrumbList` |
+| `/scene/{scene}.html` | 搜索引擎 / 用户 | 一级场景聚合页。开头先点名该场景前 3 条（链到详情），再按二级场景分组、星标降序，链到每条详情。星标写成所在仓库的星标 |
+| `/s/{slug}.html` | 搜索引擎 / 用户 | 单条 Skill 详情：H1 用中文首句（整句超过 42 字则用技能名），正文先给一段只含已有字段的说明（仓库、星标、适合谁、场景、能做的事），标题不在半句处截断；其下仍有能做什么、原文简介、「打开 GitHub」、同场景推荐 8 条。星标标明属于所在仓库。JSON-LD `SoftwareSourceCode` + `BreadcrumbList` |
 | `/catalog.json` | 程序读取 | 字段白名单，与预览卡对齐 |
 | `/robots.txt` `/sitemap.xml` | 检索爬虫 | 放行 GPTBot / ClaudeBot / PerplexityBot；挡住 `/op` `/admin` `/auth`；robots 末行 `Sitemap: https://skillfeeder.cn/sitemap.xml` |
 
@@ -518,7 +520,10 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 - 首页卡片靠 JS 渲染，爬虫读不到条目；搜索流量由 `/s/` `/scene/` `/skills.html` 承接，全部服务端直出中文，不依赖 Feed JS
 - 只在 `publish-site --full`（主站）生成；Pages 预览壳不写，且每次发布先清空 `s/` `scene/` 再写，下架条目不留死页
 - slug：`owner-repo`，同仓多 skill 追加 skill 名；撞名时所有撞名条目统一追加 id 哈希 8 位，与条目顺序无关
-- 全部写进 `sitemap.xml`；首页 `<noscript>` 与说明页导航链到 `/skills.html`
+- sitemap 只收直接 200、canonical 指向自己的 HTML：首页、`/skills.html`、`/s/`、`/scene/`、about/faq/compare 的 `.html`、`/login`。`.md`、`llms.txt`、`catalog.json`、`openapi.json` 从 `llms.txt` 与 `robots.txt` 进入，不进 sitemap，避免和同文 HTML 抢收录。`/publish` 未登录会 302，不进 sitemap。登录页仍可收录，承接「skill 怎么推广」
+- 关于 / 常见问题 / 对比的 H1 用中文，与 `<title>` 同语种
+- 生产 Nginx（`scripts/nginx-skillfeeder.conf`）开启 gzip，并下发 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Strict-Transport-Security`。首页仍内嵌信息流，压缩解决的是传输体积；把目录拆出 HTML 是下一步
+- 全部 HTML 落地页写进 `sitemap.xml`；首页 `<noscript>` 与说明页导航链到 `/skills.html`
 - 所有静态 HTML（含 about/faq/compare）带轻量 `session_start` 埋点，复用首页的 `sf_device_id` / `sf_session_id` / `sf_device_token`，搜索用户落地即按 referrer 归因，再点进首页也算同一会话
 - 部署：`pages.yml` 与 `deploy_to_aliyun.ps1` 整目录替换 `/var/www/html/s` `/var/www/html/scene`；本地 `skillfeed.py api` 不动态生成这些页
 
@@ -684,14 +689,36 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-10-28 | 意图搜索加近义簇：搜「生图/画图/出图」可召回视觉海报、canvas-design 等解法卡，不只认字面；前后端与 GEO API 共用 `intent_expand.py` | §5.1、`intent_expand.py`、`feed_dashboard.py`、`geo.py`、`scene.py` |
+| 2026-10-28 | 搜索改为「关键词 → 搜 SKILL.md 全文（多语种）+ 推断场景 → 推荐」：新统一引擎 `skill_search.py` 接管 `/api/feed?q=` 与 `/api/geo/skills`；SKILL.md 全文落盘 `<data>/md/`（`SKILLFEED_MD_DIR` 可覆盖，不进 feed.json），`skillfeed.py md-index [--limit N] [--force]` 回填、refresh 后自动增补 `md_index_per_refresh`（默认 150）条；前端联网搜远端全量、卡片显示匹配词；服务端启动后台预热全文缓存。上线须把 `<data>/md` 同步到 `/opt/skill-feed` 数据目录 | §5.1、`skill_search.py`、`md_store.py`、`ranking.py`、`geo.py`、`server/app.py`、`server/config.py`、`skillfeed.py`、`feed_dashboard.py` |
+| 2026-10-27 | 分档补抓不再整份替换信息流：上一轮已经在流里的卡片留着，新的一页往上加 | §6.1、`feed_pack.py`、`skillfeed.py` |
+| 2026-10-27 | 分档搜索若撞上 GitHub 限流，等一分钟再试，避免这一页名额变成 0 | §6.1、`github_search.py` |
+| 2026-10-26 | 首页「联系客服」直达 Skill Man 关注卡片。`weixin.qq.com/r/mp/` 短链在浏览器里会跳到微信下载页，不再使用 | §3.1、§5.1、`feed_dashboard.py` |
+| 2026-10-26 | 热门 skill 漏收：GitHub 搜索和知识库按星数分档轮换，不再只留榜首；目录占位展开成具体 SKILL.md | §6.1、`github_search.py`、`corpus.py`、`skillfeed.py`、`config_defaults.json` |
 | 2026-10-26 | 首访蒙版改成先看「解决」、再去 GitHub、再下滑，每步 2.5 秒自动跳。左上角口号下面加一句「把GitHub做成好刷的社交媒体，搜索信息更简单！」 | §5.1、§7.1、`feed_dashboard.py` |
 | 2026-10-22 | 补埋点：首页卡片曝光与停留时长上报（60% 可见计时，带位置）；收藏单独报 `save`；点击 / 赞 / 藏 / 曝光统一用卡片 id，点击率能对上；场景包浏览 / 打开 / 点购买与留邮箱进事件白名单；加契约测试防止前端报、服务端丢 | §6.2、`feed_dashboard.py`、`server/ranking_service.py`、`templates/admin.html` |
-| 2026-10-20 | 恢复关注入口 D：没关注任何人/行业时，顶部动态圆环仍显示「+ Builder」「+ 行业」两个引导环（9-16 首访引导改版把整条圆环藏掉了，冷启动用户找不到关注入口）；有关注后再加「关注」总环与各 Builder/行业环 | §5.4.2、`feed_dashboard.py` |
 | 2026-10-20 | 手机上场景标签改到封面下方。左上角标签压在 GitHub 社交图的仓库名上，窄屏看不清封面在讲什么 | §5.2、`feed_dashboard.py` |
+| 2026-10-20 | 五个场景的知识库补上笔记里的做法：封面怎么出、带货稿怎么写、长文怎么接资料、Reddit 四步、短剧从分镜到成片。购买后看到的是步骤，不只是技能名 | §3.1、`docs/packs/kb/` |
+| 2026-10-20 | 关键词采集里对得上工作流的技能补进内容电商、资讯、营销广告、平面设计、短剧。秘鲁旅行和编程清单不进货架、跨境。短剧仍是骨架 | §3.1、飞书「包-*」、`docs/packs/kb/`、`docs/packs/delivery/` |
+| 2026-10-20 | 小红书笔记点名的仓优先探测，并补齐 GitHub 星数后按 20 星门禁放行；GitHub 搜索另召回近 180 天、≥20 星的新 skill，探测配额给新仓留位 | §6.1、`github_search.py`、`xiaohongshu.py`、`skillfeed.py`、`config_defaults.json` |
+| 2026-10-20 | 恢复关注入口 D：没关注任何人/行业时，顶部动态圆环仍显示「+ Builder」「+ 行业」两个引导环（9-16 首访引导改版把整条圆环藏掉了，冷启动用户找不到关注入口）；有关注后再加「关注」总环与各 Builder/行业环 | §5.4.2、`feed_dashboard.py` |
 | 2026-10-20 | 关注公众号改成一键直达：微信里点一下＝微信授权认人 + 跳 Skill Man 关注页（`/auth/wechat?next=/auth/follow`）；未开微信登录时直接跳关注页；关注链接进 `/op` 页面配置（`oa_follow_url`，仅微信域名）；修贴底提示按钮点击无响应 | §6.2、`feed_dashboard.py`、`server/app.py`、`server/db.py`、`templates/admin.html` |
 | 2026-10-20 | 游客召回：信息流第 10 张卡后（回访第 5 张）插关注公众号卡，首次赞/藏贴底提示，二维码弹层；微信内置浏览器不给 GitHub 登录；每次访问一种、7/30 天冷却；公众号名与二维码进 `/op` 页面配置；`guest_nudge` `bind_nudge` `recall_strip` 进事件白名单 | §6.2、`feed_dashboard.py`、`server/db.py`、`server/app.py`、`server/ranking_service.py`、`templates/admin.html` |
 | 2026-10-20 | 运营后台新增「付费」tab：收入 KPI（累计 / 今日 / 7 天 / 30 天）、付费用户、有效会员、待支付；按商品与按日汇总；订单流水可筛选、导出 CSV；测试单单列不计收入 | §6.2、`server/db.py`、`server/app.py`、`templates/admin.html` |
+| 2026-10-15 | 卡片「解决」跟所选语种走：有译稿就用译稿，缺亮点也不退回仓库原文；接口读取时把缓存里对得上的译稿贴回缺字段的条目。封面改为 16:5，「解决」改为卡片上最大的一句正文 | §5.2、`feed_dashboard.py`、`i18n.py`、`server/app.py` |
+| 2026-10-15 | full 全页「联系客服」直接打开 Skill Man 公众号，不展示公众号二维码；开通页改为「打开公众号」。lite 不显示 | §3.1、§5.1、`feed_dashboard.py` |
+| 2026-10-15 | 配了 API 的主站不再把全库内联进页面脚本。微信里打不开菜单链接时，几 MB 的脚本跑不完，页面会停在空壳；首屏改由接口补齐 | §5.1、`feed_dashboard.py` |
+| 2026-10-15 | 八个场景的知识库和技能排序按真实工作流重排：前一步的结果接到后一步 | §3.1、`docs/packs/kb/`、`docs/packs/delivery/` |
+| 2026-10-15 | 知识库正文去掉「整理自」出处，用户看到的是文档本身 | §3.1、`docs/packs/kb/` |
+| 2026-10-15 | 知识库里还缺名单的几条，先按笔记里已有的话写成介绍：独立站获客、跨境数据、自动化班底、复刻带货视频 | §3.1、`docs/packs/kb/` |
+| 2026-10-15 | 场景包知识库改为整理稿：笔记做法和口播文稿写进文档，不再把小红书链接交给用户 | §3.1、`server/pack_delivery.py`、`feed_dashboard.py`、`docs/packs/kb/` |
+| 2026-10-15 | 付款二维码开着时每 2 秒只向微信核对这一笔。通知没到但微信已成功的，当场开通 | §3.1、§6.2、`server/pay.py`、`server/app.py`、`feed_dashboard.py` |
+| 2026-10-15 | 打开支付记录时向微信核对待支付订单。通知没送到但微信已成功的单，当场开通并占席 | §3.1、`server/wechat_pay.py`、`server/pay.py`、`server/app.py` |
+| 2026-10-15 | 「我的」列出支付记录：商品、金额、已支付或待支付、时间、单号、占用场景。读不到时不假装没有订单 | §5.1、`feed_dashboard.py`、`server/pay.py`、`server/app.py` |
+| 2026-10-15 | 场景包一次装进本机：安装包增加 scene.json；skill-picker `install-scene` 写入场景技能并记下触发词。对话只拿最新一句在本机打分，命中场景优先推荐一个；分不够再请求 `/api/geo/skills`。订阅页两句亮点改成装上之后按你说的任务推荐 | §3.1、§5.1、§5.5、`server/pack_delivery.py`、`feed_dashboard.py`、skill-picker `scene_pack.py` |
 | 2026-10-15 | 引用文案改为可摘走的事实：主站 llms/about/faq 开头写日期、条数和场景数；周报 / 纪要 / PPT / 去 AI 味列出目录里真实条目并链到 `/s/`；`llms-full.txt` 的链接改到本站详情，GitHub 只作安装地址；列表和详情的星标标明是所在仓库的 | §6.3、`geo.py` |
+| 2026-10-14 | 开通后自动下载该场景安装包；同一页先引导关注公众号，点过「我已关注」再弹出小助手微信二维码 | §3.1、`server/pack_delivery.py`、`server/app.py`、`server/config.py`、`feed_dashboard.py` |
+| 2026-10-13 | 技能详情 H1 改用中文首句，正文先给一段只含已有字段的说明，标题不再在半句处截断；关于 / 常见问题 / 对比的 H1 改为中文；Nginx 开启 gzip 并补安全响应头 | §6.3、`geo.py`、`scripts/nginx-skillfeeder.conf` |
 | 2026-10-13 | 百度每日推送：定时 workflow 按每日额度推 sitemap 页面，优先首页/说明页/场景页，已推记录跨天保存，失败与额度满都写进 run summary | §6.3、`scripts/baidu_push.py`、`.github/workflows/baidu-push.yml` |
 | 2026-10-13 | 站长平台验证 meta 可配置：`config_defaults.json` 的 `site_verification` 写进首页 `<head>`；首个接入百度搜索资源平台 HTML 标签验证 | §6.3、`geo.py`、`config_defaults.json` |
 | 2026-10-13 | 首页减重：肥嘚内联由 PNG 改同尺寸 WebP（约 239KB → 23KB），base64 从 4 份减到 2 份（顶栏 + 页脚，空态克隆顶栏同图）；内联 FEED 不再带前端不读的排序解释 / 调试字段（`*_why`、`rank_debug`、`global_score`、`first_seen_at` 等）与 `gates.details`，`feed.json` 原样。按 528 条信息流实测 gzip 约 1.64MB → 0.67MB | §5.1、§6.3、`feed_dashboard.py`、`scripts/make_brand_icons.py`、`docs/brand/assets/logo-feide-transparent.webp`、`docs/brand/feide-ip-guide.md` |

@@ -177,6 +177,51 @@ def _http_post(url: str, body: str, headers: dict[str, str]) -> tuple[int, str]:
     return resp.status_code, resp.text
 
 
+def _http_get(url: str, headers: dict[str, str]) -> tuple[int, str]:
+    with httpx.Client(timeout=_TIMEOUT) as client:
+        resp = client.get(url, headers=headers)
+    return resp.status_code, resp.text
+
+
+def query_by_out_trade_no(
+    settings: Settings,
+    out_trade_no: str,
+    transport: Optional[Transport] = None,
+) -> dict[str, Any]:
+    """按商户单号问微信这笔到底付了没有。回调没到时用它核对。"""
+    if missing_pay_fields(settings):
+        raise PayError(503, "微信支付还没开通")
+    trade = (out_trade_no or "").strip()
+    if not trade:
+        raise PayError(400, "缺少 out_trade_no")
+    mchid = settings.wechat_pay_mchid.strip()
+    path = f"/v3/pay/transactions/out-trade-no/{trade}?mchid={mchid}"
+    headers = {
+        "Authorization": authorization(settings, method="GET", path=path, body=""),
+        "Accept": "application/json",
+        "User-Agent": "skill-feed",
+    }
+    url = "https://api.mch.weixin.qq.com" + path
+    if transport is None:
+        status, text = _http_get(url, headers)
+    else:
+        status, text = transport("GET", url, "", headers)
+    try:
+        data = json.loads(text or "{}")
+    except json.JSONDecodeError:
+        data = {}
+    if status != 200 or not isinstance(data, dict):
+        raise PayError(502, "微信支付查询没有成功")
+    amount = data.get("amount") if isinstance(data.get("amount"), dict) else {}
+    total = amount.get("total")
+    return {
+        "trade_state": str(data.get("trade_state") or ""),
+        "transaction_id": str(data.get("transaction_id") or ""),
+        "out_trade_no": str(data.get("out_trade_no") or trade),
+        "amount_fen": int(total) if total is not None else None,
+    }
+
+
 def native_prepay(
     settings: Settings,
     *,
