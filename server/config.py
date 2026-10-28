@@ -41,6 +41,16 @@ def _flag(name: str, default: str = "0") -> bool:
     return _env(name, default).lower() in ("1", "true", "yes", "on")
 
 
+def _https_url(name: str) -> str:
+    """只接受 https 地址。空、http、夹空白或尖括号的值一律当成没配。"""
+    raw = _env(name)
+    if not raw.startswith("https://") or len(raw) > 500:
+        return ""
+    if any(ch in raw for ch in " \t\r\n\"'<>"):
+        return ""
+    return raw
+
+
 def _int_env(name: str, default: int) -> int:
     try:
         return int(_env(name, str(default)))
@@ -102,6 +112,10 @@ class Settings:
         # snsapi_userinfo 要用户点一次授权、能拿昵称头像；snsapi_base 静默只给 openid。
         # 默认要昵称头像，因为「我的账户」要显示人。
         self.wechat_scope = _env("SKILLFEED_WECHAT_SCOPE", "snsapi_userinfo")
+        # 购后加官方微信：公众号名给关注引导，两张二维码只收 https 地址。
+        self.oa_name = (_env("SKILLFEED_OA_NAME", "Skill Man") or "Skill Man")[:32]
+        self.oa_qr_url = _https_url("SKILLFEED_OA_QR_URL")
+        self.assistant_qr_url = _https_url("SKILLFEED_ASSISTANT_QR_URL")
         self.oauth_state_ttl_s = _int_env("SKILLFEED_OAUTH_STATE_TTL_S", 600)
 
         # —— 短信验证码兜底 ——
@@ -141,6 +155,9 @@ class Settings:
             Path(feed_file).expanduser() if feed_file
             else (refresh_feed if refresh_feed.is_file() else site_feed)
         )
+        # SKILL.md 全文（搜索用正文索引），由 `skillfeed.py md-index` 写入
+        md_dir = _env("SKILLFEED_MD_DIR")
+        self.md_dir = Path(md_dir).expanduser() if md_dir else (data_home() / "md")
         db = _env("SKILLFEED_DB")
         self.db_path = Path(db).expanduser() if db else (data_home() / "server.db")
         backup = _env("SKILLFEED_BACKUP_DIR")
@@ -256,6 +273,14 @@ class Settings:
     @property
     def wechat_configured(self) -> bool:
         return bool(self.wechat_app_id and self.wechat_app_secret)
+
+    def aftercare_public(self) -> dict[str, str]:
+        """购后引导。只有公众号名和两张 https 二维码，没有密钥。"""
+        return {
+            "oa_name": self.oa_name,
+            "oa_qr_url": self.oa_qr_url,
+            "assistant_qr_url": self.assistant_qr_url,
+        }
 
     @property
     def wechat_pay_configured(self) -> bool:

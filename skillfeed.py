@@ -16,6 +16,7 @@ skill-picker 继续只做 100% 本地扫描/匹配。
   python skillfeed.py api [--host HOST] [--port N]  # 云端 API：登录 + UGC
   python skillfeed.py backup-db  # 备份用户库 SQLite（户口/帖子账本）
   python skillfeed.py serve [--port N]
+  python skillfeed.py md-index [--limit N] [--force]  # SKILL.md 全文落盘，搜索按正文检索
   python skillfeed.py check
   python skillfeed.py feedback
 
@@ -50,6 +51,7 @@ import geo
 import github_search
 import hellogithub
 import i18n
+import md_store
 import rank
 import scene
 import skill_detect
@@ -237,13 +239,37 @@ def _probe_candidates(
     return enriched, probed
 
 
+def _attach_xhs_stars(items: list[dict], ua: str, token: str, *, min_stars: int) -> None:
+    """小红书候选进来时星数是空的。查实后再走 20 星门禁，空值仍按豁免。"""
+    filled = 0
+    below = 0
+    for it in items:
+        if it.get("source") != "xiaohongshu" or it.get("stars") is not None:
+            continue
+        stars = github_search.fetch_stargazers(it.get("full_name") or "", ua, token)
+        if stars is None:
+            continue
+        it["stars"] = stars
+        filled += 1
+        if stars < min_stars:
+            below += 1
+    if filled:
+        print(f"[refresh] xiaohongshu stars filled: {filled} below {min_stars}: {below}")
+
+
 def _pick_probe_rows(
     rows: list[dict],
     *,
     limit: int,
     force_names: Optional[set[str]] = None,
+    sort_by_stars: bool = True,
+    reserve_lane: str = "",
+    reserve_limit: int = 0,
 ) -> list[dict]:
-    """强制探测名单优先入队，其余按星数降序补齐。"""
+    """强制探测名单优先入队，其余按星数降序补齐。
+
+    reserve_lane 用来给近窗新仓留探测名额，避免 20 星新 skill 被高星仓挤出配额。
+    """
     force = set(force_names or ())
     pinned: list[dict] = []
     rest: list[dict] = []
@@ -257,7 +283,12 @@ def _pick_probe_rows(
             pinned.append(r)
         else:
             rest.append(r)
-    rest.sort(key=lambda x: int(x.get("stars") or 0), reverse=True)
+    if sort_by_stars:
+        rest.sort(key=lambda x: int(x.get("stars") or 0), reverse=True)
+    if reserve_lane and reserve_limit > 0:
+        reserved = [r for r in rest if r.get("search_lane") == reserve_lane]
+        others = [r for r in rest if r.get("search_lane") != reserve_lane]
+        rest = reserved[:reserve_limit] + others
     # 强制仓不占「普通配额」之外被截断：先全量 pinned，再补 rest
     out = pinned + rest
     # 若总量过大，至少保住 pinned；rest 用 limit 收束
@@ -378,9 +409,10 @@ def cmd_refresh(argv: list[str]) -> int:
     hg_rows = hellogithub.skill_candidates(hg_repo, max_issues=hg_max)
     print(f"[refresh] hellogithub skill/ai candidates: {len(hg_rows)}")
 
-    # 3) GitHub Search
+    # 3) GitHub Search。分档页码本轮只翻一次，搜索和知识库共用。
     search_rows: list[dict] = []
     search_meta: dict = {}
+    spread_page = corpus.next_spread_page(DATA_DIR)
     if cfg.get("search_enabled", True):
         token = _resolve_github_token(cfg)
         try:
@@ -392,13 +424,25 @@ def cmd_refresh(argv: list[str]) -> int:
                 force=force,
                 per_page=int(cfg.get("search_per_page", 25)),
                 max_repos=int(cfg.get("search_max_repos", 40)),
+                recent_min_stars=min_stars,
+                recent_days=int(cfg.get("search_recent_days", 180)),
+                recent_max=int(cfg.get("search_recent_max", 20)),
+                band_max=int(cfg.get("search_band_max", 30)),
+                band_per_slice=int(cfg.get("search_band_per_slice", 6)),
+                band_page=spread_page,
             )
         except Exception as e:  # noqa: BLE001
             search_meta = {"warn": str(e)}
             print(f"[refresh] github-search WARN: {e}")
         if search_meta.get("warn"):
             print(f"[WARN] github-search: {search_meta['warn']}")
-        print(f"[refresh] github-search candidates: {len(search_rows)} (cache={search_meta.get('from_cache')})")
+        recent_n = sum(1 for r in search_rows if r.get("search_lane") == "recent")
+        band_n = sum(1 for r in search_rows if r.get("search_lane") == "band")
+        print(
+            f"[refresh] github-search candidates: {len(search_rows)} "
+            f"recent>={min_stars}★:{recent_n} band:{band_n} "
+            f"(cache={search_meta.get('from_cache')})"
+        )
     else:
         print("[refresh] github-search disabled")
 
@@ -465,11 +509,19 @@ def cmd_refresh(argv: list[str]) -> int:
     )
     expand_limit = int(cfg.get("monorepo_expand_limit", 6))
 
-    # Search 探测：强制设计仓 + 按星数补齐
-    max_search_probe = int(cfg.get("search_probe_limit", 25))
-    search_probe = _pick_probe_rows(search_rows, limit=max_search_probe, force_names=force_probe)
+    # Search 探测：强制设计仓 + 按星数补齐。分档候选单独探测，不跟榜首抢名额。
+    max_search_probe = int(cfg.get("search_probe_limit", 36))
+    band_rows = [r for r in search_rows if r.get("search_lane") == "band"]
+    head_rows = [r for r in search_rows if r.get("search_lane") != "band"]
+    search_probe = _pick_probe_rows(
+        head_rows,
+        limit=max_search_probe,
+        force_names=force_probe,
+        reserve_lane="recent",
+        reserve_limit=min(12, max_search_probe),
+    )
     s_enriched, s_probed = _probe_candidates(
-        search_probe, ua, always_if_skills_section=True, expand_limit=expand_limit,
+        search_probe + band_rows, ua, always_if_skills_section=True, expand_limit=expand_limit,
         token=probe_token,
     )
     enriched.extend(s_enriched)
@@ -484,14 +536,60 @@ def cmd_refresh(argv: list[str]) -> int:
     enriched.extend(c_enriched)
     probed += c_probed
 
-    max_xhs_probe = int(cfg.get("xhs_probe_limit", 20))
-    xhs_probe = _pick_probe_rows(xhs_rows, limit=max_xhs_probe, force_names=force_probe)
+    max_xhs_probe = int(cfg.get("xhs_probe_limit", 30))
+    # 小红书候选星数还没查，按笔记顺序探测，不按星数把新仓排到队尾。
+    xhs_probe = _pick_probe_rows(
+        xhs_rows, limit=max_xhs_probe, force_names=force_probe, sort_by_stars=False,
+    )
     x_enriched, x_probed = _probe_candidates(
         xhs_probe, ua, always_if_skills_section=True, expand_limit=expand_limit,
         token=probe_token,
     )
     enriched.extend(x_enriched)
     probed += x_probed
+
+    # 知识库里已经见过、但星数在榜首窗口外面的 skill。每档翻一页，目录占位再探测展开。
+    per_band = int(cfg.get("corpus_band_per_slice", 8))
+    spread = corpus.select_star_spread(
+        corpus.load_corpus_items(DATA_DIR, limit=20000, skill_priority=True),
+        per_band=per_band,
+        page=spread_page,
+    )
+    already = {
+        (r.get("full_name") or "").strip()
+        for r in (
+            list(trending_rows) + list(hg_rows) + list(search_probe)
+            + list(band_rows) + list(catalog_probe) + list(xhs_probe)
+        )
+        if r.get("full_name")
+    }
+    corpus_direct: list[dict] = []
+    corpus_probe: list[dict] = []
+    probe_cap = int(cfg.get("corpus_band_probe", 80))
+    for row in spread:
+        fn = (row.get("full_name") or "").strip()
+        if not fn or fn in already:
+            continue
+        already.add(fn)
+        path = str(row.get("skill_path") or "")
+        desc = (row.get("description") or "").strip()
+        if path.lower().endswith("skill.md") and len(desc) >= 10:
+            corpus_direct.append(row)
+            continue
+        if len(corpus_probe) >= probe_cap:
+            continue
+        corpus_probe.append(row)
+    enriched.extend(corpus_direct)
+    b_enriched, b_probed = _probe_candidates(
+        corpus_probe, ua, always_if_skills_section=True, expand_limit=expand_limit,
+        token=probe_token,
+    )
+    enriched.extend(b_enriched)
+    probed += b_probed
+    print(
+        f"[refresh] star-spread page={spread_page} "
+        f"direct={len(corpus_direct)} probe={len(corpus_probe)} hit={len(b_enriched)}"
+    )
 
     # 去重：同一仓可有多条 skill（按 id=full_name::skill_path）；同源择优
     source_rank = {
@@ -525,6 +623,7 @@ def cmd_refresh(argv: list[str]) -> int:
             by_key[key] = merged
     enriched = list(by_key.values())
     print(f"[refresh] skill-shaped unique: {len(enriched)}")
+    _attach_xhs_stars(enriched, ua, probe_token, min_stars=min_stars)
 
     passed, gate_summary = gates.run_gates(
         enriched,
@@ -592,12 +691,30 @@ def cmd_refresh(argv: list[str]) -> int:
         soft_limit=int(cfg.get("soft_skill_limit", 40)),
         skill_pool=skill_pool,
     )
+    previous_items: list[dict] = []
+    if FEED_JSON.exists():
+        try:
+            previous_items = json.loads(FEED_JSON.read_text(encoding="utf-8")).get("items") or []
+        except (json.JSONDecodeError, OSError):
+            previous_items = []
+    merged, carried = feed_pack.carry_forward(feed.get("items") or [], previous_items)
+    feed["items"] = merged
+    feed.setdefault("funnel", {})["carried_forward"] = carried
+    feed["funnel"]["stream_items"] = len(merged)
+    if carried:
+        print(f"[refresh] carried forward: {carried}")
     feed["generated_at"] = datetime.now(timezone.utc).isoformat()
     run_i18n(feed, cfg)
     retag_scenes(feed)
     FEED_JSON.write_text(json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     write_local_feed_pages(feed)
     self_copy()
+    md_stats = run_md_index(
+        feed.get("items") or [], cfg, limit=int(cfg.get("md_index_per_refresh", 150)),
+    )
+    print(f"[refresh] md-index: {md_stats}")
+    if md_stats["fetched"] == 0 and md_stats["failed"] > 0:
+        print("[refresh] WARN SKILL.md 全文一条没补上，搜索仍只用预览")
 
     print(f"[refresh] stream items: {len(feed.get('items') or [])} (passed={len(passed)} + soft)")
     print(f"[refresh] rejected: {gate_summary.get('rejected')}")
@@ -945,6 +1062,44 @@ def cmd_feedback(_: list[str]) -> int:
     return 0
 
 
+def run_md_index(items: list[dict], cfg: dict, *, limit: int, force: bool = False) -> dict:
+    """给信息流条目补抓 SKILL.md 全文，搜索按正文检索。"""
+    ua = cfg.get("user_agent", "skill-feed/0.1")
+    token = _resolve_github_token(cfg)
+
+    def fetch(owner: str, repo: str, path: str) -> Optional[str]:
+        return skill_detect.fetch_raw_skill(owner, repo, path, ua, token)
+
+    return md_store.backfill(
+        items, md_store.md_root(DATA_DIR), fetch, limit=limit, force=force,
+    )
+
+
+def cmd_md_index(argv: list[str]) -> int:
+    """md-index [--limit N] [--force]：SKILL.md 全文落盘到 <data>/md/。"""
+    refresh_paths()
+    cfg = load_config()
+    limit = 2000
+    force = "--force" in argv
+    if "--limit" in argv:
+        i = argv.index("--limit")
+        if i + 1 < len(argv):
+            limit = int(argv[i + 1])
+    if not FEED_JSON.exists():
+        print("[md-index] 没有 feed.json，先跑 refresh", file=sys.stderr)
+        return 2
+    feed = json.loads(FEED_JSON.read_text(encoding="utf-8"))
+    items = list(feed.get("items") or []) + list(feed.get("corpus") or [])
+    stats = run_md_index(items, cfg, limit=limit, force=force)
+    print(f"[md-index] {stats} → {md_store.md_root(DATA_DIR)}")
+    if stats["fetched"] == 0 and stats["failed"] > 0:
+        print("[md-index] FAIL 一条都没抓到（网络 / 限流 / 路径失效），搜索仍只用 700 字预览", file=sys.stderr)
+        return 1
+    if stats["fetched"] == 0:
+        print("[md-index] NO_NEW 没有新的全文要补")
+    return 0
+
+
 class FeedHandler(BaseHTTPRequestHandler):
     cfg: dict = {}
 
@@ -1208,6 +1363,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(rest)
     if cmd == "feedback":
         return cmd_feedback(rest)
+    if cmd == "md-index":
+        return cmd_md_index(rest)
     if cmd == "publish-site":
         return cmd_publish_site(rest)
     if cmd == "publish-geo":

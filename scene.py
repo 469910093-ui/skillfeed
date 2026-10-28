@@ -70,6 +70,9 @@ SCENES_L2: dict[str, list[tuple[str, str, tuple[str, ...]]]] = {
         ("visual", "视觉海报", (
             "海报", "配色", "视觉", "品牌", "canvas-design", "brand-guidelines",
             "theme-factory", "taste", "taste-skill",
+            # 口语「生图/出图/画图」与 Feed 意图扩展同源；裸 image 不收（误伤面太大）
+            "生图", "出图", "画图", "绘图", "配图", "生成图片", "文生图",
+            "text-to-image", "image-gen", "imagegen", "illustration",
         )),
         # 一级 RULES 早就认动画方向（动画/animation/motion design/remotion/动效），
         # 但二级没有落点，remotion 系 7 条 + hyperframes 系 + view-transitions
@@ -307,6 +310,8 @@ RULES: list[tuple[str, tuple[str, ...]]] = [
         "交互设计", "视觉设计", "design system", "界面",
         "frontend-design", "web-design", "shadcn", "prototype", "wireframe",
         "taste-skill", "hallmark",
+        "生图", "出图", "画图", "绘图", "配图", "生成图片", "文生图",
+        "text-to-image", "image-gen", "imagegen", "illustration",
         "动画", "animation", "motion design", "framer motion", "动效",
         # 和二级 motion 桶保持一致：只在二级认得的框架名，一级要是不认，
         # 那些只靠框架名说明自己的 skill 连 design 这一级都进不来，

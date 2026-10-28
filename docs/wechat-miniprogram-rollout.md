@@ -10,7 +10,7 @@
 | 公众号 | **服务号，已认证** |
 | 域名 | `skillfeeder.cn`，解析已加 |
 | 服务器 | 阿里云轻量 · 华东 2（上海）· Ubuntu · 当时实例名 `Ubuntu-aetx` |
-| 小程序 | 下一步：用已认证服务号**复用资质**注册，不要走个人主体 |
+| 小程序 | 账号已存在：`microappwx@skillfeeder.cn`。不再新注册。工程在 `miniprogram/`，一页 `web-view` 打开 `https://skillfeeder.cn/` |
 | 试用期登录 | `SKILLFEED_REQUIRE_LOGIN=0`，信息流先开门 |
 
 ## 第 2 步（今天你做）：服务号网页授权域名
@@ -76,6 +76,21 @@ echo "no nginx/caddy"
 - `.env`：`SKILLFEED_PUBLIC_URL=https://skillfeeder.cn` + 服务号 AppID/Secret
 - 先 `REQUIRE_LOGIN=0`，微信内打开 `/login` 走通一次授权再考虑关门
 - 小程序通过后再：业务域名填 `skillfeeder.cn`，一个页面 `<web-view src="https://skillfeeder.cn/">`
+
+## 部署（2026-10-21 重来）
+
+不新注册，不重写页面。用已有小程序 `microappwx@skillfeeder.cn`。
+
+1. 扫码登录这个小程序（公众平台登录页选小程序账号，不要走服务号里的快速注册）。
+2. 开发管理里复制 AppID，写进 `miniprogram/project.config.json` 的 `appid`。
+3. 开发设置 → 业务域名填 `skillfeeder.cn`。下载的校验文件放进 `site-root/`，随 `publish-site` 打到网站根目录，手机能打开 `https://skillfeeder.cn/<文件名>.txt` 后再点确认。
+4. 安装微信开发者工具，打开 `miniprogram/`，上传后提交审核。本机当前没有开发者工具，上传要等工具装好并扫码。
+
+页面只有：
+
+```xml
+<web-view src="https://skillfeeder.cn/"></web-view>
+```
 
 ## 现在先不做什么
 

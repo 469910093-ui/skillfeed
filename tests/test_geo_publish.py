@@ -215,14 +215,35 @@ class TestSeoPages(unittest.TestCase):
         self.assertEqual(forward, backward)
         self.assertNotEqual(forward["a"], forward["b"])
 
+    def test_long_one_liner_keeps_a_whole_sentence_in_the_title(self):
+        item = {
+            "name": "stock_analyzer",
+            "full_name": "ZhuLinsen/daily_stock_analysis",
+            "url": "https://github.com/ZhuLinsen/daily_stock_analysis",
+            "one_liner_zh": "分析股票和市场。当用户想要分析单个或多个股票，或进行市场复盘时调用。",
+            "stars": 1200,
+            "scene_label": "业务垂直",
+        }
+        html = geo.render_skill_page("stock", item, [])
+        title = re.search(r"<title>(.*?)</title>", html).group(1)
+        self.assertEqual(title, "stock_analyzer：分析股票和市场｜SkillFeeder")
+        self.assertIn("<h1>分析股票和市场。</h1>", html)
+        self.assertIn("打开 GitHub 自行安装。", html)
+        self.assertNotIn("市场复…", html)
+
     def test_full_site_writes_detail_scene_and_index(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
             geo.write_geo_site(out, ZH_FEED, full=True)
             detail = (out / "s" / "anthropics-skills-internal-comms.html").read_text(encoding="utf-8")
             self.assertTrue(detail.startswith("<!DOCTYPE html>"))
-            self.assertIn("<h1>internal-comms</h1>", detail)
+            self.assertIn("<h1>按公司格式写周报、状态更新和内部通讯。</h1>", detail)
+            self.assertIn('class="skill-name">internal-comms</p>', detail)
+            self.assertIn('class="answer"', detail)
+            self.assertIn("来自 GitHub 仓库 anthropics/skills", detail)
             self.assertIn("按公司格式写周报", detail)
+            title = re.search(r"<title>(.*?)</title>", detail).group(1)
+            self.assertNotIn("…", title)
             self.assertIn("需要定期汇报的职场人", detail)
             self.assertIn("打开 GitHub", detail)
             self.assertIn("skills/internal-comms/SKILL.md", detail)
@@ -252,6 +273,9 @@ class TestSeoPages(unittest.TestCase):
             self.assertIn("https://skillfeeder.cn/scene/content.html", sitemap)
 
             about = (out / "about.html").read_text(encoding="utf-8")
+            self.assertIn("<h1>关于 SkillFeeder</h1>", about)
+            self.assertIn("<h1>SkillFeeder 常见问题</h1>", (out / "faq.html").read_text(encoding="utf-8"))
+            self.assertIn("<h1>SkillFeeder 对比</h1>", (out / "compare.html").read_text(encoding="utf-8"))
             self.assertIn("/skills.html", about)
             self.assertIn("session_start", about)
 

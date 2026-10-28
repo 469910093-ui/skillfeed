@@ -21,6 +21,7 @@ import re
 from pathlib import Path
 
 import geo
+import intent_expand
 import scene
 
 
@@ -42,6 +43,43 @@ _SCRIPT_UNSAFE = (
     ("\u2028", "\\u2028"),
     ("\u2029", "\\u2029"),
 )
+
+
+# 配了 API 的公开页会在打开后再拉 /api/feed。把全库内联进脚本后，
+# 微信内置浏览器经常跑不完这几 MB，页面就停在顶栏和底栏，中间是空的。
+_INLINE_ITEM_CAP = 24
+_INLINE_ITEM_KEYS = (
+    "id", "full_name", "name", "description", "url", "source", "kind",
+    "scene", "scene_label", "owner", "cover_url", "skill_url", "skill_path",
+    "one_liner", "one_liner_zh", "one_liner_en",
+    "highlights", "highlights_zh", "highlights_en",
+    "who_for_zh", "who_for_en",
+    "problem", "stars", "from_corpus", "soft",
+)
+
+
+def _slim_feed_for_inline(feed: dict) -> dict:
+    """有 api_base 时内联只留首屏。没有 API 的本机页仍内联全库。
+
+    两种页面都先丢掉前端不读的排序解释字段。
+    """
+    feed = _slim_for_inline(feed)
+    ui = feed.get("ui") or {}
+    if not str(ui.get("api_base") or "").strip():
+        return feed
+    slim = dict(feed)
+    items = []
+    for it in (feed.get("items") or [])[:_INLINE_ITEM_CAP]:
+        if not isinstance(it, dict):
+            continue
+        row = {k: it[k] for k in _INLINE_ITEM_KEYS if k in it}
+        desc = row.get("description")
+        if isinstance(desc, str) and len(desc) > 160:
+            row["description"] = desc[:160]
+        items.append(row)
+    slim["items"] = items
+    slim["corpus"] = []
+    return slim
 
 
 def _json_for_script(value: object) -> str:
@@ -559,7 +597,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     icp = "" if lite else str(ui.get("icp") or "")
     ui.pop("icp", None)
     feed["ui"] = ui
-    payload = _json_for_script(_slim_for_inline(feed))
+    payload = _json_for_script(_slim_feed_for_inline(feed))
     scenes = _json_for_script(feed.get("scenes") or scene.scene_chips())
     scenes_l2 = _json_for_script(feed.get("scenes_l2") or scene.scene_l2_tree())
     page_title = "去 GitHub 发现" if variant == "lite" else geo.PAGE_TITLE
@@ -579,6 +617,9 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     # 空态团子不再内联第三、四份 base64：同一张图从顶栏 .logo-mark 取 src
     feide_img = "${feideImgHtml()}"
     pack_shelf_json = _json_for_script(load_pack_shelf())
+    intent_expand_json = _json_for_script(intent_expand.clusters_for_js())
+    intent_extra_phrases_json = _json_for_script(intent_expand.all_phrases())
+    intent_strong_json = _json_for_script(intent_expand.all_strong())
     # 进站上报放在 <head> 最前：页面几 MB，慢网访客等不到主脚本跑完就走了。
     # lite 不记路径（嵌在 skill-picker 里，没有进站这回事）。
     boot_script = "" if lite else (
@@ -670,11 +711,19 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     border-bottom: 1px solid var(--line);
   }}
   .top-row {{
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
   }}
   .top-left {{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }}
+  .top-pitch {{
+    margin: 6px 0 0;
+    font-size: .78rem;
+    font-weight: 650;
+    line-height: 1.35;
+    letter-spacing: .01em;
+    color: var(--ink);
+  }}
   .value-line {{
-    margin: 3px 0 0;
+    margin: 2px 0 0;
     font-family: var(--logo);
     font-size: .8rem;
     font-weight: 650;
@@ -711,7 +760,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     background-clip: text;
     -webkit-text-fill-color: transparent;
   }}
-  .top-actions {{ display: flex; gap: 14px; align-items: center; flex-shrink: 0; }}
+  .top-actions {{ display: flex; gap: 14px; align-items: center; flex-shrink: 0; padding-top: 6px; }}
   .icon-btn {{
     appearance: none; border: 0; background: transparent; padding: 0;
     cursor: pointer; color: var(--ink); display: none;
@@ -915,12 +964,12 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .who .sub {{ display: block; font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
   .more {{ border: 0; background: transparent; font-size: 1.2rem; cursor: pointer; color: var(--ink); }}
 
-  /* Real cover (GitHub OG) + SKILL.md document preview
-     2:1 把决策文案顶到折线下；16/7 仍是横幅，但首屏能看见「解决」 */
+  /* GitHub 社交图里的英文简介翻译不了。封面压矮，把阅读重心让给「解决」。 */
   .media {{
     position: relative;
     width: 100%;
-    aspect-ratio: 16 / 7;
+    --cover-ratio: 16 / 5;
+    aspect-ratio: 16 / 5;
     overflow: hidden;
     cursor: pointer;
     user-select: none;
@@ -962,6 +1011,46 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
      用中性深色而不是绿色：它是一条装前提醒，不是「已装好」的成功态。 */
   .media .badge.local {{ background: rgba(17,17,17,.82); border-color: rgba(255,255,255,.3); cursor: help; }}
   .media .badge.local.drift {{ background: rgba(var(--like-rgb), .9); border-color: transparent; }}
+  /* mobile-badges-below-cover：手机封面是一条横幅，左上角标签会挡住社交图里的仓库名。
+     标签改排到图下方，封面比例不变。 */
+  @media (max-width: 719px) {{
+    .media {{
+      display: flex;
+      flex-direction: column;
+      aspect-ratio: auto;
+      height: auto;
+    }}
+    .media .cover {{
+      position: relative;
+      inset: auto;
+      order: 1;
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      height: auto;
+      aspect-ratio: 16 / 5;
+      object-fit: cover;
+      flex: 0 0 auto;
+    }}
+    .media .cover-fallback {{
+      position: relative;
+      inset: auto;
+      order: 1;
+    }}
+    .media.no-cover.bare {{
+      min-height: 0;
+    }}
+    .media .badges {{
+      position: static;
+      order: 2;
+      left: auto;
+      top: auto;
+      padding: 8px 12px 6px;
+      max-width: 100%;
+      background: var(--card);
+    }}
+  }}
   .heart-burst {{
     position: absolute; left: 50%; top: 50%; width: 90px; height: 90px;
     margin: -45px 0 0 -45px; opacity: 0; pointer-events: none; z-index: 3;
@@ -1022,6 +1111,12 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .pitch .who-for em {{
     font-style: normal; font-weight: 700; color: #24292f; margin-right: 5px;
   }}
+  .pitch .match-terms {{
+    margin: 6px 0 0; font-size: .76rem; color: var(--muted); line-height: 1.4;
+  }}
+  .pitch .match-terms em {{
+    font-style: normal; font-weight: 700; color: var(--accent); margin-right: 5px;
+  }}
   .pitch .doc-link {{
     display: inline-block; margin-top: 10px;
     font-size: .75rem; font-weight: 600; color: var(--link); text-decoration: none;
@@ -1037,15 +1132,19 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     user-select: text;
   }}
   .zone-read .problem {{
-    font-size: .82rem;
-    font-weight: 500;
-    color: #3d4a6b;
+    font-size: 1.2rem;
+    font-weight: 650;
+    line-height: 1.45;
+    color: var(--ink);
+  }}
+  .zone-read .problem em {{
+    vertical-align: 3px;
   }}
   .zone-read .highlights li {{
     background: rgba(255,255,255,.65);
     border-color: #d7deee;
-    font-size: .74rem;
-    color: #4a5570;
+    font-size: .9rem;
+    color: #243056;
   }}
   .who.clickable {{ cursor: pointer; }}
   .who.clickable:hover .name {{ text-decoration: underline; }}
@@ -1130,6 +1229,17 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .pub-item p {{ margin: 0; font-size: .8rem; color: var(--muted); line-height: 1.4; }}
   .pub-item .meta {{ margin-top: 6px; font-size: .72rem; color: var(--muted); }}
   .pub-item:hover {{ border-color: var(--accent); }}
+  .order-list {{ margin-top: 8px; }}
+  .order-row {{ padding: 10px 0; border-top: 1px solid var(--line); }}
+  .order-row:first-child {{ border-top: 0; padding-top: 0; }}
+  .order-row .top {{
+    display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+    font-size: .88rem;
+  }}
+  .order-row .st {{ font-size: .75rem; font-weight: 700; white-space: nowrap; }}
+  .order-row .st.paid {{ color: var(--accent); }}
+  .order-row .st.pending {{ color: var(--like-ink); }}
+  .order-row .meta {{ margin-top: 4px; font-size: .75rem; color: var(--muted); line-height: 1.4; word-break: break-all; }}
   .card-preview {{
     position: fixed; inset: 0; z-index: 80; background: rgba(10,24,72,.46);
     display: none; align-items: flex-start; justify-content: center;
@@ -1502,7 +1612,13 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .pack-deliver li span, .pack-deliver li p {{
     display: block; margin: 4px 0 0; color: #4a5568; font-size: .8rem; line-height: 1.45;
   }}
-  .pack-deliver a {{ color: var(--accent-strong); font-weight: 700; text-decoration: none; }}
+  .pack-kb {{
+    background: #fff; border-radius: 14px; padding: 12px 14px; margin: 0 0 8px;
+  }}
+  .pack-kb h4 {{ margin: 0 0 6px; font-size: .92rem; font-weight: 800; }}
+  .pack-kb p {{
+    margin: 0; color: #4a5568; font-size: .84rem; line-height: 1.55; white-space: pre-wrap;
+  }}
   .pack-copy {{
     margin-top: 8px; border: 0; border-radius: 999px; padding: 8px 14px;
     background: #e7f3f3; color: var(--accent-strong); font-weight: 800; cursor: pointer;
@@ -1524,6 +1640,15 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     margin-top: 14px; width: 100%; border: 1px solid var(--line); background: #fff;
     border-radius: 999px; padding: 10px; font: inherit; font-weight: 700; cursor: pointer;
   }}
+  .pack-after {{
+    margin-top: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 14px;
+  }}
+  .pack-after h3 {{ margin: 14px 0 6px; font-size: .95rem; }}
+  .pack-after h3:first-child {{ margin-top: 0; }}
+  .pack-after img {{ width: 180px; height: auto; display: block; margin-top: 8px; }}
+  .pack-assist {{ display: none; margin-top: 12px; }}
+  .pack-assist.on {{ display: block; }}
+  .pack-after .pack-copy {{ display: inline-block; }}
   .pack-buy-bar {{
     position: sticky; bottom: calc(64px + env(safe-area-inset-bottom));
     margin: 18px -12px 0; padding: 12px;
@@ -1560,6 +1685,16 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   /* .to-top 自带 display:grid，会盖掉浏览器给 [hidden] 的 display:none */
   .to-top[hidden] {{ display: none; }}
   .to-top svg {{ width: 20px; height: 20px; }}
+  .cs-float {{
+    position: fixed; z-index: 55;
+    bottom: calc(108px + env(safe-area-inset-bottom));
+    right: max(66px, calc(50% - (var(--phone) / 2) + 66px));
+    display: inline-flex; align-items: center;
+    padding: 10px 14px; border-radius: 999px;
+    background: var(--ink); color: #fff; text-decoration: none;
+    font-size: .82rem; font-weight: 700; white-space: nowrap;
+    box-shadow: 0 6px 18px rgba(0,0,0,.14);
+  }}
 
   /* —— 主题分类 —— */
   .topics-panel {{ padding: 14px 12px 28px; }}
@@ -1845,7 +1980,18 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   }}
   .coach-card h3 {{ margin: 0 0 6px; font-size: 1.02rem; color: var(--ink); }}
   .coach-card p {{ margin: 0 0 12px; font-size: .82rem; line-height: 1.45; color: var(--muted); }}
-  .coach-actions {{ display: flex; justify-content: space-between; gap: 8px; }}
+  .coach-progress {{
+    height: 3px; border-radius: 99px; background: #e6ebf5;
+    overflow: hidden; margin: 0 0 10px;
+  }}
+  .coach-progress > span {{
+    display: block; height: 100%; width: 0; background: var(--ink);
+  }}
+  @keyframes coachTick {{ to {{ width: 100%; }} }}
+  @media (prefers-reduced-motion: reduce) {{
+    .coach-spot {{ transition: none; }}
+  }}
+  .coach-actions {{ display: flex; justify-content: flex-start; gap: 8px; }}
   .coach-actions button {{
     appearance: none; border: 1px solid var(--line); background: #fff;
     border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 700;
@@ -1854,7 +2000,8 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .coach-actions .primary {{
     background: var(--ink); color: #fff; border-color: var(--ink);
   }}
-  body.variant-lite .coach {{ display: none !important; }}
+  body.variant-lite .coach,
+  body.variant-lite .cs-float {{ display: none !important; }}
 
   body.variant-lite .stories-wrap,
   body.variant-lite #followSheet,
@@ -1875,6 +2022,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   /* 手机：铺满 + 安全区。平板：居中加宽单列。电脑：左侧导航 + 更宽阅读栏。 */
   @media (max-width: 380px) {{
     .logo {{ font-size: 1.22rem; }}
+    .top-pitch {{ font-size: .68rem; }}
     .value-line {{ font-size: .72rem; letter-spacing: .04em; }}
     .site-foot {{ display: none; }}
   }}
@@ -1973,6 +2121,10 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
       bottom: 28px;
       right: max(24px, calc(50% - (var(--shell) / 2) + 24px));
     }}
+    .cs-float {{
+      bottom: 28px;
+      right: max(78px, calc(50% - (var(--shell) / 2) + 78px));
+    }}
     .sheet {{ align-items: center; }}
     .sheet-panel {{
       width: min(480px, calc(100% - 48px));
@@ -2020,6 +2172,7 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
           </button>
         </div>
       </div>
+      <p class="top-pitch" id="productPitch" data-i18n="topPitch">把GitHub做成好刷的社交媒体，搜索信息更简单！</p>
       <div class="search-wrap" id="searchWrap">
         <input class="search" id="intent" type="search" placeholder="短关键词更好，如：去AI味 / 剪视频" maxlength="40" />
         <div class="intent-keys" id="intentKeys" hidden></div>
@@ -2083,6 +2236,8 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
     </div>
   </div>
 
+  <!-- 短链会跳到微信下载页，这里必须用 weixin 协议直达关注卡片。 -->
+  <a class="cs-float" id="csFloat" href="weixin://qr/mp/_SdYQLjEZ_UYrfwj93Lr" data-i18n="csFloat">联系客服</a>
   <button class="to-top" id="toTop" type="button" hidden aria-label="回到顶部" data-i18n-aria="backToTop">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V6"/><path d="M6 12l6-6 6 6"/></svg>
   </button>
@@ -2101,9 +2256,9 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
       <p class="step" id="coachStep"></p>
       <h3 id="coachTitle"></h3>
       <p id="coachBody"></p>
+      <div class="coach-progress" aria-hidden="true"><span id="coachBar"></span></div>
       <div class="coach-actions">
         <button type="button" id="coachSkip" data-i18n="coachSkip">Skip</button>
-        <button type="button" class="primary" id="coachNext" data-i18n="coachNext">下一步</button>
       </div>
     </div>
   </div>
@@ -2172,7 +2327,7 @@ const sv = {{ open: false, scene: '', items: [], idx: 0, timer: null }};
 const publisherCache = {{}};
 /* 「我的」的服务端侧状态。loaded 分「没拉过」和「拉过但是空的」，
    否则每次 render 都会再打一轮请求。 */
-const ACCT = {{ loading: false, loaded: false, user: null, posts: null, liked: 0, saved: 0, savedNames: null, likedNames: null, remote: false, quota: null, devAuth: false, wechat: false, sms: false, oauth: false, packs: [] }};
+const ACCT = {{ loading: false, loaded: false, user: null, posts: null, orders: null, ordersError: false, liked: 0, saved: 0, savedNames: null, likedNames: null, remote: false, quota: null, devAuth: false, wechat: false, sms: false, oauth: false, packs: [], aftercare: null }};
 /* 登录页路径。另一个 agent 正在给 server/ 加强制登录墙（认证服务号 + 短信兜底），
    落地后页面路径可能不是 /login；这里留成一个常量，改一行就能对齐。 */
 const LOGIN_PATH = '/login';
@@ -2267,7 +2422,7 @@ function localBadgeHtml(it) {{
    例外只有两类：I18N 表本身，和 HelloGitHub 栏目名那种「中文就是数据值」的场景。 */
 const I18N = {{
   zh: {{
-    updated: '更新', solves: '解决', forWho: '适合',
+    updated: '更新', solves: '解决', forWho: '适合', matched: '匹配',
     openGithub: '打开 GitHub', openGithubHome: '打开 GitHub 主页',
     readSkillMd: '在 GitHub 看 SKILL.md 全文 →',
     fallbackHl: '打开 GitHub 查看完整 SKILL.md 与用法',
@@ -2286,8 +2441,11 @@ const I18N = {{
     searchPlaceholder: '短关键词更好，如：去AI味 / 剪视频',
     navDiscover: '发现', navTopics: '主题分类', navPacks: '场景包', navPublish: '发布', navMe: '我的',
     valueLine: '每刷一下，就快人一步',
-    coachSkip: 'Skip', coachNext: '下一步', coachDone: '开始刷',
+    topPitch: '把GitHub做成好刷的社交媒体，搜索信息更简单！',
+    coachSkip: 'Skip',
     coachStepOf: '{{n}} / {{total}}',
+    coachReadTitle: '先看它解决什么',
+    coachReadBody: '最大的这句，就是这张卡能帮你办的事。',
     coach1Title: '关注之后去哪找',
     coach1Body: '点卡片上的作者或行业就能关注。关注过的最新动态会出现在顶部圆环，也可以到「我的」里管理。',
     coach2Title: '下滑继续刷',
@@ -2298,7 +2456,7 @@ const I18N = {{
     coach4Body: '看中了就点「打开 GitHub」。我们不代装，装不装由你自己决定。',
     coach5Title: '推广你自己的 skill',
     coach5Body: '底部「发布」可以上传自己的 skill，让别人也刷到。需要先登录。',
-    tabsAria: '主导航', backToTop: '回到顶部',
+    tabsAria: '主导航', backToTop: '回到顶部', csFloat: '联系客服',
 
     /* 一站式配齐 */
     packsTitle: '场景包',
@@ -2308,7 +2466,12 @@ const I18N = {{
     packsPriceTbd: '价格公布中', packsOpen: '查看详情', packsBuy: '连续包月开通',
     packsBuyLocked: '登录后订阅', packsBuySoon: '即将推出',
     packsBuyNeedSite: '请到 skillfeeder.cn 订阅',
-    packsOwned: '使用中', packsBuyOk: '已开通，手册已解锁', packsBuyFail: '开通没有完成',
+    packsOwned: '使用中', packsBuyOk: '已开通，安装包开始下载', packsBuyFail: '开通没有完成',
+    packsDownload: '下载安装包', packsDownloadReady: '安装包已备好。',
+    packsOaTitle: '关注公众号', packsOaBody: '打开微信，关注 {{name}}。',
+    packsOaGo: '打开公众号',
+    packsOaNext: '我已关注', packsAssistantTitle: '加小助手',
+    packsAssistantBody: '加小助手，进群一起用。',
     savedToast: '已收藏', unsavedToast: '已取消收藏',
     replayOnboarding: '重新播放使用引导',
     goToMainSite: '前往 skillfeeder.cn 发布',
@@ -2318,10 +2481,23 @@ const I18N = {{
     packsSeatsFull: '席位已满，请升级套餐',
     packsEntryPrice: '连续包月 ¥29 起',
     packsMonthHint: '2 个主题。按你指定的场景持续更新',
-    packsInstallHint: '在你的电脑上安装之后，推荐会按上下文更新',
+    packsInstallHint: '下载安装包，在本机装上这套场景',
     packsMine: '我的场景席位', packsNoneOwned: '还没有选用场景',
+    acctOrders: '支付记录',
+    acctOrdersLoading: '正在读取支付记录…',
+    acctOrdersEmpty: '还没有支付记录',
+    acctOrdersFail: '支付记录暂时读不到',
+    acctOrderPaid: '已支付',
+    acctOrderPending: '待支付',
+    acctOrderNo: '单号',
+    orderSkuMonthCont: '连续包月',
+    orderSkuQuarterCont: '连续包季',
+    orderSkuYearCont: '连续包年',
+    orderSkuMonthOnce: '单独买一个月',
+    orderSkuQuarterOnce: '单独买一季',
+    orderSkuYearOnce: '单独买一年',
     subPlanTitle: '场景订阅',
-    subHero1: '本地部署本软件，基于上下文给你更准确的推荐和更简单的操作指导',
+    subHero1: '装到本机后，你说任务时会从这套场景里推荐一个技能',
     subHero2: '按照你指定的主题，持续更新内容，让你永远快人一步',
     subTrackCont: '连续续费',
     subTrackOnce: '单独买',
@@ -2590,7 +2766,7 @@ const I18N = {{
     demoLoop: 'Demo 循环 · 回发现',
   }},
   en: {{
-    updated: 'Updated', solves: 'Solves', forWho: 'For',
+    updated: 'Updated', solves: 'Solves', forWho: 'For', matched: 'Matched',
     openGithub: 'Open on GitHub', openGithubHome: 'Open GitHub profile',
     readSkillMd: 'Read the full SKILL.md on GitHub →',
     fallbackHl: 'Open GitHub for the full SKILL.md and usage',
@@ -2609,8 +2785,11 @@ const I18N = {{
     searchPlaceholder: 'Short keywords work best, e.g. de-slop / short video',
     navDiscover: 'Discover', navTopics: 'Topics', navPacks: 'Packs', navPublish: 'Post', navMe: 'Me',
     valueLine: 'Every swipe, one step ahead',
-    coachSkip: 'Skip', coachNext: 'Next', coachDone: 'Start',
+    topPitch: 'Turn GitHub into a feed you can swipe. Search gets simpler.',
+    coachSkip: 'Skip',
     coachStepOf: '{{n}} / {{total}}',
+    coachReadTitle: 'See what it solves',
+    coachReadBody: 'The big line is the job this card can do.',
     coach1Title: 'Where follows live',
     coach1Body: 'Follow an author or topic from a card. New posts show up in the top rings, and you can manage them under Me.',
     coach2Title: 'Swipe for more',
@@ -2621,7 +2800,7 @@ const I18N = {{
     coach4Body: 'Tap Open GitHub to see how to use it. We never install it for you.',
     coach5Title: 'Share your own skill',
     coach5Body: 'Use Post at the bottom to publish your skill so others can find it. Sign in first.',
-    tabsAria: 'Main navigation', backToTop: 'Back to top',
+    tabsAria: 'Main navigation', backToTop: 'Back to top', csFloat: 'Contact',
 
     packsTitle: 'One-stop packs',
     packsLead: 'Growing continuously',
@@ -2630,7 +2809,12 @@ const I18N = {{
     packsPriceTbd: 'Price soon', packsOpen: 'View details', packsBuy: 'Start monthly',
     packsBuyLocked: 'Sign in to subscribe', packsBuySoon: 'Coming soon',
     packsBuyNeedSite: 'Subscribe on skillfeeder.cn',
-    packsOwned: 'In use', packsBuyOk: 'Subscribed. The guide is open.', packsBuyFail: 'Checkout did not finish',
+    packsOwned: 'In use', packsBuyOk: 'Subscribed. The package is downloading.', packsBuyFail: 'Checkout did not finish',
+    packsDownload: 'Download package', packsDownloadReady: 'Your package is ready.',
+    packsOaTitle: 'Follow the official account', packsOaBody: 'In WeChat, follow {{name}}.',
+    packsOaGo: 'Open the account',
+    packsOaNext: 'I followed', packsAssistantTitle: 'Add the assistant',
+    packsAssistantBody: 'Add the assistant to join the group.',
     savedToast: 'Bookmarked', unsavedToast: 'Bookmark removed',
     replayOnboarding: 'Replay onboarding guide',
     goToMainSite: 'Go to skillfeeder.cn to publish',
@@ -2640,11 +2824,24 @@ const I18N = {{
     packsSeatsFull: 'Seats full — upgrade your plan',
     packsEntryPrice: 'From ¥29 / month',
     packsMonthHint: '2 topics. The scenes you pick keep updating',
-    packsInstallHint: 'Install on your computer for context-aware picks',
+    packsInstallHint: 'Download the pack and install it on this computer',
     packsUnlockedHint: 'Guide, skill order, descriptions, and knowledge base are below.',
     packsMine: 'My scene seats', packsNoneOwned: 'No scenes selected yet',
+    acctOrders: 'Payments',
+    acctOrdersLoading: 'Loading payments…',
+    acctOrdersEmpty: 'No payments yet',
+    acctOrdersFail: 'Payments could not be loaded',
+    acctOrderPaid: 'Paid',
+    acctOrderPending: 'Waiting for payment',
+    acctOrderNo: 'Order',
+    orderSkuMonthCont: 'Monthly',
+    orderSkuQuarterCont: 'Quarterly',
+    orderSkuYearCont: 'Yearly',
+    orderSkuMonthOnce: 'One month',
+    orderSkuQuarterOnce: 'One quarter',
+    orderSkuYearOnce: 'One year',
     subPlanTitle: 'Scene subscription',
-    subHero1: 'Install locally. Context makes recommendations more accurate and the steps easier',
+    subHero1: 'After you install it, the next task you mention gets one skill from this scene',
     subHero2: 'The topics you pick keep updating, so you stay ahead',
     subTrackCont: 'Auto-renew',
     subTrackOnce: 'One period',
@@ -3409,13 +3606,17 @@ function apiUrl(path) {{
 const INTENT_STOP = new Set(
   '的了呢吗啊把被在是有我要帮做一份一个能否可以怎么如何请帮忙去掉删除去除一下帮我给我用到进行进行中以及还有就是这个那个什么哪些为了把它给工具用来实现功能需求'.split('')
 );
+/* 意图近义簇：与 intent_expand.py 同源。短口语（生图/去AI味）→ 语料里真会出现的 token。 */
+const INTENT_EXPAND = {intent_expand_json};
+const INTENT_EXPAND_PHRASES = {intent_extra_phrases_json};
+const INTENT_STRONG = {intent_strong_json};
 // 真实词表（长的优先）。禁止用滑动窗口造「产品设/品设品」这类假词。
 const INTENT_PHRASES = [
   '去ai味', 'stop-slop', '周报复盘', '产品设计', '交互设计', '视觉设计', '跟团选品', '选品工具',
   '剪视频', '短视频', '知识图谱', '代码审查', '架构图', '网页推荐', 'ai味', '去ai',
   '周报', '复盘', '文案', '写作', '润色', '飞书', 'figma', '图表', 'ppt', '演示',
   '选品', '跟团', '设计', 'ui', 'ux', 'mcp', '看板', 'cad', '口播',
-];
+].concat(INTENT_EXPAND_PHRASES);
 const MAX_INTENT_KEYS = 2;
 
 /* 场景特判产出的是「我们自己的规范化关键词」，会直接显示在搜索框和关键词条上，
@@ -3424,11 +3625,19 @@ const MAX_INTENT_KEYS = 2;
    两种写法都被 intentTokens 映射到同一组 token，换语言不改匹配结果。 */
 const INTENT_CANON = {{
   deslop: {{ zh: '去AI味', en: 'stop-slop' }},
+  imagen: {{ zh: '生图', en: 'image-gen' }},
 }};
+for (const cluster of INTENT_EXPAND) {{
+  if (cluster && cluster.id && cluster.canon) INTENT_CANON[cluster.id] = cluster.canon;
+}}
 
 /* INTENT_PHRASES 里指向「去AI味」的那几个别名。这是词表数据的分组，
    不是展示文案——别改成拿 UI 文案比字符串。 */
 const DESLOP_ALIASES = new Set(['ai味', '去ai', '去ai味']);
+const IMAGEN_ALIASES = new Set([
+  '出图', '画图', '绘图', '配图', '生成图片', '生成图', '文生图', 'ai绘画', 'ai画画',
+  'image-gen', 'imagegen', 'text-to-image', 'image generation', '生图',
+]);
 
 function canonIntent(id) {{
   const row = INTENT_CANON[id] || {{}};
@@ -3476,6 +3685,10 @@ function compressIntent(raw) {{
   }}
   if (/剪视频|短视频|口播/.test(compact)) push('剪视频');
   if (/产品设.*设计|产品设计/.test(compact) || /产品设.*设计|产品设计/.test(cjk)) push('产品设计');
+  if (/生图|出图|画图|绘图|配图|生成图片|生成图|文生图|ai绘画|ai画画|image-gen|imagegen|text-to-image|imagegeneration/.test(compact)
+      || /生图|出图|画图|绘图|配图|生成图片|文生图/.test(cjk)) {{
+    push(canonIntent('imagen'));
+  }}
 
   // 1) 词表：按长度降序匹配，避免先命中短词挡住「产品设计」
   const phrases = INTENT_PHRASES.slice().sort((a, b) => b.length - a.length);
@@ -3483,6 +3696,7 @@ function compressIntent(raw) {{
     if (keys.length >= MAX_INTENT_KEYS) break;
     if (compact.includes(p) || lower.includes(p)) {{
       if (DESLOP_ALIASES.has(p)) push(canonIntent('deslop'));
+      else if (IMAGEN_ALIASES.has(p)) push(canonIntent('imagen'));
       else if (p === 'ui' || p === 'ux' || p === 'mcp' || p === 'ppt' || p === 'cad') push(p.toUpperCase());
       else push(p);
     }}
@@ -3571,6 +3785,24 @@ function intentHay(it) {{
   ).toLowerCase();
 }}
 
+function intentClusterHit(cluster, raw, out) {{
+  const compact = String(raw || '').replace(/\\s+/g, '');
+  const triggers = cluster.triggers || [];
+  for (let i = 0; i < triggers.length; i++) {{
+    const t = triggers[i];
+    if (!t) continue;
+    if (t.indexOf(' ') >= 0) {{
+      if (raw.indexOf(t) >= 0) return true;
+    }} else if (compact.indexOf(t) >= 0 || raw.indexOf(t) >= 0 || out.has(t)) {{
+      return true;
+    }}
+  }}
+  const canon = cluster.canon || {{}};
+  const vals = [canon.zh, canon.en].filter(Boolean).map(v => String(v).toLowerCase());
+  for (let i = 0; i < vals.length; i++) if (out.has(vals[i])) return true;
+  return false;
+}}
+
 function intentTokens(q) {{
   // 只用真实关键词做匹配，禁止再滑窗造假二元组污染结果
   const packed = compressIntent(q);
@@ -3578,17 +3810,14 @@ function intentTokens(q) {{
   if (!raw) return [];
   const out = new Set(packed.keys.map(k => k.toLowerCase()));
   for (const part of raw.split(/\\s+/).filter(Boolean)) out.add(part);
-  if (/ai\\s*味|去\\s*ai|slop|人味|润色|去ai|去ai味/.test(raw) || (/文案/.test(raw) && /ai|味/.test(raw))) {{
-    ['slop', 'stop-slop', 'ai writing', 'ai味', '去ai', '去ai味', '写作', '文案', '润色', 'human'].forEach(t => out.add(t));
+  // 文案 + AI 味：deslop 簇 triggers 不含裸「文案」，这里保留旧特判
+  if (/文案/.test(raw) && /ai|味|slop/.test(raw)) {{
+    const deslop = INTENT_EXPAND.find(c => c.id === 'deslop');
+    if (deslop) (deslop.expand || []).forEach(t => out.add(t));
   }}
-  // 产品设计：映射到生态里真实 skill 名（frontend-design / figma / shadcn…）
-  if (/产品设计|交互设计|视觉设计|frontend-design|web-design|ui\\s*ux|figma|shadcn|taste/.test(raw)
-      || out.has('产品设计') || out.has('交互设计') || out.has('设计')) {{
-    [
-      'frontend-design', 'web-design', 'web-design-guidelines', 'figma', 'ui', 'ux',
-      'design', 'shadcn', 'hallmark', 'taste-skill', '产品设计', '交互', '界面',
-      'prototype', 'design system', 'canvas-design',
-    ].forEach(t => out.add(t));
+  for (const cluster of INTENT_EXPAND) {{
+    if (!intentClusterHit(cluster, raw, out)) continue;
+    (cluster.expand || []).forEach(t => out.add(t));
   }}
   return [...out].filter(t => t.length >= 2);
 }}
@@ -3604,11 +3833,8 @@ function intentMatch(it, q) {{
   for (const t of toks) if (hay.includes(t)) hits += 1;
   if (hits >= 1 && toks.length <= 2) return true;
   if (hits >= 2) return true;
-  const strong = [
-    'stop-slop', 'slop', 'ai味', '去ai', '去ai味', 'hallmark',
-    'frontend-design', 'web-design', 'figma', 'shadcn', 'taste-skill', '产品设计',
-  ];
-  return strong.some(s => toks.includes(s) && hay.includes(s));
+  // 扩展后 toks 往往 >2：强词单点即可召回（与 intent_expand.strong 同源）
+  return INTENT_STRONG.some(s => toks.includes(s) && hay.includes(s));
 }}
 
 function liveIntentBoost(it, q) {{
@@ -3826,8 +4052,57 @@ function noteShownPositions(slice, reset, now) {{
   return hist;
 }}
 
+const remoteSearch = {{ q: '', items: null, pending: '', timer: 0, seq: 0 }};
+
+function scheduleRemoteSearch() {{
+  if (typeof location === 'undefined' || location.protocol === 'file:') return;
+  const raw = (state.intent || '').trim();
+  if (raw === remoteSearch.pending) return;
+  remoteSearch.pending = raw;
+  if (remoteSearch.timer) clearTimeout(remoteSearch.timer);
+  if (!raw) {{ remoteSearch.q = ''; remoteSearch.items = null; return; }}
+  const seq = ++remoteSearch.seq;
+  remoteSearch.timer = setTimeout(async () => {{
+    const base = contentOrigin();
+    const same = API_BASE && API_BASE === base;
+    try {{
+      const resp = await fetch(
+        base + '/api/feed?limit=100&source=official&unlock=0&q=' + encodeURIComponent(raw),
+        {{ credentials: same ? 'include' : 'omit', redirect: 'manual', headers: {{ 'Accept': 'application/json' }} }},
+      );
+      if (seq !== remoteSearch.seq) return;
+      if (resp.type === 'opaqueredirect' || !resp.ok) return;
+      const data = await resp.json();
+      if (seq !== remoteSearch.seq) return;
+      remoteSearch.q = raw;
+      remoteSearch.items = data && Array.isArray(data.items) ? data.items : null;
+      state.shown = 0;
+      render(true);
+    }} catch (e) {{}}
+  }}, 280);
+}}
+
+function remoteHits() {{
+  const raw = (state.intent || '').trim();
+  if (!raw || remoteSearch.q !== raw) return null;
+  const items = remoteSearch.items;
+  return items && items.length ? items : null;
+}}
+
 function filtered() {{
   const q = effectiveIntent();
+  const remote = state.mode === 'saved' ? null : remoteHits();
+  if (remote) {{
+    return remote.filter(it => {{
+      if (!matchMode(it)) return false;
+      if (state.scene !== 'all' && (it.scene || 'other') !== state.scene) {{
+        if (state.mode === 'skills' || state.mode === 'all') return false;
+      }}
+      if (state.scene_l2 !== 'all' && (it.scene_l2 || '') !== state.scene_l2) return false;
+      if (batchSkip.has(it.full_name || it.id || '')) return false;
+      return true;
+    }});
+  }}
 
   if (state.mode === 'saved') {{
     const keep = effectiveSavedSet();
@@ -3990,11 +4265,11 @@ function extractHighlightsClient(it) {{
       whoFor: (whoFor && !dupText(whoFor, problem)) ? whoFor : '',
     }};
   }};
-  // 优先用离线生成的双语人话字段；没有才退回从 md 里抽行
+  // 选定语种的一句话就是「解决」。亮点可以暂时没有，不能因此退回仓库原文，
+  // 否则切到中文时这一行仍是英文简介。两种译稿都没有，才用原文。
   const humanLine = pickText(it, 'one_liner');
-  const humanHl = pickList(it, 'highlights');
-  if (humanLine && humanHl.length) {{
-    return pack(humanLine, humanHl, pickText(it, 'who_for'));
+  if (humanLine) {{
+    return pack(humanLine, pickList(it, 'highlights'), pickText(it, 'who_for'));
   }}
   if (Array.isArray(it.highlights) && it.highlights.length && it.problem) {{
     return pack(preferFuller(it.problem, it.description || it.one_liner), it.highlights, pickText(it, 'who_for'));
@@ -4081,6 +4356,7 @@ function cardHtml(it, idx) {{
       <div class="problem"><em>${{escapeHtml(tr('solves'))}}</em>${{escapeHtml(pitchText)}}</div>
       ${{hl ? `<ul class="highlights">${{hl}}</ul>` : ''}}
       ${{tips.whoFor ? `<div class="who-for"><em>${{escapeHtml(tr('forWho'))}}</em>${{escapeHtml(tips.whoFor)}}</div>` : ''}}
+      ${{matchTermsHtml(it)}}
     </div>
     <div class="zone-hit zone-engage">
     <div class="actions coach-react">
@@ -4095,6 +4371,12 @@ function cardHtml(it, idx) {{
     <div class="open-row coach-github{install_row_cls}"><a class="open-gh js-open" href="${{escapeHtml(safeUrl(hasSkillDoc(it) ? skillUrl : url))}}" target="_blank" rel="noopener">${{escapeHtml(tr('openGithub'))}}</a>{install_slot}</div>
     </div>
   </article>`;
+}}
+
+function matchTermsHtml(it) {{
+  const terms = Array.isArray(it.match_terms) ? it.match_terms.filter(Boolean).slice(0, 3) : [];
+  if (!terms.length || !effectiveIntent()) return '';
+  return `<div class="match-terms"><em>${{escapeHtml(tr('matched'))}}</em>${{escapeHtml(terms.join(' · '))}}</div>`;
 }}
 
 function publisherLocalItems(owner) {{
@@ -4849,7 +5131,7 @@ function packDetailHtml(p) {{
     <ul class="pack-why-list">${{highlights}}</ul>
     <div class="sec">${{escapeHtml(tr(owned ? 'packsSecHowto' : 'packsSecLocked'))}}</div>
     ${{owned ? packDeliverHtml(p) : `<p class="lead">${{escapeHtml(tr('packsLockedHint'))}}</p><ul class="howto-skel locked">${{locked}}</ul>`}}
-    ${{owned ? `<p class="lead">${{escapeHtml(tr('packsInstallHint'))}}</p>` : ''}}
+    ${{owned ? `<p class="lead">${{escapeHtml(tr('packsInstallHint'))}}</p>${{packAftercareHtml(p)}}` : ''}}
     <div class="pack-buy-bar">
       <div class="price">${{escapeHtml(packPriceText(p) || tr('packsBadgeSoon'))}}<span>${{escapeHtml(owned ? tr('packsOwned') : (p.status === 'shelf' ? tr('packsMonthHint') : tr('packsBadgeSoon')))}}</span></div>
       <button type="button" class="js-pack-buy" data-pack="${{escapeHtml(p.id)}}"${{canBuy ? '' : ' disabled'}}>${{escapeHtml(buyLabel)}}</button>
@@ -4868,13 +5150,10 @@ function packDeliverHtml(p) {{
     `<li><b>${{escapeHtml(s.name || '')}}</b><p>${{escapeHtml(s.intro || '')}}</p></li>`
   ).join('');
   const kb = (doc.kb || []).map(k => {{
-    const href = safeUrl(k.url);
-    const title = escapeHtml(k.source || '');
-    const link = href && href !== 'about:blank'
-      ? `<a href="${{escapeHtml(safeUrl(href))}}" target="_blank" rel="noopener">${{title}}</a>`
-      : `<b>${{title}}</b>`;
-    const topics = (k.topics || []).filter(Boolean).join('、');
-    return `<li>${{link}}${{topics ? `<span>${{escapeHtml(topics)}}</span>` : ''}}</li>`;
+    const title = escapeHtml(k.title || k.source || '');
+    const body = escapeHtml(k.body || '');
+    if (!title && !body) return '';
+    return `<section class="pack-kb">${{title ? `<h4>${{title}}</h4>` : ''}}${{body ? `<p>${{body}}</p>` : ''}}</section>`;
   }}).join('');
   return `<div class="pack-deliver" data-pack="${{escapeHtml(p.id)}}">
     <h3>${{escapeHtml(tr('packsDeliverMd'))}}</h3>
@@ -4884,8 +5163,71 @@ function packDeliverHtml(p) {{
     <h3>${{escapeHtml(tr('packsDeliverApps'))}}</h3>
     <ul>${{apps}}</ul>
     <h3>${{escapeHtml(tr('packsDeliverKb'))}}</h3>
-    <ul>${{kb}}</ul>
+    <div class="pack-kb-list">${{kb}}</div>
   </div>`;
+}}
+
+function aftercareQr(url) {{
+  const href = safeUrl(url);
+  if (!href || href === 'about:blank' || href.indexOf('https://') !== 0) return '';
+  return `<img src="${{escapeHtml(href)}}" alt="">`;
+}}
+
+function oaFollowHref() {{
+  const el = document.getElementById('csFloat');
+  const raw = String(el ? el.getAttribute('href') : '').trim();
+  // 关注卡片走 weixin://，safeUrl 只放行 http(s)，这里单独放行这一条。
+  if (raw.indexOf('weixin://qr/mp/') === 0) return raw;
+  return safeUrl(raw);
+}}
+
+function packAftercareHtml(p) {{
+  const care = ACCT.aftercare || {{}};
+  const name = String(care.oa_name || 'Skill Man');
+  const oaHref = oaFollowHref();
+  const oaGo = (oaHref && oaHref !== 'about:blank')
+    ? `<a class="pack-copy" href="${{escapeHtml(oaHref)}}">${{escapeHtml(tr('packsOaGo'))}}</a>`
+    : '';
+  const assistImg = aftercareQr(care.assistant_qr_url);
+  const next = assistImg
+    ? `<button type="button" class="pack-copy js-oa-next">${{escapeHtml(tr('packsOaNext'))}}</button>
+       <div class="pack-assist">
+         <h3>${{escapeHtml(tr('packsAssistantTitle'))}}</h3>
+         <p class="lead">${{escapeHtml(tr('packsAssistantBody'))}}</p>
+         ${{assistImg}}
+       </div>`
+    : '';
+  return `<section class="pack-after">
+    <h3>${{escapeHtml(tr('packsDownload'))}}</h3>
+    <p class="lead">${{escapeHtml(tr('packsDownloadReady'))}}</p>
+    <button type="button" class="pack-copy js-pack-download" data-pack="${{escapeHtml(p.id)}}">${{escapeHtml(tr('packsDownload'))}}</button>
+    <h3>${{escapeHtml(tr('packsOaTitle'))}}</h3>
+    <p class="lead">${{escapeHtml(trn('packsOaBody', {{ name }}))}}</p>
+    ${{oaGo}}
+    ${{next}}
+  </section>`;
+}}
+
+async function downloadPack(id) {{
+  if (!id || accountMode() !== 'live') return;
+  try {{
+    const resp = await acctFetch('/api/packs/' + encodeURIComponent(id) + '/package');
+    if (!resp.ok) {{
+      toast(tr('packsBuyFail'));
+      return;
+    }}
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'skillfeeder-' + id + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }} catch (e) {{
+    toast(tr('packsBuyFail'));
+  }}
 }}
 
 function loadPackDelivery(id) {{
@@ -4941,7 +5283,7 @@ function closePaySheet() {{
   }}
 }}
 
-function openPaySheet(data) {{
+function openPaySheet(data, packId) {{
   closePaySheet();
   const order = data.order || {{}};
   const trade = order.out_trade_no || '';
@@ -4976,18 +5318,26 @@ function openPaySheet(data) {{
     + '</div>';
   document.body.appendChild(wrap);
   wrap.querySelector('.pay-sheet-close').addEventListener('click', closePaySheet);
+  state.payPollBusy = false;
   state.payPoll = setInterval(async () => {{
+    if (state.payPollBusy) return;
+    state.payPollBusy = true;
     try {{
-      const resp = await acctFetch('/api/pay/orders', {{ headers: {{ Accept: 'application/json' }} }});
+      const resp = await acctFetch('/api/pay/orders/' + encodeURIComponent(trade), {{ headers: {{ Accept: 'application/json' }} }});
       if (!resp.ok) return;
       const body = await resp.json();
-      const hit = (body.orders || []).find((row) => row.out_trade_no === trade && row.status === 'paid');
-      if (!hit) return;
+      const hit = body && body.order;
+      if (!hit || hit.out_trade_no !== trade || hit.status !== 'paid') return;
+      const paidPack = packId || state.payPackId || '';
       closePaySheet();
       await loadAccount();
+      if (paidPack) downloadPack(paidPack);
       toast(tr('packsBuyOk'));
       if (state.mode === 'packs' || state.mode === 'me') render(false);
-    }} catch (e) {{}}
+    }} catch (e) {{
+    }} finally {{
+      state.payPollBusy = false;
+    }}
   }}, 2000);
 }}
 
@@ -5054,11 +5404,13 @@ async function buyPack(packId) {{
       return;
     }}
     if (data.paid === false) {{
-      openPaySheet(data);
+      state.payPackId = p.id;
+      openPaySheet(data, p.id);
       return;
     }}
     ACCT.packs = Array.isArray(data.packs) ? data.packs : (ACCT.packs || []).concat([p.id]);
     if (data.user) ACCT.user = data.user;
+    downloadPack(p.id);
     toast(tr('packsBuyOk'));
     if (state.mode === 'packs' || state.mode === 'me') render(false);
   }} catch (e) {{
@@ -5430,6 +5782,7 @@ async function loadAccount() {{
     ACCT.sms = !!(data && data.sms);
     ACCT.oauth = !!(data && data.oauth);
     ACCT.packs = (data && Array.isArray(data.packs)) ? data.packs : [];
+    ACCT.aftercare = (data && data.aftercare) || null;
     // 账号收藏/点赞的 full_name 数组（跨设备聚合，见 server db.user_saved_full_names）。
     // 没登录或后端旧版没返这俩字段时为 null，前端退回本机 Set。
     ACCT.savedNames = (data && data.user && Array.isArray(data.saved)) ? data.saved : null;
@@ -5441,6 +5794,8 @@ async function loadAccount() {{
     ACCT.savedNames = null;
     ACCT.likedNames = null;
     ACCT.packs = [];
+    ACCT.orders = null;
+    ACCT.ordersError = false;
   }}
   if (ACCT.user) {{
     try {{ await claimGuestDevice(); }} catch (e) {{}}
@@ -5451,8 +5806,24 @@ async function loadAccount() {{
     }} catch (e) {{
       ACCT.posts = [];
     }}
+    try {{
+      const resp = await acctFetch('/api/pay/orders', {{ headers: {{ 'Accept': 'application/json' }} }});
+      const data = resp.ok ? await resp.json() : null;
+      if (resp.ok && data && Array.isArray(data.orders)) {{
+        ACCT.orders = data.orders;
+        ACCT.ordersError = false;
+      }} else {{
+        ACCT.orders = null;
+        ACCT.ordersError = true;
+      }}
+    }} catch (e) {{
+      ACCT.orders = null;
+      ACCT.ordersError = true;
+    }}
   }} else {{
     ACCT.posts = null;
+    ACCT.orders = null;
+    ACCT.ordersError = false;
   }}
   try {{
     const token = await ensureDeviceToken();
@@ -5749,6 +6120,70 @@ function recallSavedHtml() {{
       <button type="button" class="primary js-recall-saved">${{escapeHtml(tr('recallSavedCta'))}}</button>
       <button type="button" class="js-recall-saved-later">${{escapeHtml(tr('bindNudgeLater'))}}</button>
     </div>
+  </div>`;
+}}
+
+function orderSkuLabel(sku) {{
+  const map = {{
+    subscriber_month_cont: 'orderSkuMonthCont',
+    subscriber_quarter_cont: 'orderSkuQuarterCont',
+    subscriber_year_cont: 'orderSkuYearCont',
+    subscriber_year: 'orderSkuYearCont',
+    subscriber_month_once: 'orderSkuMonthOnce',
+    subscriber_quarter_once: 'orderSkuQuarterOnce',
+    subscriber_year_once: 'orderSkuYearOnce',
+  }};
+  const key = map[String(sku || '')];
+  return key ? tr(key) : String(sku || '');
+}}
+
+function orderMoney(fen) {{
+  const n = Number(fen);
+  if (!Number.isFinite(n)) return '';
+  const yuan = n / 100;
+  return '¥' + (Number.isInteger(yuan) ? String(yuan) : yuan.toFixed(2));
+}}
+
+function orderWhen(iso) {{
+  const raw = String(iso || '').trim();
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 16).replace('T', ' ');
+  try {{
+    return new Intl.DateTimeFormat(LANG === 'en' ? 'en-GB' : 'zh-CN', {{
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }}).format(d);
+  }} catch (e) {{
+    return raw.slice(0, 16).replace('T', ' ');
+  }}
+}}
+
+function acctOrdersHtml() {{
+  if (accountMode() !== 'live' || !ACCT.user) return '';
+  let inner;
+  if (ACCT.ordersError) inner = `<p>${{escapeHtml(tr('acctOrdersFail'))}}</p>`;
+  else if (!Array.isArray(ACCT.orders)) inner = `<p>${{escapeHtml(tr('acctOrdersLoading'))}}</p>`;
+  else if (!ACCT.orders.length) inner = `<p>${{escapeHtml(tr('acctOrdersEmpty'))}}</p>`;
+  else {{
+    inner = ACCT.orders.map(row => {{
+      const paid = String(row.status || '') === 'paid';
+      const packId = String(row.assign_pack || '');
+      const pack = packId ? packById(packId) : null;
+      const scene = pack ? packTitle(pack) : packId;
+      const when = orderWhen(paid ? (row.paid_at || row.created_at) : row.created_at);
+      const bits = [orderMoney(row.amount_fen), when, scene].filter(Boolean);
+      return `<div class="order-row">
+        <div class="top"><b>${{escapeHtml(orderSkuLabel(row.sku))}}</b><span class="st ${{paid ? 'paid' : 'pending'}}">${{escapeHtml(paid ? tr('acctOrderPaid') : tr('acctOrderPending'))}}</span></div>
+        <div class="meta">${{escapeHtml(bits.join(' · '))}}</div>
+        <div class="meta">${{escapeHtml(tr('acctOrderNo'))}} ${{escapeHtml(String(row.out_trade_no || ''))}}</div>
+      </div>`;
+    }}).join('');
+  }}
+  return `<div class="me-card">
+    <strong>${{escapeHtml(tr('acctOrders'))}}</strong>
+    <div class="order-list">${{inner}}</div>
   </div>`;
 }}
 
@@ -6137,6 +6572,7 @@ function mePanelHtml() {{
     <p class="lead">${{tr('meLead')}}</p>
     ${{acctIdentityHtml()}}
     ${{acctPlanHtml()}}
+    ${{acctOrdersHtml()}}
     ${{acctPacksHtml()}}
     ${{acctPostsHtml()}}
     <div class="me-card">
@@ -6166,6 +6602,7 @@ function mePanelHtml() {{
 }}
 
 function render(reset) {{
+  scheduleRemoteSearch();
   // 当前模式若已无内容，回退到发现
   if (['skills', 'ai', 'oss'].includes(state.mode) && countMode(state.mode) === 0) {{
     state.mode = 'all';
@@ -6798,6 +7235,18 @@ document.getElementById('feed').addEventListener('click', (e) => {{
     buyPack(packBuy.dataset.pack || '');
     return;
   }}
+  const packDownload = t.closest('.js-pack-download');
+  if (packDownload) {{
+    downloadPack(packDownload.dataset.pack || '');
+    return;
+  }}
+  const oaNext = t.closest('.js-oa-next');
+  if (oaNext) {{
+    const box = oaNext.parentElement && oaNext.parentElement.querySelector('.pack-assist');
+    if (box) box.classList.add('on');
+    oaNext.hidden = true;
+    return;
+  }}
   const packCopy = t.closest('.js-pack-copy');
   if (packCopy) {{
     const doc = packDelivery[packCopy.dataset.pack || ''];
@@ -7092,16 +7541,21 @@ if (previewHost) previewHost.addEventListener('click', (e) => {{
   if (e.target === previewHost) closeCardPreview();
 }});
 
-/* ---------- 首访引导蒙版 ---------- */
+/* ---------- 首访引导蒙版 ----------
+   顺序跟新人要做的决定走：先看这张卡解决什么，再去 GitHub 看用法，
+   没对上再换下一张。关注和发布留到后面。每步自动跳，不用点「下一步」。 */
 const COACH_KEY = 'sf_onboard_v1';
+const COACH_MS = 2500;
 const COACH_STEPS = [
-  {{ id: 'follow', target: '#storiesWrap', title: 'coach1Title', body: 'coach1Body' }},
+  {{ id: 'read', target: '#feed .zone-read, #feed .post', title: 'coachReadTitle', body: 'coachReadBody' }},
+  {{ id: 'github', target: '#feed .coach-github', title: 'coach4Title', body: 'coach4Body' }},
   {{ id: 'swipe', target: '#feed .post, #feed', title: 'coach2Title', body: 'coach2Body' }},
   {{ id: 'react', target: '#feed .coach-react', title: 'coach3Title', body: 'coach3Body' }},
-  {{ id: 'github', target: '#feed .coach-github', title: 'coach4Title', body: 'coach4Body' }},
+  {{ id: 'follow', target: '#storiesWrap', title: 'coach1Title', body: 'coach1Body' }},
   {{ id: 'publish', target: '#tab-publish', title: 'coach5Title', body: 'coach5Body' }},
 ];
 let coachIndex = 0;
+let coachTimer = 0;
 
 function coachShouldStart() {{
   if (IS_LITE) return false;
@@ -7129,14 +7583,12 @@ function coachPlace() {{
   const host = document.getElementById('coach');
   const spot = document.getElementById('coachSpot');
   const card = document.getElementById('coachCard');
-  const next = document.getElementById('coachNext');
   if (!step || !host || !spot || !card) return;
   document.getElementById('coachStep').textContent = trn('coachStepOf', {{
     n: coachIndex + 1, total: COACH_STEPS.length,
   }});
   document.getElementById('coachTitle').textContent = tr(step.title);
   document.getElementById('coachBody').textContent = tr(step.body);
-  if (next) next.textContent = coachIndex === COACH_STEPS.length - 1 ? tr('coachDone') : tr('coachNext');
   const el = coachPick(step.target);
   const pad = 6;
   const shell = document.querySelector('.shell');
@@ -7189,6 +7641,29 @@ function coachPlace() {{
   card.style.top = cardTop + 'px';
 }}
 
+function coachClearTimer() {{
+  if (coachTimer) {{
+    clearTimeout(coachTimer);
+    coachTimer = 0;
+  }}
+}}
+
+function coachArm() {{
+  coachClearTimer();
+  const bar = document.getElementById('coachBar');
+  if (bar) {{
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    bar.style.animation = 'none';
+    void bar.offsetWidth;
+    if (reduce) bar.style.width = '0';
+    else {{
+      bar.style.width = '';
+      bar.style.animation = 'coachTick ' + (COACH_MS / 1000) + 's linear forwards';
+    }}
+  }}
+  coachTimer = setTimeout(coachNext, COACH_MS);
+}}
+
 function coachShow(i) {{
   coachIndex = i;
   const host = document.getElementById('coach');
@@ -7203,9 +7678,11 @@ function coachShow(i) {{
   }}
   coachPlace();
   requestAnimationFrame(coachPlace);
+  coachArm();
 }}
 
 function coachFinish() {{
+  coachClearTimer();
   const host = document.getElementById('coach');
   if (host) host.hidden = true;
   if (document.body && document.body.classList) document.body.classList.remove('coaching');
@@ -7223,9 +7700,7 @@ function bindCoach() {{
   const host = document.getElementById('coach');
   if (!host || IS_LITE) return;
   const skip = document.getElementById('coachSkip');
-  const next = document.getElementById('coachNext');
   if (skip) skip.addEventListener('click', coachFinish);
-  if (next) next.addEventListener('click', coachNext);
   window.addEventListener('resize', () => {{
     if (!host.hidden) coachPlace();
   }});

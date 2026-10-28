@@ -159,10 +159,16 @@ class JsHarness:
             _grab(js, r"const DUP_PREFIX_MIN = \d+;"),
             _grab(js, r"const PITCH_MAX = \d+;"),
             _grab(js, r"const INTENT_STOP = new Set\(.*?\n\);"),
-            _grab(js, r"const INTENT_PHRASES = \[.*?\n\];"),
+            _grab(js, r"const INTENT_EXPAND = .*?;"),
+            _grab(js, r"const INTENT_EXPAND_PHRASES = .*?;"),
+            _grab(js, r"const INTENT_STRONG = .*?;"),
+            _grab(js, r"const INTENT_PHRASES = \[[\s\S]*?\]\.concat\(INTENT_EXPAND_PHRASES\);"),
             _grab(js, r"const MAX_INTENT_KEYS = \d+;"),
-            _grab(js, r"const INTENT_CANON = \{.*?\n\};"),
+            _grab(js, r"const INTENT_CANON = \{[\s\S]*?\n\};"),
+            # INTENT_CANON 后面还有 for 循环把 Python 簇 canon 合并进去
+            _grab(js, r"for \(const cluster of INTENT_EXPAND\) \{\n  if \(cluster && cluster\.id && cluster\.canon\) INTENT_CANON\[cluster\.id\] = cluster\.canon;\n\}"),
             _grab(js, r"const DESLOP_ALIASES = new Set\(\[[^\n]*\]\);"),
+            _grab(js, r"const IMAGEN_ALIASES = new Set\(\[[\s\S]*?\]\);"),
             _grab(js, r"^const state = \{[^\n]*\};"),
             _grab(js, r"^const sv = \{[^\n]*\};"),
             _grab(js, r"^const publisherCache = \{[^\n]*\};"),
@@ -456,13 +462,32 @@ class TestCardDedupeJs(unittest.TestCase):
         tips = self.harness().eval("extractHighlightsClient(" + json.dumps(item) + ")")
         self.assertEqual(tips["whoFor"], "")
 
+    def test_one_liner_follows_selected_language_without_highlights(self):
+        item = dict(REAL_SKILL)
+        for key in ("highlights_zh", "highlights_en", "highlights"):
+            item.pop(key, None)
+        item["description"] = "Open-source super AI assistant & Agent Harness."
+        item["problem"] = item["description"]
+        item["body_preview"] = ""
+        zh = self.harness("zh").eval(
+            "extractHighlightsClient(" + json.dumps(item) + ")")
+        en = self.harness("en").eval(
+            "extractHighlightsClient(" + json.dumps(item) + ")")
+        self.assertEqual(zh["problem"], item["one_liner_zh"])
+        self.assertEqual(en["problem"], item["one_liner_en"])
+        self.assertNotIn("Open-source", zh["problem"])
+
 
 class TestFirstScreenChrome(unittest.TestCase):
     """七个角色对「门口是空壳」的共识：没关注就不放圆环，Demo/反馈默认藏。"""
 
     def test_template_hides_empty_rings_and_demo_chrome(self):
         html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
-        self.assertIn("aspect-ratio: 16 / 7", html)
+        self.assertIn("aspect-ratio: 16 / 5", html)
+        self.assertIn("mobile-badges-below-cover", html)
+        self.assertIn("position: static", html)
+        self.assertIn("min-width: 0", html)
+        self.assertRegex(html, r"\.zone-read \.problem \{\s*font-size: 1\.2rem;")
         self.assertIn("nFollow === 0", html)
         self.assertIn("body.show-demo-tools .icon-btn", html)
         self.assertRegex(html, r"\.icon-btn \{[^}]*display: none;")
@@ -474,12 +499,28 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertIn('id="productLine"', header)
         self.assertIn("每刷一下，就快人一步", header)
         self.assertIn('data-i18n="valueLine"', header)
+        self.assertIn("把GitHub做成好刷的社交媒体，搜索信息更简单！", header)
+        self.assertIn('data-i18n="topPitch"', header)
+        self.assertLess(
+            header.find('id="productLine"'),
+            header.find('id="productPitch"'),
+            "定位句在左上角顶栏里，紧挨在口号下面",
+        )
         self.assertIn('id="coach"', html)
         self.assertIn('id="coachSkip"', html)
-        self.assertIn("target: '#storiesWrap'", html)
-        self.assertIn("target: '#feed .coach-react'", html)
-        self.assertIn("target: '#feed .coach-github'", html)
-        self.assertIn("target: '#tab-publish'", html)
+        self.assertNotIn('id="coachNext"', html)
+        self.assertIn("setTimeout(coachNext, COACH_MS)", html)
+        order = [
+            "id: 'read'",
+            "id: 'github'",
+            "id: 'swipe'",
+            "id: 'react'",
+            "id: 'follow'",
+            "id: 'publish'",
+        ]
+        positions = [html.find(token) for token in order]
+        self.assertTrue(all(p >= 0 for p in positions), order)
+        self.assertEqual(positions, sorted(positions))
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
     def test_empty_follows_hide_story_rings(self):
@@ -696,6 +737,48 @@ class TestLogicNotKeyedOnDisplayText(unittest.TestCase):
         zh = self.harness("zh").eval("compressIntent('stop-slop')")
         self.assertIn("去AI味", zh["keys"])
 
+    def test_imagen_intent_expands_to_visual_skills(self):
+        """「生图」要召回视觉海报 / canvas-design，不能只认字面「生图」。"""
+        h = self.harness("zh")
+        packed = h.eval("compressIntent('生图')")
+        self.assertIn("生图", packed["keys"])
+        # 画图 / 出图 压成规范短词
+        for alias in ("画图", "出图", "配图", "生成图片"):
+            got = h.eval("compressIntent(%s)" % json.dumps(alias))
+            self.assertIn("生图", got["keys"], alias)
+        toks = h.eval("intentTokens('生图')")
+        for need in ("生图", "海报", "canvas-design", "视觉海报", "配图"):
+            self.assertIn(need, toks, need)
+        # 无「生图」字样、但有 canvas-design / 视觉海报 的卡必须命中
+        card_canvas = {
+            "name": "canvas-design",
+            "description": "Create visual art in png documents",
+            "full_name": "anthropics/skills",
+            "scene_label": "设计与视觉",
+            "scene_l2_label": "视觉海报",
+        }
+        card_ui = {
+            "name": "rest-api-kit",
+            "description": "Build REST APIs with OpenAPI",
+            "full_name": "acme/rest",
+            "scene_label": "工程开发",
+            "scene_l2_label": "SDK/API",
+        }
+        expr = (
+            "[intentMatch(%s, '生图'), intentMatch(%s, '生图'),"
+            " intentMatch(%s, '画图')]"
+            % (json.dumps(card_canvas, ensure_ascii=False),
+               json.dumps(card_ui, ensure_ascii=False),
+               json.dumps(card_canvas, ensure_ascii=False))
+        )
+        hit_canvas, hit_ui, hit_alias = h.eval(expr)
+        self.assertTrue(hit_canvas, "canvas-design / 视觉海报 应对「生图」召回")
+        self.assertFalse(hit_ui, "无关工程卡不该被「生图」扫进来")
+        self.assertTrue(hit_alias, "画图别名应同样召回")
+        en = self.harness("en").eval("compressIntent('image-gen')")
+        self.assertIn("image-gen", en["keys"])
+        self.assertEqual([], CJK.findall(json.dumps(en, ensure_ascii=False)))
+
     def test_section_matching_uses_upstream_data_values(self):
         """hg_section 里的中文是 HelloGitHub 上游数据值，不能跟着界面语言翻。"""
         expr = ("[matchModeValue({hg_section:'人工智能'}, 'ai'),"
@@ -903,6 +986,31 @@ class TestBootBeaconAndIcp(unittest.TestCase):
     def _html(self, variant="full", **ui):
         return feed_dashboard.build_feed_html(
             {"items": [], "corpus": [], "ui": ui}, variant=variant)
+
+    def test_api_backed_page_inlines_only_a_first_screen(self):
+        """微信内置浏览器跑不完几 MB 的内联目录，页面会停在空壳。"""
+        items = []
+        for i in range(80):
+            items.append({
+                "id": "item-%02d" % i,
+                "name": "skill-%02d" % i,
+                "description": "d" * 400,
+                "body_preview": "BODY" * 800,
+            })
+        corpus = [{"id": "corpus-1", "body": "CORPUS" * 800}]
+        html = feed_dashboard.build_feed_html(
+            {"items": items, "corpus": corpus, "ui": {"api_base": "https://skillfeeder.cn"}},
+        )
+        self.assertIn("item-00", html)
+        self.assertNotIn("item-40", html)
+        self.assertNotIn("BODYBODY", html)
+        self.assertNotIn("CORPUSCORPUS", html)
+        self.assertLess(len(html), 1_600_000)
+        offline = feed_dashboard.build_feed_html(
+            {"items": items, "corpus": corpus, "ui": {}},
+        )
+        self.assertIn("item-79", offline)
+        self.assertIn("BODYBODY", offline)
 
     def test_boot_beacon_sits_in_head_before_main_script(self):
         html = self._html(api_base="https://skillfeeder.cn")
@@ -2432,7 +2540,14 @@ NEW_I18N_KEYS = (
     "packsBuyNeedSite", "packsOwned", "packsBuyOk", "packsBuyFail",
     "payScanTitle", "payScanWait", "payScanClose",
     "packsSeatsFull", "packsEntryPrice", "packsMonthHint", "packsInstallHint",
+    "packsDownload", "packsDownloadReady", "packsOaTitle", "packsOaBody", "packsOaGo",
+    "csFloat",
+    "packsOaNext", "packsAssistantTitle", "packsAssistantBody",
     "packsUnlockedHint", "packsMine", "packsNoneOwned",
+    "acctOrders", "acctOrdersLoading", "acctOrdersEmpty", "acctOrdersFail",
+    "acctOrderPaid", "acctOrderPending", "acctOrderNo",
+    "orderSkuMonthCont", "orderSkuQuarterCont", "orderSkuYearCont",
+    "orderSkuMonthOnce", "orderSkuQuarterOnce", "orderSkuYearOnce",
     "subPlanTitle", "subHero1", "subHero2", "subTrackCont", "subTrackOnce",
     "subMonthCont", "subQuarterCont", "subYearCont",
     "subMonthOnce", "subQuarterOnce", "subYearOnce",
@@ -2470,7 +2585,8 @@ NEW_I18N_KEYS = (
     "previewClose", "acctPostPending", "acctPostLive",
     "cardPreviewPending", "cardPreviewRejected",
     "refreshAria", "refreshTitle", "reshuffleToast",
-    "valueLine", "coachSkip", "coachNext", "coachDone", "coachStepOf",
+    "valueLine", "topPitch", "coachSkip", "coachStepOf",
+    "coachReadTitle", "coachReadBody",
     "coach1Title", "coach1Body", "coach2Title", "coach2Body",
     "coach3Title", "coach3Body", "coach4Title", "coach4Body",
     "coach5Title", "coach5Body",
@@ -2602,6 +2718,22 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertNotIn('body.variant-lite .nav[data-mode="topics"]', self.lite)
         # 旧的 data-action 钩子换成了 data-mode，别让隐藏规则指着一个不存在的属性
         self.assertNotIn('data-action="publish"', self.lite)
+
+    def test_contact_float_jumps_to_official_account_without_a_qr(self):
+        """full 全页「联系客服」打开公众号关注卡片；不放二维码，也不走会跳到下载页的短链。lite 藏掉。"""
+        tag = re.search(r'<a class="cs-float"[^>]*>', self.full).group(0)
+        self.assertIn('href="weixin://qr/mp/_SdYQLjEZ_UYrfwj93Lr"', tag)
+        self.assertNotIn("target=", tag)
+        self.assertNotIn("weixin.qq.com/r/mp/", self.full)
+        self.assertNotIn("weixin.qq.com/d", self.full)
+        self.assertIn('data-i18n="csFloat"', tag)
+        self.assertIn(">联系客服</a>", self.full)
+        self.assertNotIn("oa-skill-man", self.full)
+        self.assertIn("body.variant-lite .cs-float", self.lite)
+        js = _script_source(self.full)
+        self.assertIn("function oaFollowHref", js)
+        self.assertIn("weixin://qr/mp/", js)
+        self.assertNotIn("care.oa_qr_url", js)
 
     def test_back_to_top_button_ships_in_both_variants_with_a_name(self):
         for variant, html in (("full", self.full), ("lite", self.lite)):
@@ -2803,10 +2935,50 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
         self.assertIn("js-acct-logout", html)
         self.assertIn("我发布的", html)
         self.assertIn("js-me-post", html)
+        self.assertIn("支付记录", html)
+        self.assertIn("正在读取支付记录", html)
         self.assertNotIn("acctAnonTitle", html)
         self.assertNotIn("发现站", html)
         posts = js.eval("mePanelHtml()")
         self.assertIn("my-skill", posts)
+
+    def test_me_panel_lists_payment_status(self):
+        js = self.harness(
+            api_base="https://skillfeeder.cn",
+            extra=(
+                "Object.assign(ACCT, { loaded: true, user: { login: 'kai' },"
+                " orders: ["
+                " { out_trade_no: 'SFWAIT', sku: 'subscriber_month_cont',"
+                " amount_fen: 2900, status: 'pending', assign_pack: 'cross-border',"
+                " created_at: '2026-10-15T08:10:00+00:00', paid_at: '' },"
+                " { out_trade_no: 'SFPAID', sku: 'subscriber_year_once',"
+                " amount_fen: 29900, status: 'paid', assign_pack: '',"
+                " created_at: '2026-10-01T02:00:00+00:00',"
+                " paid_at: '2026-10-01T02:03:00+00:00' }"
+                " ] });"
+            ),
+        )
+        html = js.eval("mePanelHtml()")
+        self.assertIn("支付记录", html)
+        self.assertIn("连续包月", html)
+        self.assertIn("待支付", html)
+        self.assertIn("¥29", html)
+        self.assertIn("跨境电商", html)
+        self.assertIn("SFWAIT", html)
+        self.assertIn("已支付", html)
+        self.assertIn("单独买一年", html)
+        self.assertIn("¥299", html)
+        self.assertIn("SFPAID", html)
+        empty = self.harness(
+            api_base="https://skillfeeder.cn",
+            extra="Object.assign(ACCT, { loaded: true, user: { login: 'kai' }, orders: [] });",
+        ).eval("mePanelHtml()")
+        self.assertIn("还没有支付记录", empty)
+        failed = self.harness(
+            api_base="https://skillfeeder.cn",
+            extra="Object.assign(ACCT, { loaded: true, user: { login: 'kai' }, ordersError: true });",
+        ).eval("mePanelHtml()")
+        self.assertIn("支付记录暂时读不到", failed)
 
     def test_bind_nudge_offers_wechat_or_phone_when_github_only(self):
         """只登了 GitHub、且通道已开时，发现流要出绑定召回条。"""

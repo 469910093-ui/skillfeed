@@ -1,7 +1,7 @@
 {
   "id": "content-ecom",
   "title": "内容电商",
-  "md": "# 内容电商\n\n找素材、拆爆款、去AI味、沉淀案例库\n\n## 技能排序\n\n1. agent-reach · 调研路线\n2. web-access · 自动找素材\n3. lark-base · 案例库\n4. nuwa-skill · 拆带货达人\n5. dbs-hook · 视频前三秒\n6. lark-shared · 飞书授权\n7. skill-creator · 流程固化\n8. humanizer + dbs-ai-check · 带货文案去AI味\n9. social-ai-team · 账号日历\n\n## 应用介绍\n\n### agent-reach\n规划调研路线，收集内容和评论区痛点\n\n### web-access\n自动找素材、看数据\n\n### lark-base\n把素材写进飞书案例库\n\n### nuwa-skill\n拆解带货达人和对标账号\n\n### dbs-hook\n优化视频前三秒 Hook\n\n### lark-shared\n打通飞书授权和权限\n\n### skill-creator\n把成熟流程固化成可复用 Skill\n\n### humanizer + dbs-ai-check\n去AI味并过检测，才能投内容电商\n\n### social-ai-team\n贴近小红书账号运营的持续更新\n\n## 知识库\n\n- 飞碟啾AI：调研路线、自动找素材、案例库、飞书授权、流程固化、拆带货达人、视频前三秒\n  https://www.xiaohongshu.com/discovery/item/6a734b240000000008011b2c\n- 里维斯Leevis：带货文案去AI味\n  https://www.xiaohongshu.com/discovery/item/6a676c41000000000f0049ab\n- 营销拆解室：账号日历\n  https://www.xiaohongshu.com/discovery/item/6a489e990000000011015aa9\n- TK视频拆解笔记：复刻带货视频\n  https://www.xiaohongshu.com/discovery/item/6a58cd12000000000f01c572\n",
+  "md": "# 内容电商\n\n找素材、拆爆款、去AI味、沉淀案例库\n\n## 技能排序\n\n1. agent-reach · 调研路线\n2. web-access · 自动找素材\n3. nuwa-skill · 拆带货达人\n4. dbs-hook · 视频前三秒\n5. humanizer + dbs-ai-check · 带货文案去AI味\n6. lark-shared · 飞书授权\n7. lark-base · 案例库\n8. social-ai-team · 账号日历\n9. skill-creator · 流程固化\n\n10. Horizon · 热点简报\n11. BettaFish · 热点选题\n12. content-strategy · 内容支柱\n13. blogger-distiller · 对标拆解\n14. Spider_XHS · 对标笔记\n15. MediaCrawler · 评论挖需求\n16. dbskill · 标题和钩子\n17. Viral_Writer_Skill · 带货文案初稿\n18. xiaohongshu-ops-skill · 账号运营\n19. Auto-Redbook-Skills · 笔记文案配图\n20. short-form-video-script · 口播稿\n21. humanizer-zh · 去AI味\n22. 小橡皮 · 去AI味\n23. claude-code-auto-video-edit · 口播剪辑\n24. Hyperframes · 视频成片\n25. Generative-Media-Skills · 图视频音频\n26. video-to-subtitle-summary-skill · 直播回放转文案\n27. social-auto-upload · 多平台发布\n28. social-media-analyzer · 内容复盘\n## 应用介绍\n\n### agent-reach\n规划调研路线，收集内容和评论区痛点\n\n### web-access\n自动找素材、看数据\n\n### nuwa-skill\n拆解带货达人和对标账号\n\n### dbs-hook\n优化视频前三秒 Hook\n\n### humanizer + dbs-ai-check\n去AI味并过检测，才能投内容电商\n\n### lark-shared\n打通飞书授权和权限\n\n### lark-base\n把素材写进飞书案例库\n\n### social-ai-team\n贴近小红书账号运营的持续更新\n\n### skill-creator\n把成熟流程固化成可复用 Skill\n\n### Horizon\n把当天热点收成一份简报\n\n### BettaFish\n从热点里筛能带货的题\n\n### content-strategy\n先定栏目，再选题\n\n### blogger-distiller\n拆一个对标账号的定位和表达\n\n### Spider_XHS\n比较标题、开场和结构\n\n### MediaCrawler\n收回公开评论里的问题\n\n### dbskill\n改掉像说明书的标题和开头\n\n### Viral_Writer_Skill\n出初稿、标题和配图提示\n\n### xiaohongshu-ops-skill\n把选题、正文和复盘接上\n\n### Auto-Redbook-Skills\n文案和配图一起出\n\n### short-form-video-script\n把书面稿改成能念的口播\n\n### humanizer-zh\n改掉中文机器腔\n\n### 小橡皮\n把模板句改成自己的语气\n\n### claude-code-auto-video-edit\n剪口播画面\n\n### Hyperframes\n把文案收成一条片\n\n### Generative-Media-Skills\n为同一条内容出图、视频和声音\n\n### video-to-subtitle-summary-skill\n把回放转成字幕和摘要\n\n### social-auto-upload\n把做好的内容发到多个平台\n\n### social-media-analyzer\n看哪条有点击、哪条有收藏\n## 知识库\n",
   "skills": [
     {
       "order": 1,
@@ -17,21 +17,21 @@
     },
     {
       "order": 3,
-      "name": "lark-base",
-      "step": "案例库",
-      "intro": "把素材写进飞书案例库"
-    },
-    {
-      "order": 4,
       "name": "nuwa-skill",
       "step": "拆带货达人",
       "intro": "拆解带货达人和对标账号"
     },
     {
-      "order": 5,
+      "order": 4,
       "name": "dbs-hook",
       "step": "视频前三秒",
       "intro": "优化视频前三秒 Hook"
+    },
+    {
+      "order": 5,
+      "name": "humanizer + dbs-ai-check",
+      "step": "带货文案去AI味",
+      "intro": "去AI味并过检测，才能投内容电商"
     },
     {
       "order": 6,
@@ -41,21 +41,135 @@
     },
     {
       "order": 7,
+      "name": "lark-base",
+      "step": "案例库",
+      "intro": "把素材写进飞书案例库"
+    },
+    {
+      "order": 8,
+      "name": "social-ai-team",
+      "step": "账号日历",
+      "intro": "贴近小红书账号运营的持续更新"
+    },
+    {
+      "order": 9,
       "name": "skill-creator",
       "step": "流程固化",
       "intro": "把成熟流程固化成可复用 Skill"
     },
     {
-      "order": 8,
-      "name": "humanizer + dbs-ai-check",
-      "step": "带货文案去AI味",
-      "intro": "去AI味并过检测，才能投内容电商"
+      "order": 10,
+      "name": "Horizon",
+      "step": "热点简报",
+      "intro": "把当天热点收成一份简报"
     },
     {
-      "order": 9,
-      "name": "social-ai-team",
-      "step": "账号日历",
-      "intro": "贴近小红书账号运营的持续更新"
+      "order": 11,
+      "name": "BettaFish",
+      "step": "热点选题",
+      "intro": "从热点里筛能带货的题"
+    },
+    {
+      "order": 12,
+      "name": "content-strategy",
+      "step": "内容支柱",
+      "intro": "先定栏目，再选题"
+    },
+    {
+      "order": 13,
+      "name": "blogger-distiller",
+      "step": "对标拆解",
+      "intro": "拆一个对标账号的定位和表达"
+    },
+    {
+      "order": 14,
+      "name": "Spider_XHS",
+      "step": "对标笔记",
+      "intro": "比较标题、开场和结构"
+    },
+    {
+      "order": 15,
+      "name": "MediaCrawler",
+      "step": "评论挖需求",
+      "intro": "收回公开评论里的问题"
+    },
+    {
+      "order": 16,
+      "name": "dbskill",
+      "step": "标题和钩子",
+      "intro": "改掉像说明书的标题和开头"
+    },
+    {
+      "order": 17,
+      "name": "Viral_Writer_Skill",
+      "step": "带货文案初稿",
+      "intro": "出初稿、标题和配图提示"
+    },
+    {
+      "order": 18,
+      "name": "xiaohongshu-ops-skill",
+      "step": "账号运营",
+      "intro": "把选题、正文和复盘接上"
+    },
+    {
+      "order": 19,
+      "name": "Auto-Redbook-Skills",
+      "step": "笔记文案配图",
+      "intro": "文案和配图一起出"
+    },
+    {
+      "order": 20,
+      "name": "short-form-video-script",
+      "step": "口播稿",
+      "intro": "把书面稿改成能念的口播"
+    },
+    {
+      "order": 21,
+      "name": "humanizer-zh",
+      "step": "去AI味",
+      "intro": "改掉中文机器腔"
+    },
+    {
+      "order": 22,
+      "name": "小橡皮",
+      "step": "去AI味",
+      "intro": "把模板句改成自己的语气"
+    },
+    {
+      "order": 23,
+      "name": "claude-code-auto-video-edit",
+      "step": "口播剪辑",
+      "intro": "剪口播画面"
+    },
+    {
+      "order": 24,
+      "name": "Hyperframes",
+      "step": "视频成片",
+      "intro": "把文案收成一条片"
+    },
+    {
+      "order": 25,
+      "name": "Generative-Media-Skills",
+      "step": "图视频音频",
+      "intro": "为同一条内容出图、视频和声音"
+    },
+    {
+      "order": 26,
+      "name": "video-to-subtitle-summary-skill",
+      "step": "直播回放转文案",
+      "intro": "把回放转成字幕和摘要"
+    },
+    {
+      "order": 27,
+      "name": "social-auto-upload",
+      "step": "多平台发布",
+      "intro": "把做好的内容发到多个平台"
+    },
+    {
+      "order": 28,
+      "name": "social-media-analyzer",
+      "step": "内容复盘",
+      "intro": "看哪条有点击、哪条有收藏"
     }
   ],
   "apps": [
@@ -68,10 +182,6 @@
       "intro": "自动找素材、看数据"
     },
     {
-      "name": "lark-base",
-      "intro": "把素材写进飞书案例库"
-    },
-    {
       "name": "nuwa-skill",
       "intro": "拆解带货达人和对标账号"
     },
@@ -80,20 +190,100 @@
       "intro": "优化视频前三秒 Hook"
     },
     {
+      "name": "humanizer + dbs-ai-check",
+      "intro": "去AI味并过检测，才能投内容电商"
+    },
+    {
       "name": "lark-shared",
       "intro": "打通飞书授权和权限"
+    },
+    {
+      "name": "lark-base",
+      "intro": "把素材写进飞书案例库"
+    },
+    {
+      "name": "social-ai-team",
+      "intro": "贴近小红书账号运营的持续更新"
     },
     {
       "name": "skill-creator",
       "intro": "把成熟流程固化成可复用 Skill"
     },
     {
-      "name": "humanizer + dbs-ai-check",
-      "intro": "去AI味并过检测，才能投内容电商"
+      "name": "Horizon",
+      "intro": "把当天热点收成一份简报"
     },
     {
-      "name": "social-ai-team",
-      "intro": "贴近小红书账号运营的持续更新"
+      "name": "BettaFish",
+      "intro": "从热点里筛能带货的题"
+    },
+    {
+      "name": "content-strategy",
+      "intro": "先定栏目，再选题"
+    },
+    {
+      "name": "blogger-distiller",
+      "intro": "拆一个对标账号的定位和表达"
+    },
+    {
+      "name": "Spider_XHS",
+      "intro": "比较标题、开场和结构"
+    },
+    {
+      "name": "MediaCrawler",
+      "intro": "收回公开评论里的问题"
+    },
+    {
+      "name": "dbskill",
+      "intro": "改掉像说明书的标题和开头"
+    },
+    {
+      "name": "Viral_Writer_Skill",
+      "intro": "出初稿、标题和配图提示"
+    },
+    {
+      "name": "xiaohongshu-ops-skill",
+      "intro": "把选题、正文和复盘接上"
+    },
+    {
+      "name": "Auto-Redbook-Skills",
+      "intro": "文案和配图一起出"
+    },
+    {
+      "name": "short-form-video-script",
+      "intro": "把书面稿改成能念的口播"
+    },
+    {
+      "name": "humanizer-zh",
+      "intro": "改掉中文机器腔"
+    },
+    {
+      "name": "小橡皮",
+      "intro": "把模板句改成自己的语气"
+    },
+    {
+      "name": "claude-code-auto-video-edit",
+      "intro": "剪口播画面"
+    },
+    {
+      "name": "Hyperframes",
+      "intro": "把文案收成一条片"
+    },
+    {
+      "name": "Generative-Media-Skills",
+      "intro": "为同一条内容出图、视频和声音"
+    },
+    {
+      "name": "video-to-subtitle-summary-skill",
+      "intro": "把回放转成字幕和摘要"
+    },
+    {
+      "name": "social-auto-upload",
+      "intro": "把做好的内容发到多个平台"
+    },
+    {
+      "name": "social-media-analyzer",
+      "intro": "看哪条有点击、哪条有收藏"
     }
   ],
   "kb": [

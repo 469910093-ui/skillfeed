@@ -40,6 +40,7 @@ python skillfeed.py serve      # 竖滑信息流（会自动 build）
 - `python skillfeed.py xhs-crawl [--keyword TEXT] [--max N]` — 媒讯助手/Chrome 采小红书
 - `python skillfeed.py build [--intent TEXT]` — 不联网重生信息流 HTML
 - `python scripts/harvest_github_2k_skills.py` — 分片搜索 GitHub ≥2000★ skill 形 → 底表 + Feed
+- `python skillfeed.py md-index [--limit N] [--force]` — 回填 SKILL.md 全文到 `~/.skill-feed/md/`（搜索全文索引；`SKILLFEED_MD_DIR` 可覆盖）
 - `python skillfeed.py i18n [--force] [--limit N] [--model NAME]` — 只补中英双语卡片文案
   （需 `DASHSCOPE_API_KEY`；缓存在 `~/.skill-feed/i18n/cards.jsonl`，页面默认显示中文）
 - `python skillfeed.py bitable init --base-token TOKEN` — 在飞书 Base 里建「译稿库」表

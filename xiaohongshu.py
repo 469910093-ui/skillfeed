@@ -379,9 +379,10 @@ def candidates_from_mentions(data_dir: Path, *, max_repos: int = 40) -> tuple[li
     data = load_mentions(data_dir)
     rows: list[dict] = []
     seen: set[str] = set()
+    # 笔记里点名的仓排在种子前面。新 skill 往往还没到高星，不能被种子名单挤掉。
     repos = sorted(
         data.get("repos") or [],
-        key=lambda x: (0 if x.get("seed") else 1, -int(x.get("likes") or 0)),
+        key=lambda x: (1 if x.get("seed") else 0, -int(x.get("likes") or 0)),
     )
     for r in repos:
         fn = (r.get("full_name") or "").strip()

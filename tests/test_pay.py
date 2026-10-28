@@ -96,6 +96,92 @@ class TestPayNotifyIdempotent(unittest.TestCase):
         user = db.get_user(self.conn, self.uid)
         self.assertFalse(entitlement.is_subscriber(user))
 
+    def test_reconcile_opens_when_wechat_says_paid(self):
+        order = pay.create_order(
+            self.conn, user_id=self.uid, sku_id=pay.SKU_MONTH_CONT,
+            settings=self.settings, assign_pack="cross-border",
+        )
+
+        class Ready(SimpleNamespace):
+            @property
+            def wechat_pay_configured(self):
+                return True
+
+        settings = Ready(**self.settings.__dict__)
+
+        def query(_settings, trade):
+            self.assertEqual(trade, order["out_trade_no"])
+            return {
+                "trade_state": "SUCCESS",
+                "transaction_id": "4200000001",
+                "out_trade_no": trade,
+                "amount_fen": 2900,
+            }
+
+        import sys
+        import types
+        stub = types.ModuleType("server.wechat_pay")
+        stub.query_by_out_trade_no = query
+        orig = sys.modules.get("server.wechat_pay")
+        sys.modules["server.wechat_pay"] = stub
+        try:
+            opened = pay.reconcile_pending_orders(
+                self.conn, user_id=self.uid, settings=settings,
+            )
+        finally:
+            if orig is None:
+                sys.modules.pop("server.wechat_pay", None)
+            else:
+                sys.modules["server.wechat_pay"] = orig
+        self.assertEqual(opened, 1)
+        paid = db.get_order_by_trade_no(self.conn, order["out_trade_no"])
+        self.assertEqual(paid["status"], "paid")
+        self.assertEqual(db.list_active_pack_ids(self.conn, self.uid), ["cross-border"])
+
+    def test_reconcile_order_checks_only_that_trade(self):
+        older = self._create(pay.SKU_MONTH_CONT)
+        current = pay.create_order(
+            self.conn, user_id=self.uid, sku_id=pay.SKU_MONTH_CONT,
+            settings=self.settings, assign_pack="cross-border",
+        )
+
+        class Ready(SimpleNamespace):
+            @property
+            def wechat_pay_configured(self):
+                return True
+
+        settings = Ready(**self.settings.__dict__)
+        asked = []
+
+        def query(_settings, trade):
+            asked.append(trade)
+            return {
+                "trade_state": "SUCCESS",
+                "transaction_id": "4200000002",
+                "out_trade_no": trade,
+                "amount_fen": 2900,
+            }
+
+        import sys
+        import types
+        stub = types.ModuleType("server.wechat_pay")
+        stub.query_by_out_trade_no = query
+        orig = sys.modules.get("server.wechat_pay")
+        sys.modules["server.wechat_pay"] = stub
+        try:
+            row = pay.reconcile_order(
+                self.conn, user_id=self.uid, out_trade_no=current["out_trade_no"],
+                settings=settings,
+            )
+        finally:
+            if orig is None:
+                sys.modules.pop("server.wechat_pay", None)
+            else:
+                sys.modules["server.wechat_pay"] = orig
+        self.assertEqual(asked, [current["out_trade_no"]])
+        self.assertEqual(row["status"], "paid")
+        self.assertEqual(db.get_order_by_trade_no(self.conn, older["out_trade_no"])["status"], "pending")
+
     def test_month_cont_with_assign_pack(self):
         order = self._create(pay.SKU_MONTH_CONT)
         self.assertEqual(order["amount_fen"], 2900)

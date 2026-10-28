@@ -1102,6 +1102,16 @@ class TestServerAPI(unittest.TestCase):
             os.environ.pop("SKILLFEED_OFFICIAL_FEED_URL", None)
             self.assertEqual(Settings().official_feed_url, "")
 
+    def test_aftercare_qr_is_https_only(self):
+        import os
+        with mock.patch.dict(os.environ, {
+            "SKILLFEED_OA_QR_URL": "http://evil.example/a.png",
+            "SKILLFEED_ASSISTANT_QR_URL": "https://skillfeeder.cn/assistant.png",
+        }, clear=False):
+            care = Settings().aftercare_public()
+        self.assertEqual(care["oa_qr_url"], "")
+        self.assertEqual(care["assistant_qr_url"], "https://skillfeeder.cn/assistant.png")
+
 
 @unittest.skipUnless(HAS_SERVER, "requirements-server.txt not installed")
 class TestPayOrders(unittest.TestCase):
@@ -1150,6 +1160,7 @@ class TestPayOrders(unittest.TestCase):
         mine = self.client.get("/api/pay/orders")
         self.assertEqual(len(mine.json()["orders"]), 1)
         self.assertEqual(mine.json()["orders"][0]["status"], "paid")
+        self.assertEqual(mine.json()["orders"][0]["assign_pack"], "")
 
     def test_dev_notify_off_when_not_dev(self):
         s = _settings(self.tmp.name, dev_mode=False, require_login=False)
@@ -1199,10 +1210,16 @@ class TestPayOrders(unittest.TestCase):
         self.assertEqual(names[0], "ecommerce-visual-copywriting-skill")
         self.assertEqual(len(names), len(body["apps"]))
         self.assertGreaterEqual(len(body["kb"]), 1)
+        self.assertIn("动销率", body["md"])
+        self.assertTrue(any("动销率" in (row.get("body") or "") for row in body["kb"]))
+        self.assertTrue(all("url" not in row for row in body["kb"]))
         self.assertIn("## 技能排序", body["md"])
         self.assertIn("## 知识库", body["md"])
         self.assertNotIn("待补采", opened.text)
         self.assertNotIn("xsec_token", opened.text)
+        self.assertNotIn("xiaohongshu.com", opened.text)
+        self.assertNotIn("xhslink", opened.text)
+        self.assertNotIn("整理自", opened.text)
         # 有交付材料的包才 200；数据分析包无手册仍 404
         year = self.client.post("/api/pay/checkout", json={
             "sku": "subscriber_year_cont",
@@ -1218,6 +1235,45 @@ class TestPayOrders(unittest.TestCase):
         other.get("/auth/dev-login?login=other-user")
         denied = other.get("/api/packs/shelf-ecom/delivery")
         self.assertEqual(denied.status_code, 403)
+
+    def test_pack_package_downloads_only_for_the_seat(self):
+        import io
+        import zipfile
+        locked = self.client.get("/api/packs/shelf-ecom/package")
+        self.assertEqual(locked.status_code, 403)
+        bought = self.client.post("/api/pay/checkout", json={
+            "sku": "subscriber_month_cont",
+            "assign_pack": "shelf-ecom",
+        })
+        self.assertEqual(bought.status_code, 200, bought.text)
+        opened = self.client.get("/api/packs/shelf-ecom/package")
+        self.assertEqual(opened.status_code, 200, opened.text)
+        self.assertIn("application/zip", opened.headers.get("content-type", ""))
+        self.assertIn("skillfeeder-shelf-ecom.zip", opened.headers.get("content-disposition", ""))
+        with zipfile.ZipFile(io.BytesIO(opened.content)) as zf:
+            names = set(zf.namelist())
+            self.assertEqual(
+                names,
+                {"手册.md", "知识库.md", "技能排序.txt", "安装说明.txt", "scene.json"},
+            )
+            kb_doc = zf.read("知识库.md").decode("utf-8")
+            self.assertIn("订单表复盘", kb_doc)
+            self.assertNotIn("xiaohongshu.com", kb_doc)
+            self.assertNotIn("xiaohongshu.com", zf.read("手册.md").decode("utf-8"))
+            note = zf.read("安装说明.txt").decode("utf-8")
+            self.assertIn("install-scene", note)
+            self.assertIn("你点选后才用", note)
+            manifest = json.loads(zf.read("scene.json").decode("utf-8"))
+            self.assertEqual(manifest["id"], "shelf-ecom")
+            self.assertIn("主图卖点文案", manifest["triggers"])
+            self.assertIn("ecommerce-visual-copywriting-skill", zf.read("技能排序.txt").decode("utf-8"))
+        other = TestClient(server_app.create_app(self.settings))
+        other.get("/auth/dev-login?login=other-user")
+        self.assertEqual(other.get("/api/packs/shelf-ecom/package").status_code, 403)
+        me = self.client.get("/auth/me").json()
+        self.assertEqual(me["aftercare"]["oa_name"], "Skill Man")
+        self.assertEqual(me["aftercare"]["oa_qr_url"], "")
+        self.assertEqual(me["aftercare"]["assistant_qr_url"], "")
 
     def test_cannot_notify_someone_elses_order(self):
         created = self.client.post("/api/pay/create", json={})

@@ -206,6 +206,25 @@ def apply_global_scores(
     return rows
 
 
+def carry_forward(items: list[dict], previous: list[dict]) -> tuple[list[dict], int]:
+    """把上一轮已经在信息流里的卡片接在这一轮后面。
+
+    分档每轮只抽一窗。不接住的话，下一轮重写 feed.json 会把上一页刚补进来的仓丢掉。
+    同一条 skill（id 或 full_name::skill_path）以这一轮的版本为准。
+    """
+    out = list(items)
+    seen = {item_key(it) for it in out}
+    kept = 0
+    for old in previous or []:
+        key = item_key(old)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(old)
+        kept += 1
+    return out, kept
+
+
 def pack_feed(
     *,
     passed: list[dict],

@@ -25,7 +25,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +51,69 @@ GIT_BASH = Path(r"C:\Program Files\Git\bin\bash.exe")
 WEB_COLLECTION = HOME / ".codex" / "skills" / "web-collection"
 BRIDGE_TOKEN = HOME / ".meixi-connector" / "bridge-admin-token.txt"
 MIN_STARS_DEFAULT = 20
+_DESKTOP_AUTH: tuple[str, str] | None = None
+
+
+def _bash() -> Path:
+    if GIT_BASH.is_file():
+        return GIT_BASH
+    return Path("/bin/bash")
+
+
+def _web_collection() -> Path:
+    if WEB_COLLECTION.is_dir():
+        return WEB_COLLECTION
+    cursor = HOME / ".cursor" / "skills" / "web-collection"
+    if cursor.is_dir():
+        return cursor
+    return WEB_COLLECTION
+
+
+def _desktop_auth() -> tuple[str, str] | None:
+    """媒讯助手桌面连接器。Windows 旧路径失败时再用这份。"""
+    global _DESKTOP_AUTH
+    if _DESKTOP_AUTH is not None:
+        return _DESKTOP_AUTH
+    roots = ("meixun-desktop", "meixun-desktop-test", "meixun-desktop-dev")
+    files: list[Path] = []
+    for root in roots:
+        runtime = HOME / "Library" / "Application Support" / root / "connector" / "runtime"
+        if not runtime.is_dir():
+            continue
+        files.extend(runtime.glob("bridge-instance-*.json"))
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    for desc in files:
+        try:
+            meta = json.loads(desc.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        host = meta.get("host")
+        port = meta.get("port")
+        state_dir = meta.get("stateDir")
+        if host not in ("127.0.0.1", "localhost", "::1") or not isinstance(port, int):
+            continue
+        if not isinstance(state_dir, str):
+            continue
+        token_file = Path(state_dir) / "bridge-admin-token.txt"
+        if not token_file.is_file():
+            continue
+        token = token_file.read_text(encoding="utf-8").strip()
+        if not token:
+            continue
+        base = f"http://{host}:{port}"
+        req = urllib.request.Request(
+            f"{base}/api/status",
+            headers={"x-connector-admin-token": token},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status != 200:
+                    continue
+        except Exception:
+            continue
+        _DESKTOP_AUTH = (base, token)
+        return _DESKTOP_AUTH
+    return None
 
 ENRICH_COLUMNS = ("提取GitHub仓", "校验状态", "评星", "是否通过门禁", "更新时间")
 
@@ -63,13 +126,37 @@ def load_cfg() -> dict:
 
 
 def bridge_token() -> str:
+    desktop = _desktop_auth()
+    if desktop:
+        return desktop[1]
     return BRIDGE_TOKEN.read_text(encoding="utf-8").strip()
+
+
+def connector_base() -> str:
+    desktop = _desktop_auth()
+    if desktop:
+        return desktop[0]
+    return "http://127.0.0.1:19820"
 
 
 def connector_get(path: str) -> dict:
     req = urllib.request.Request(
-        f"http://127.0.0.1:19820{path}",
+        f"{connector_base()}{path}",
         headers={"x-connector-admin-token": bridge_token()},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def connector_post(path: str, body: dict) -> dict:
+    req = urllib.request.Request(
+        f"{connector_base()}{path}",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "x-connector-admin-token": bridge_token(),
+            "Content-Type": "application/json",
+        },
+        method="POST",
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
         return json.loads(resp.read().decode("utf-8"))
@@ -163,31 +250,105 @@ def write_csv_file(csv_path: Path, fieldnames: list[str], rows: list[dict]) -> N
         writer.writerows(rows)
 
 
-def run_note_link(url: str) -> dict | None:
-    if not GIT_BASH.is_file() or not WEB_COLLECTION.is_dir():
-        return None
-    safe_url = url.replace("'", "'\\''")
-    cmd = [
-        str(GIT_BASH), "-lc",
-        (
-            f"cd '{WEB_COLLECTION.as_posix()}' && "
-            f"bash scripts/run.sh --connection-mode local --platform xiaohongshu "
-            f"--method noteLink --link '{safe_url}' --max-items 1 --fetch-detail true "
-            f"--detail-speed slow --auto-export false --ensure-bridge"
-        ),
-    ]
+def _task_data(payload: dict) -> dict:
+    data = payload.get("data")
+    return data if isinstance(data, dict) else payload
+
+
+def _note_link_record(task_id: str) -> dict | None:
+    task = _task_data(connector_get(f"/api/tasks/{task_id}"))
+    recs = task.get("records") or []
+    if isinstance(recs, list) and recs and isinstance(recs[0], dict):
+        return recs[0]
+    return None
+
+
+def _wait_collect_idle(timeout: float = 15) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            st = connector_get("/api/status")
+        except Exception:
+            time.sleep(0.5)
+            continue
+        tasks = st.get("tasks") or {}
+        lease = (st.get("plugin") or {}).get("collectionLease") or {}
+        if int(tasks.get("running") or 0) == 0 and not lease.get("isCollecting"):
+            return
+        time.sleep(0.4)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=120)
-        text = proc.stdout + proc.stderr
-        m = re.search(r'"taskId"\s*:\s*"(xiaohongshu-noteLink-[^"]+)"', text)
-        if not m:
+        connector_post("/api/stop", {})
+    except Exception:
+        pass
+    time.sleep(0.8)
+
+
+def run_note_link(url: str) -> dict | None:
+    """直接打桌面连接器。run.sh 只轮询父任务 id，父任务查不到，会空转到超时。"""
+    _wait_collect_idle()
+    started_ms = int(time.time() * 1000) - 2000
+    note_id_match = re.search(r"/item/([a-f0-9]+)", url or "", re.I)
+    note_id = note_id_match.group(1).lower() if note_id_match else ""
+    payload = {
+        "platform": "xiaohongshu",
+        "method": "noteLink",
+        "links": [url],
+        "maxItems": 1,
+        "fetchDetail": True,
+        "detailSpeed": "fast",
+        "autoExport": False,
+    }
+    try:
+        connector_post("/api/collect", payload)
+    except Exception:
+        try:
+            connector_post("/api/stop", {})
+        except Exception:
+            pass
+        time.sleep(1.5)
+        try:
+            connector_post("/api/collect", payload)
+        except Exception as e:
+            print(f"[warn] noteLink start: {type(e).__name__}")
             return None
-        task = connector_get(f"/api/tasks/{m.group(1)}")
-        recs = task.get("records") or []
-        return recs[0] if recs else None
-    except Exception as e:
-        print(f"[warn] noteLink: {e}")
-        return None
+    deadline = time.time() + 55
+    child = ""
+    while time.time() < deadline:
+        try:
+            st = connector_get("/api/status")
+            lease = (st.get("plugin") or {}).get("collectionLease") or {}
+            tid = str(lease.get("taskId") or "")
+            if "noteLink" in tid:
+                child = tid
+            if child:
+                task = _task_data(connector_get(f"/api/tasks/{child}"))
+                if task.get("status") in ("completed", "error"):
+                    recs = task.get("records") or []
+                    return recs[0] if recs else None
+        except Exception:
+            pass
+        time.sleep(0.7)
+    # 采集已结束但心跳先清掉时，从落盘任务里补一次
+    results = HOME / "Library/Application Support/meixun-desktop/connector/state/task-results.json"
+    if results.is_file():
+        try:
+            saved = json.loads(results.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            saved = []
+        fresh = [
+            t for t in saved
+            if "noteLink" in str(t.get("taskId") or "")
+            and int(t.get("createdAt") or 0) >= started_ms
+            and int(t.get("count") or t.get("persistedRecordCount") or 0) > 0
+            and (not note_id or note_id in json.dumps(t.get("input") or {}, ensure_ascii=False).lower())
+        ]
+        if fresh:
+            fresh.sort(key=lambda t: int(t.get("createdAt") or 0))
+            try:
+                return _note_link_record(fresh[-1]["taskId"])
+            except Exception:
+                return None
+    return None
 
 
 TITLE_REPO_HINTS: list[tuple[re.Pattern, list[str]]] = [
@@ -391,11 +552,53 @@ def enrich_row_content(
         note_link_used[0] += 1
         if rec and (rec.get("content") or "").strip():
             content = rec["content"].strip()
+            published = (rec.get("publishTime") or "").strip()
+            if published and not (row.get("发布时间") or "").strip():
+                row["发布时间"] = published
             print(f"  noteLink[{note_link_used[0]}] OK {(row.get('标题') or '')[:36]}")
         else:
             print(f"  noteLink[{note_link_used[0]}] skip {(row.get('标题') or '')[:36]}")
-        time.sleep(1.2)
+        time.sleep(0.4)
     return content
+
+
+def parse_note_time(text: str) -> datetime | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    now = datetime.now()
+    if raw in ("今天", "刚刚") or "小时前" in raw or "分钟前" in raw:
+        return now
+    if raw.startswith("昨天"):
+        return now - timedelta(days=1)
+    days_ago = re.search(r"(\d+)\s*天前", raw)
+    if days_ago:
+        return now - timedelta(days=int(days_ago.group(1)))
+    full = re.search(r"(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})", raw)
+    if full:
+        try:
+            return datetime(int(full.group(1)), int(full.group(2)), int(full.group(3)))
+        except ValueError:
+            return None
+    short = re.search(r"(\d{1,2})[-/.月](\d{1,2})", raw)
+    if short:
+        month, day = int(short.group(1)), int(short.group(2))
+        year = now.year
+        try:
+            found = datetime(year, month, day)
+        except ValueError:
+            return None
+        if found > now + timedelta(days=1):
+            found = datetime(year - 1, month, day)
+        return found
+    return None
+
+
+def note_is_older_than(text: str, days: int) -> bool:
+    found = parse_note_time(text)
+    if found is None:
+        return False
+    return found < datetime.now() - timedelta(days=days)
 
 
 def update_csv_inplace(
@@ -409,6 +612,7 @@ def update_csv_inplace(
     note_link_used: list[int],
     validation_cache: dict[str, tuple[dict | None, str]],
     passed_global: dict[str, dict],
+    since_days: int | None = None,
 ) -> tuple[int, int]:
     """原地更新 CSV，返回 (enriched_rows, passed_repos_this_file)。"""
     fieldnames, rows = read_csv_file(csv_path)
@@ -425,6 +629,14 @@ def update_csv_inplace(
         if content and content != (row.get("正文") or "").strip():
             row["正文"] = content[:2000]
             enriched += 1
+
+        if since_days and note_is_older_than(row.get("发布时间") or "", since_days):
+            row["提取GitHub仓"] = ""
+            row["校验状态"] = "超出时间窗"
+            row["评星"] = ""
+            row["是否通过门禁"] = "超出时间窗"
+            row["更新时间"] = ts
+            continue
 
         repos = repos_for_text(title, content, url)
         statuses: list[str] = []
@@ -499,7 +711,13 @@ def push_rows(rows: list[dict], base_token: str, table_id: str) -> None:
         )
 
 
-def cmd_run(csv_paths: list[Path], base_token: str, table_id: str, note_link_limit: int) -> int:
+def cmd_run(
+    csv_paths: list[Path],
+    base_token: str,
+    table_id: str,
+    note_link_limit: int,
+    since_days: int | None = None,
+) -> int:
     cfg = load_cfg()
     min_stars = int(cfg.get("min_stars", MIN_STARS_DEFAULT))
     ua = cfg.get("user_agent", "skill-feed/0.3")
@@ -530,6 +748,7 @@ def cmd_run(csv_paths: list[Path], base_token: str, table_id: str, note_link_lim
             note_link_used=note_link_used,
             validation_cache=validation_cache,
             passed_global=passed_global,
+            since_days=since_days,
         )
         # 把本文件已写回的正文并入索引，供同内容的第二份 CSV 复用
         _, rows_now = read_csv_file(csv_path)
@@ -624,17 +843,19 @@ def main() -> int:
     p_run.add_argument("--base-token", default="")
     p_run.add_argument("--table-id", default="")
     p_run.add_argument("--note-link-limit", type=int, default=8)
+    p_run.add_argument("--since-days", type=int, default=0)
     p_audit = sub.add_parser("audit-stars")
     p_audit.add_argument("--base-token", default="")
     p_audit.add_argument("--table-id", default="")
     args = ap.parse_args()
 
-    csvs = args.csv or [
-        DEFAULT_CSV_DIR / "github skills 小红书更新0902.csv",
-        DEFAULT_CSV_DIR / "github skills 小红书更新0902-1.csv",
-    ]
     if args.cmd == "run":
-        return cmd_run(csvs, args.base_token, args.table_id, args.note_link_limit)
+        csvs = args.csv or [
+            DEFAULT_CSV_DIR / "github skills 小红书更新0902.csv",
+            DEFAULT_CSV_DIR / "github skills 小红书更新0902-1.csv",
+        ]
+        since_days = args.since_days if args.since_days > 0 else None
+        return cmd_run(csvs, args.base_token, args.table_id, args.note_link_limit, since_days)
     if args.cmd == "audit-stars":
         return cmd_audit_stars(args.base_token, args.table_id)
     return 1

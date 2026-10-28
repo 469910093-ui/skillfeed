@@ -1,0 +1,23 @@
+{
+  "description": "SkillFeeder 小程序，整页打开 https://skillfeeder.cn/",
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "setting": {
+    "bundle": false,
+    "urlCheck": true,
+    "es6": true,
+    "postcss": true,
+    "minified": true,
+    "enhance": true,
+    "compileWorklet": false,
+    "minifyWXSS": true,
+    "minifyWXML": true
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.6.6",
+  "appid": "",
+  "projectname": "skillfeeder",
+  "condition": {}
+}
