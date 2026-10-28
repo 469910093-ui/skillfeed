@@ -479,16 +479,15 @@ class TestCardDedupeJs(unittest.TestCase):
 
 
 class TestFirstScreenChrome(unittest.TestCase):
-    """七个角色对「门口是空壳」的共识：没关注就不放圆环，Demo/反馈默认藏。"""
+    """门口不放空壳：Demo/反馈默认藏；没关注时圆环只留两个引导环。"""
 
-    def test_template_hides_empty_rings_and_demo_chrome(self):
+    def test_template_hides_demo_chrome(self):
         html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
         self.assertIn("aspect-ratio: 16 / 5", html)
         self.assertIn("mobile-badges-below-cover", html)
         self.assertIn("position: static", html)
         self.assertIn("min-width: 0", html)
         self.assertRegex(html, r"\.zone-read \.problem \{\s*font-size: 1\.2rem;")
-        self.assertIn("nFollow === 0", html)
         self.assertIn("body.show-demo-tools .icon-btn", html)
         self.assertRegex(html, r"\.icon-btn \{[^}]*display: none;")
         self.assertNotIn('id="genStatus"', html)
@@ -510,6 +509,7 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertIn('id="coachSkip"', html)
         self.assertNotIn('id="coachNext"', html)
         self.assertIn("setTimeout(coachNext, COACH_MS)", html)
+        self.assertIn("const COACH_MS = 2500", html)
         order = [
             "id: 'read'",
             "id: 'github'",
@@ -523,11 +523,17 @@ class TestFirstScreenChrome(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
-    def test_empty_follows_hide_story_rings(self):
+    def test_empty_follows_keep_guide_rings(self):
         html = feed_dashboard.build_feed_html({"items": [], "corpus": []})
-        hidden = JsHarness(html).eval(
-            "(renderStories(), document.getElementById('storiesWrap').classList.contains('hidden'))")
-        self.assertTrue(hidden)
+        got = JsHarness(html).eval(
+            "(renderStories(), {"
+            "hidden: document.getElementById('storiesWrap').classList.contains('hidden'),"
+            "html: document.getElementById('stories').innerHTML"
+            "})")
+        self.assertFalse(got["hidden"])
+        self.assertIn('data-value="builder"', got["html"])
+        self.assertIn('data-value="industry"', got["html"])
+        self.assertNotIn('data-kind="following"', got["html"])
 
     @unittest.skipIf(NODE is None, "需要 node 才能跑 renderStories")
     def test_followed_builder_shows_story_rings(self):
@@ -3016,6 +3022,113 @@ class TestTabRoutingAndRuntimeShapes(unittest.TestCase):
         opted = js.eval(
             "(ACCT.user.email_opt_in = true, bindNudgeHtml())")
         self.assertEqual("", opted)
+
+    def _guest(self, ua="Mozilla/5.0", **acct):
+        js = _script_source(self.html)
+        flags = ", ".join(f"{k}: {json.dumps(v)}" for k, v in acct.items())
+        return self.harness(
+            api_base="https://skillfeeder.cn",
+            extra="\n".join([
+                _grab(js, r"^const GUEST = \{[^\n]*\};"),
+                _grab(js, r"^const GN_KEY = '[^']*';"),
+                _grab(js, r"^const GN_FEED_AT = \d+;"),
+                _grab(js, r"^const GN_BACK_AT = \d+;"),
+                "const location = { pathname: '/', search: '' };",
+                f"Object.defineProperty(globalThis, 'navigator', {{ value: {{ userAgent: {json.dumps(ua)} }} }});",
+                f"Object.assign(ACCT, {{ {flags} }});",
+                "Object.assign(GUEST, { checked: true, loggedIn: false,"
+                " oaName: 'Skill Man', oaQr: '/static/oa-skill-man.jpg',"
+                " oaFollow: 'https://weixin.qq.com/r/mp/x' });",
+            ]),
+        )
+
+    def test_one_tap_in_wechat_logs_in_then_opens_follow_page(self):
+        wx = "Mozilla/5.0 MicroMessenger/8.0"
+        html = self._guest(ua=wx, wechat=True).eval("guestCardHtml('feed')")
+        self.assertIn("js-gn-follow", html)
+        self.assertIn(
+            "https://skillfeeder.cn/auth/wechat?next=%2Fauth%2Ffollow", html)
+        self.assertIn("一键登录并关注", html)
+        self.assertNotIn("js-gn-oa", html)
+        self.assertNotIn("js-gn-login", html)
+
+    def test_wechat_without_login_still_jumps_to_follow_page(self):
+        js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0")
+        html = js.eval("guestCardHtml('feed')")
+        self.assertIn('href="https://skillfeeder.cn/auth/follow"', html)
+        self.assertTrue(js.eval("gnAllowed('feed')"))
+
+    def test_outside_wechat_keeps_qr_and_login(self):
+        html = self._guest(oauth=True).eval("guestCardHtml('feed')")
+        self.assertNotIn("js-gn-follow", html)
+        self.assertIn("js-gn-oa", html)
+        self.assertIn("js-gn-login", html)
+
+    def test_guest_card_waits_until_the_tenth_card(self):
+        js = self._guest(oauth=True)
+        slot = js.eval("gnFeedSlot()")
+        self.assertEqual({"kind": "feed", "at": 10}, slot)
+        html = js.eval("guestCardHtml('feed')")
+        self.assertIn("关注公众号 Skill Man", html)
+        self.assertIn("js-gn-oa", html)
+        self.assertIn("/login?next=", html)
+        self.assertIn("js-gn-later", html)
+
+    def test_returning_guest_sees_welcome_back_earlier(self):
+        js = self._guest(oauth=True)
+        slot = js.eval(
+            "(localStorage.setItem(GN_KEY, JSON.stringify({ visits: 2 })), gnFeedSlot())")
+        self.assertEqual({"kind": "back", "at": 5}, slot)
+        self.assertIn("欢迎回来", js.eval("(localStorage.setItem(GN_KEY, '{\"visits\":2}'), guestCardHtml('back'))"))
+
+    def test_guest_nudge_respects_snooze_and_one_kind_per_visit(self):
+        js = self._guest(oauth=True)
+        got = js.eval(
+            "[gnAllowed('feed'),"
+            " (gnMarkShown('feed'), gnAllowed('save')),"
+            " gnAllowed('feed'),"
+            " (gnSnooze(7), gnAllowed('feed')),"
+            " (sessionStorage.removeItem('sf_gn_kind'), gnAllowed('feed'))]")
+        self.assertEqual([True, False, True, False, False], got)
+
+    def test_wechat_guest_gets_no_github_login(self):
+        """微信内置浏览器走不通 GitHub 授权：只给关注公众号。"""
+        js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True, wechat=False)
+        html = js.eval("(GUEST.oaFollow = '', guestCardHtml('feed'))")
+        self.assertIn("js-gn-oa", html)
+        self.assertNotIn("js-gn-login", html)
+        wx = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True, wechat=True)
+        self.assertNotIn("/auth/github", wx.eval("guestCardHtml('feed')"))
+        self.assertIn("/auth/wechat?next=", wx.eval("guestCardHtml('feed')"))
+
+    def test_logged_in_users_and_pages_mirror_get_no_guest_nudge(self):
+        js = self._guest(oauth=True)
+        self.assertFalse(js.eval("(GUEST.loggedIn = true, gnAllowed('feed'))"))
+        mirror = self._guest(oauth=True)
+        mirror.prelude = mirror.prelude.replace(
+            'const API_BASE = "https://skillfeeder.cn";', "const API_BASE = '';")
+        self.assertFalse(mirror.eval("gnAllowed('feed')"))
+
+    def test_card_on_screen_reports_one_impression_and_dwell(self):
+        js = self.harness(api_base="https://skillfeeder.cn")
+        got = js.eval(
+            "(() => {"
+            " const st = seenState();"
+            " const meta = { item_key: 'acme/x', full_name: 'acme/x', position: 4 };"
+            " st.since.set('acme/x', { t0: 1000, meta }); settleSeen('acme/x', 2500);"
+            " st.since.set('acme/x', { t0: 3000, meta }); settleSeen('acme/x', 4200);"
+            " st.since.set('acme/x', { t0: 5000, meta }); settleSeen('acme/x', 5100);"
+            " return journeyState().q.map(e => [e.action, e.item_key, e.position, e.dwell_ms]);"
+            "})()")
+        self.assertEqual(got, [
+            ["impression", "acme/x", 4, 1500],
+            ["dwell", "acme/x", 4, 1500],
+            ["dwell", "acme/x", 4, 1200],
+        ])
+
+    def test_guest_nudge_needs_a_way_back(self):
+        js = self._guest(ua="Mozilla/5.0 MicroMessenger/8.0", oauth=True)
+        self.assertFalse(js.eval("(GUEST.oaQr = '', GUEST.oaFollow = '', gnAllowed('feed'))"))
 
     def test_recall_saved_strip_points_at_bookmarks(self):
         js = self.harness(

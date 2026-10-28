@@ -104,6 +104,9 @@ class SiteSettingsBody(BaseModel):
     search_placeholder: str = ""
     logo_url: str = ""
     review_webhook: str = ""
+    oa_name: Optional[str] = None
+    oa_qr_url: Optional[str] = None
+    oa_follow_url: Optional[str] = None
 
 
 class ChannelRuleBody(BaseModel):
@@ -204,6 +207,13 @@ GATE_PUBLIC_PREFIXES = (
 
 def _is_gate_public(path: str) -> bool:
     return path in GATE_PUBLIC_EXACT or path.startswith(GATE_PUBLIC_PREFIXES)
+
+
+def _is_wechat_follow_url(url: str) -> bool:
+    """`/auth/follow` 会把它写进 302 Location，只放行微信自家的关注页域名。"""
+    if any(ch in url for ch in " \t\r\n\"'<>\\"):
+        return False
+    return url.startswith(("https://weixin.qq.com/", "https://mp.weixin.qq.com/"))
 
 
 def _safe_next(raw: str) -> str:
@@ -386,7 +396,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             app.state.md_lookup.warm(
                 ugc.load_official_items_from_file(settings.official_feed_file)
             )
-        except Exception:
+        except (OSError, ValueError):
             pass
 
     if settings.official_feed_file:
@@ -903,6 +913,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         auth.set_session_cookie(resp, settings, int(user["id"]), user["login"])
         auth.clear_state_cookie(resp, "wechat")
         resp.delete_cookie(LOGIN_NEXT_COOKIE, path="/")
+        return resp
+
+    @app.get("/auth/follow")
+    def auth_follow() -> RedirectResponse:
+        """跳公众号关注页。微信登录的 next 指向这里，点一下就是登录 + 关注。"""
+        with db.db_session(settings.db_path) as conn:
+            url = db.get_site_setting(conn, "oa_follow_url").strip()
+        resp = RedirectResponse(url if _is_wechat_follow_url(url) else "/", status_code=302)
+        resp.headers["Cache-Control"] = "no-store"
         return resp
 
     # —— 手机号验证码兜底（小红书 / 抖音内置浏览器里微信授权走不通时用）——
@@ -1826,6 +1845,65 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             rows = db.list_op_users(conn, limit=limit)
         return {"ok": True, "users": rows, "count": len(rows)}
 
+    def _sku_titles() -> dict[str, str]:
+        titles = {sid: s.title for sid, s in pay.catalog(settings).items()}
+        titles.setdefault("subscriber_year", titles.get(pay.resolve_sku_id("subscriber_year"), ""))
+        return titles
+
+    @app.get("/api/op/orders")
+    def api_op_orders(
+        request: Request,
+        status: str = Query("all"),
+        days: int = Query(0, ge=0, le=3650),
+        limit: int = Query(200, ge=1, le=1000),
+    ) -> dict[str, Any]:
+        _op_user(request)
+        titles = _sku_titles()
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_op_orders(conn, status=status, days=days, limit=limit)
+            summary = db.op_pay_summary(conn)
+        for r in rows:
+            r["sku_title"] = titles.get(r["sku"], r["sku"])
+        for s in summary["by_sku"]:
+            s["title"] = titles.get(s["sku"], s["sku"])
+        return {"ok": True, "orders": rows, "count": len(rows), "summary": summary}
+
+    @app.get("/api/op/orders.csv")
+    def api_op_orders_csv(
+        request: Request,
+        status: str = Query("all"),
+        days: int = Query(0, ge=0, le=3650),
+    ) -> Response:
+        _op_user(request)
+        titles = _sku_titles()
+        with db.db_session(settings.db_path) as conn:
+            rows = db.list_op_orders(conn, status=status, days=days, limit=1000)
+
+        def cell(v: Any) -> str:
+            s = str(v if v is not None else "")
+            if s[:1] in ("=", "+", "-", "@"):
+                s = "'" + s
+            return '"' + s.replace('"', '""') + '"'
+
+        lines = [
+            (
+                "created_at,out_trade_no,user_login,sku,sku_title,amount_yuan,status,"
+                "test,paid_at,plan_until,assign_pack"
+            ),
+        ]
+        for r in rows:
+            lines.append(",".join(cell(v) for v in (
+                r["created_at"], r["out_trade_no"], r["user_login"], r["sku"],
+                titles.get(r["sku"], r["sku"]), f"{r['amount_fen'] / 100:.2f}",
+                r["status"], "1" if r["test"] else "", r["paid_at"],
+                r["plan_until"], r["assign_pack"],
+            )))
+        return Response(
+            "\ufeff" + "\n".join(lines) + "\n",
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=skillfeeder-orders.csv"},
+        )
+
     @app.get("/api/op/devices")
     def api_op_devices(
         request: Request,
@@ -1895,6 +1973,22 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(400, "logo 只接受 https 或站内路径")
         if updates["review_webhook"] and not updates["review_webhook"].startswith("https://"):
             raise HTTPException(400, "webhook 必须是 https")
+        if body.oa_name is not None:
+            updates["oa_name"] = body.oa_name.strip()[:32]
+        if body.oa_qr_url is not None:
+            qr = body.oa_qr_url.strip()[:400]
+            if qr and (
+                not qr.startswith(("https://", "/"))
+                or qr.startswith("//")
+                or any(ch in qr for ch in " \t\r\n\"'<>")
+            ):
+                raise HTTPException(400, "公众号二维码只接受 https 或站内路径")
+            updates["oa_qr_url"] = qr
+        if body.oa_follow_url is not None:
+            follow = body.oa_follow_url.strip()[:400]
+            if follow and not _is_wechat_follow_url(follow):
+                raise HTTPException(400, "关注链接只接受 https://weixin.qq.com/ 或 https://mp.weixin.qq.com/")
+            updates["oa_follow_url"] = follow
         with db.db_session(settings.db_path) as conn:
             for key, value in updates.items():
                 db.set_site_setting(conn, key, value)

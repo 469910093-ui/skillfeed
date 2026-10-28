@@ -314,7 +314,7 @@ def reconcile_order(
         return order
     try:
         ready = bool(settings.wechat_pay_configured)
-    except Exception:
+    except AttributeError:
         ready = False
     if not ready:
         return order

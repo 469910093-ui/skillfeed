@@ -12,6 +12,7 @@ import re
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -1468,6 +1469,45 @@ class TestAdminSite(unittest.TestCase):
         self.assertEqual(public["slogan"], "测一口号")
         self.assertNotIn("review_webhook", public)
 
+    def test_official_account_is_public_and_validated(self):
+        cfg = self.client.get("/api/site-config").json()["config"]
+        self.assertEqual(cfg["oa_name"], "Skill Man")
+        self.assertEqual(cfg["oa_qr_url"], "/static/oa-skill-man.jpg")
+        self.client.get("/auth/dev-login")
+        for bad in ("javascript:alert(1)", "//evil.example/qr.png", "/x\" onerror=\"y"):
+            r = self.client.post("/api/op/settings", json={"oa_qr_url": bad})
+            self.assertEqual(r.status_code, 400, bad)
+        ok = self.client.post("/api/op/settings", json={
+            "slogan": "s", "oa_name": "新号", "oa_qr_url": "https://cdn.example.com/qr.png",
+        })
+        self.assertEqual(ok.status_code, 200, ok.text)
+        cfg = self.client.get("/api/site-config").json()["config"]
+        self.assertEqual(cfg["oa_name"], "新号")
+        self.assertEqual(cfg["oa_qr_url"], "https://cdn.example.com/qr.png")
+        # 旧表单不带这两项时不清空
+        self.client.post("/api/op/settings", json={"slogan": "s2"})
+        self.assertEqual(
+            self.client.get("/api/site-config").json()["config"]["oa_name"], "新号")
+
+    def test_follow_redirect_only_goes_to_wechat(self):
+        r = self.client.get("/auth/follow", follow_redirects=False)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(
+            r.headers["location"], "https://weixin.qq.com/r/mp/_SdYQLjEZ_UYrfwj93Lr")
+        self.client.get("/auth/dev-login")
+        for bad in ("https://evil.example/x", "//weixin.qq.com/r/x",
+                    "https://weixin.qq.com.evil.example/x", "https://weixin.qq.com/a\r\nb"):
+            r = self.client.post("/api/op/settings", json={"oa_follow_url": bad})
+            self.assertEqual(r.status_code, 400, bad)
+        ok = self.client.post("/api/op/settings", json={
+            "slogan": "s", "oa_follow_url": "https://mp.weixin.qq.com/mp/profile_ext?x=1"})
+        self.assertEqual(ok.status_code, 200, ok.text)
+        r = self.client.get("/auth/follow", follow_redirects=False)
+        self.assertEqual(r.headers["location"], "https://mp.weixin.qq.com/mp/profile_ext?x=1")
+        self.client.post("/api/op/settings", json={"slogan": "s", "oa_follow_url": ""})
+        r = self.client.get("/auth/follow", follow_redirects=False)
+        self.assertEqual(r.headers["location"], "/")
+
     def test_anonymous_cannot_write_settings(self):
         r = self.client.post("/api/op/settings", json={"slogan": "x"})
         self.assertEqual(r.status_code, 302)
@@ -1558,11 +1598,122 @@ class TestAdminSite(unittest.TestCase):
         all_posts = self.client.get("/api/op/queue?status=all")
         self.assertEqual(all_posts.status_code, 200)
 
+    def test_recall_prompt_clicks_are_kept(self):
+        r = self.client.post("/api/events", json={
+            "device_id": "web-gn", "session_id": "s-gn", "events": [
+                {"action": "guest_nudge", "item_key": "feed:show", "client_ts": "g1"},
+                {"action": "guest_nudge", "item_key": "feed:oa", "client_ts": "g2"},
+                {"action": "bind_nudge", "item_key": "show", "client_ts": "g3"},
+                {"action": "recall_strip", "item_key": "saved", "client_ts": "g4"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        with db.db_session(self.settings.db_path) as conn:
+            rows = conn.execute(
+                "SELECT action, item_key FROM events WHERE device_id='web-gn' ORDER BY id"
+            ).fetchall()
+        self.assertEqual(
+            [(x["action"], x["item_key"]) for x in rows],
+            [("guest_nudge", "feed:show"), ("guest_nudge", "feed:oa"),
+             ("bind_nudge", "show"), ("recall_strip", "saved")],
+        )
+
+    def test_every_frontend_event_is_whitelisted(self):
+        import re
+        from pathlib import Path
+
+        import feedback as feedback_mod
+        from server import ranking_service
+
+        src = (Path(__file__).resolve().parents[1] / "feed_dashboard.py").read_text(encoding="utf-8")
+        sent = set(re.findall(r"\btrack\('([a-z_]+)'", src))
+        sent |= set(re.findall(r"\bsendFeedback\('([a-z_]+)'", src))
+        sent |= set(re.findall(r"track\(now \? '([a-z_]+)' : '([a-z_]+)'", src)[0])
+        sent = {feedback_mod.ACTION_ALIASES.get(a, a) for a in sent}
+        self.assertIn("impression", sent)
+        self.assertIn("save", sent)
+        self.assertEqual(sent - ranking_service.ALLOWED_ACTIONS, set(),
+                         "前端在报、服务端会静默丢弃的事件")
+
+    def test_pack_and_view_events_are_stored(self):
+        r = self.client.post("/api/events", json={
+            "device_id": "web-pk", "session_id": "s-pk", "events": [
+                {"action": "packs_view", "source": "tab", "client_ts": "p1"},
+                {"action": "pack_open", "item_key": "cross-border", "client_ts": "p2"},
+                {"action": "pack_buy_click", "item_key": "cross-border", "client_ts": "p3"},
+                {"action": "impression", "item_key": "acme/x", "position": 3,
+                 "dwell_ms": 1800, "client_ts": "p4"},
+                {"action": "dwell", "item_key": "acme/x", "position": 3,
+                 "dwell_ms": 1800, "client_ts": "p5"},
+                {"action": "save", "item_key": "acme/x", "client_ts": "p6"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        with db.db_session(self.settings.db_path) as conn:
+            rows = conn.execute(
+                "SELECT action, item_key, position, dwell_ms FROM events"
+                " WHERE device_id='web-pk' ORDER BY id"
+            ).fetchall()
+            stats = conn.execute(
+                "SELECT SUM(impressions) AS n FROM item_stats WHERE item_key='acme/x'"
+            ).fetchone()
+        self.assertEqual([x["action"] for x in rows], [
+            "packs_view", "pack_open", "pack_buy_click", "impression", "dwell", "save"])
+        self.assertEqual((rows[3]["position"], rows[3]["dwell_ms"]), (3, 1800))
+        self.assertEqual(stats["n"], 1)
+
+    def test_operator_orders_and_revenue(self):
+        self.client.get("/auth/dev-login")
+        now = datetime.now(timezone.utc).isoformat()
+        with db.db_session(self.settings.db_path) as conn:
+            uid = conn.execute("SELECT id FROM users WHERE login='dev-user'").fetchone()["id"]
+            base = {"user_id": uid, "created_at": now, "updated_at": now}
+            db.insert_order(conn, {
+                **base, "out_trade_no": "SFPAID1", "sku": "subscriber_month_cont",
+                "amount_fen": 2900, "status": "paid", "provider_txn_id": "4200001",
+                "paid_at": now, "assign_pack": "weekly-report",
+            })
+            db.insert_order(conn, {
+                **base, "out_trade_no": "SFPEND1", "sku": "subscriber_year_cont",
+                "amount_fen": 22800, "status": "pending",
+            })
+            db.insert_order(conn, {
+                **base, "out_trade_no": "SFTEST1", "sku": "subscriber_month_cont",
+                "amount_fen": 2900, "status": "paid", "provider_txn_id": "dev-SFTEST1",
+                "paid_at": now,
+            })
+        r = self.client.get("/api/op/orders")
+        self.assertEqual(r.status_code, 200, r.text)
+        data = r.json()
+        self.assertEqual(data["count"], 3)
+        s = data["summary"]
+        self.assertEqual(s["total"], {"orders": 1, "fen": 2900})
+        self.assertEqual(s["today"]["fen"], 2900)
+        self.assertEqual(s["payers"], 1)
+        self.assertEqual(s["pending"], 1)
+        self.assertEqual(s["test_paid"], 1)
+        self.assertEqual(s["by_sku"][0]["title"], "连续包月")
+        by_no = {o["out_trade_no"]: o for o in data["orders"]}
+        self.assertTrue(by_no["SFTEST1"]["test"])
+        self.assertEqual(by_no["SFPAID1"]["user_login"], "dev-user")
+        self.assertEqual(by_no["SFPEND1"]["sku_title"], "连续包年")
+        self.assertNotIn("provider_txn_id", by_no["SFPAID1"])
+
+        paid = self.client.get("/api/op/orders?status=pending").json()
+        self.assertEqual([o["out_trade_no"] for o in paid["orders"]], ["SFPEND1"])
+
+        csv = self.client.get("/api/op/orders.csv?status=paid")
+        self.assertEqual(csv.status_code, 200)
+        self.assertIn("SFPAID1", csv.text)
+        self.assertIn("29.00", csv.text)
+        self.assertNotIn("SFPEND1", csv.text)
+
     def test_stranger_cannot_read_kpi_details(self):
         self.client.get("/auth/dev-login?login=other-user")
         for path in (
             "/api/op/users", "/api/op/backups",
             "/api/op/events/today", "/api/op/devices",
+            "/api/op/orders", "/api/op/orders.csv",
         ):
             self.assertEqual(self.client.get(path).status_code, 403, path)
 

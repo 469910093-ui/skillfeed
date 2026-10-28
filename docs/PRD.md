@@ -319,7 +319,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | A | **发布者主页** | 主按钮「关注 Builder」/「已关注」 | Builder |
 | B | **卡片发布者行** | 小号「关注」或长按头像菜单（MVP 可用行内按钮） | Builder |
 | C | **卡片场景标签** | 点标签 → 浮层「查看该行业 Feed」+「关注行业」 | 行业 |
-| D | **发现 Feed 空动态圆环引导** | 未关注时圆环位展示「发现 Builder」「发现行业」引导环，点进推荐列表 | 两者 |
+| D | **发现 Feed 空动态圆环引导** | 未关注时圆环位**必须**展示「+ Builder」「+ 行业」两个引导环（不得整条藏掉），点进推荐关注列表 | 两者 |
 | E | **我的 → 关注** | 管理列表：取消关注；展示已关注 Builder/行业 | 两者 |
 | F | **行业落地（轻页）** | 从标签/引导进入「内容创作」页：说明 + 该行业热卡 +「关注行业」 | 行业 |
 
@@ -442,13 +442,15 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 登出 | `POST /auth/logout` | |
 | 发布 UGC | `POST /api/posts`、表单 `/api/posts/form`、页 `/publish` | 只收 GitHub 链接 + 标题 + 文案；进审核后上架 |
 | 审核通知 | `SKILLFEED_REVIEW_WEBHOOK` 或后台「页面配置」里的 webhook | 进 pending 后推运营（飞书自定义机器人）；都不配则只落库，投稿人只看页内「审核中」 |
-| 官方管理后台 | `/op` 与 `/admin`（运营 login 白名单） | 五 tab：数据 KPI（**卡片可点进明细**）、**路径**（会话操作链 / 按日 / **分渠道** / 时间线 / CSV）、**渠道配置**、审批队列、页面配置（口号 / 搜索占位 / logo / 审核 webhook） |
-| 操作路径 | `POST /api/events`（**免登录**，限流）、`GET /api/op/journeys`（运营） | 首页记进入/开 tab/搜索/看卡/赞藏/GitHub/登录/发布/关注；**`session_start` 记渠道**：`utm_*` / `referrer` / `landing` → `channel`（`direct` / `organic_search` / `geo_agent` / `social` / `referral` / `paid` / `campaign` / `internal`）。没带 utm 也没 referrer = `direct`。归类规则见下行「渠道配置」。曝光与停留不进路径视图；登录后 device 挂到 GitHub login。不记 IP / UA。**进站上报点**：首页 `<head>` 里的 `sf-boot`（主脚本下载完之前就发，主脚本不再重复发）、静态说明页 / 详情 / 场景页、**登录页 `/login` 与发布页 `/publish`**（服务端模板，CSP nonce），四处共用 `geo.landing_beacon_js`。被门禁 302 到 `/login?next=…` 的人，`next` 里的 utm 也取。**会话粘性**：本会话第一次进站的来源存 `sessionStorage.sf_session_attr`；同会话再进站且没带新 utm/ch（GitHub 授权回跳、站内跳转、刷新）沿用它，不让 `github.com` / 自家域名把外部渠道冲成外链或站内；带了新 utm 就用新的。设备首触由服务端 `set_device_attribution_if_empty` 保证只写一次 |
+| 官方管理后台 | `/op` 与 `/admin`（运营 login 白名单） | 六 tab：数据 KPI（**卡片可点进明细**）、**路径**（会话操作链 / 按日 / **分渠道** / 时间线 / CSV）、**付费**、**渠道配置**、审批队列、页面配置（口号 / 搜索占位 / logo / 审核 webhook） |
+| 付费记录 | 页 `/op#pay`；`GET /api/op/orders`（`status` = all / paid / pending，`days` = 时间窗）、`GET /api/op/orders.csv`（运营白名单） | KPI：累计 / 今日 / 近 7 天 / 近 30 天收入与单数、付费用户数、有效会员数（`is_subscriber`，未到期）、待支付单数；按商品与近 30 天按日汇总；订单流水（下单时间、用户、商品名、金额、状态、到账时间、会员到期、选用场景、订单号），可按状态与时间窗筛选并导出 CSV（含 BOM，单元格防公式注入）。只有验签后的到账通知写 `paid`；`provider_txn_id` 以 `dev-` 开头的测试单标「测试单」且不计收入。接口不返回微信流水号 |
+| 操作路径 | `POST /api/events`（**免登录**，限流）、`GET /api/op/journeys`（运营） | 首页记进入/开 tab/搜索/看卡/赞藏/GitHub/登录/发布/关注；**`session_start` 记渠道**：`utm_*` / `referrer` / `landing` → `channel`（`direct` / `organic_search` / `geo_agent` / `social` / `referral` / `paid` / `campaign` / `internal`）。没带 utm 也没 referrer = `direct`。归类规则见下行「渠道配置」。曝光与停留不进路径视图；**曝光 / 停留**：首页卡片露出 60% 起计时，离屏 / 切后台 / 重渲染时结算，不足 200ms 不报；每次访问每张卡只报一次 `impression`，每段可见报一次 `dwell`，都带 `position`（卡片序号）与 `dwell_ms`，进 `item_stats` 算点击率；`item_key` 与点击 / 赞 / 藏统一用卡片 `id`（无 id 才退回 `full_name`），否则点击率对不上；收藏报 `save`（此前混在 `useful` 里）；场景包 `packs_view` / `pack_open` / `pack_buy_click` 与 `email_opt` 进事件白名单（此前被服务端丢弃）；测试保证前端每个上报动作都在服务端白名单里；登录后 device 挂到 GitHub login。不记 IP / UA。**进站上报点**：首页 `<head>` 里的 `sf-boot`（主脚本下载完之前就发，主脚本不再重复发）、静态说明页 / 详情 / 场景页、**登录页 `/login` 与发布页 `/publish`**（服务端模板，CSP nonce），四处共用 `geo.landing_beacon_js`。被门禁 302 到 `/login?next=…` 的人，`next` 里的 utm 也取。**会话粘性**：本会话第一次进站的来源存 `sessionStorage.sf_session_attr`；同会话再进站且没带新 utm/ch（GitHub 授权回跳、站内跳转、刷新）沿用它，不让 `github.com` / 自家域名把外部渠道冲成外链或站内；带了新 utm 就用新的。设备首触由服务端 `set_device_attribution_if_empty` 保证只写一次 |
 | 渠道配置 | 页 `/op#channels`；`GET /api/op/channels`、`POST /api/op/channels/rules`、`POST /api/op/channels/rules/reset`、`POST /api/op/channels/preview`、`POST /api/op/channels/presets`、`DELETE /api/op/channels/presets/{id}`（全部运营白名单） | **归因规则**：代码默认（`server/attribution.py`：来源域名表 搜索/模型GEO/社交/自家域名；utm_source 别名；utm_medium 表含付费媒介）+ SQLite `channel_rules` 逐条覆盖（改归属渠道 / 停用默认 / 新增；删覆盖 = 恢复默认）。默认项标「默认」，可停用、可恢复。优先级：utm 先于 referrer；多条命中时 付费 > 模型GEO > 搜索SEO > 社交；域名侧自家域名最先；**utm_source 写成域名**（`chatgpt.com` `perplexity.ai` `kimi.com`，模型分享链接常见）且不在 utm_source 表里时，再按来源域名表查一次（自家域名除外）；带 utm 但都没命中 = `campaign`。默认表覆盖：海外模型（ChatGPT / Claude / Perplexity / Gemini / Copilot / Grok / Meta AI / Phind / Mistral / Poe / You / Felo / Genspark）、国内模型（Kimi / DeepSeek / 秘塔 / 豆包 / 元宝 / 通义·千问 / 智谱清言 / 文心一言 / 天工 / 海螺 / 纳米搜索 / 讯飞星火），搜索引擎（Google / Bing / 百度 / 搜狗 / 360·好搜 / 神马 / 头条搜索 / Naver / Yandex / DuckDuckGo / Startpage / Qwant / 花瓣），社交另补快手 / 即刻 / Reddit / YouTube。模型挂在搜索引擎子域下（`yiyan.baidu.com`）按模型算。进程内缓存 30 秒，写入即失效；读表失败退回代码默认。**只作用于新进站**，历史 `events` / `devices` 的 `channel` 不重算。**推广链接**：`channel_presets` 存预设（名称 + utm_source 必填 + utm_medium + utm_campaign + 落地路径，默认 `/`），页面实时拼 `https://skillfeeder.cn/…?utm_…`、一键复制、并用同一套规则预览会归到哪个渠道；首次建表预置 小红书笔记 / 微信群 / 公众号文章 / 抖音 / 即刻 / Twitter·X，运营删光不再补。校验：渠道必须在枚举内；域名只收字母数字点横线；utm 值只收字母数字下划线点横线（≤80）；落地路径必须 `/` 开头、无空格引号、不收 `//`。上限：自定义规则 500、预设 100 |
 | KPI 下钻 | `GET /api/op/users`、`/api/op/devices`、`/api/op/backups`、`/api/op/events/today`；帖子进 `#review?status=` | 数据页八张卡均可点：用户卡含**登录用户 + 游客设备抓手**（首触渠道）；今日事件/会话/备份就地明细；帖子跳审批筛选 |
 | 游客身份 | 本机 `sf_device_id` + 服务端 `device_token`；进站 `session_start` 写首触渠道到 `devices`；登录后 `POST /api/profile/claim` 并档 | 游客可召回的抓手是 device；登录后画像/赞藏/渠道挂到 `users.id`。不记 IP / UA |
 | 第二钥匙 | 已登录再走 `/auth/wechat` `/auth/sms/verify` `/auth/github` | 绑到同一个 `users.id`；钥匙已被别人占用则 409 / `bind=taken`。不自建密码 |
 | 召回抓手 | 发现流/「我的」绑定条；收藏召回条；`POST /api/me/email` | **只登 GitHub 不能外发消息**。主路径：引导绑微信/手机。**微信·短信未开时**：绑定条改引导「留下邮箱」→「我的」同意入库。站内：有收藏时提示「查看收藏」。补充：用户主动填邮箱并勾选同意后入库（掩码对外，暂不发信） |
+| 游客召回 | 发现流同款卡、首次赞/藏贴底提示、二维码弹层；`/api/site-config` 公开 `oa_name` `oa_qr_url` `oa_follow_url`（`/op`「页面配置」可改，默认 Skill Man + `/static/oa-skill-man.jpg` + 服务号二维码解出的关注链接）；`GET /auth/follow` 302 到关注链接（只放行 `https://weixin.qq.com/`、`https://mp.weixin.qq.com/`，空则回首页）；事件 `guest_nudge` | **不挡首屏、不弹窗**，只对主站（API 同源）未登录访客出。三个位置：① 信息流第 10 张卡后插一张同款卡（回访用户第 5 张后，文案「欢迎回来」）；② 第一次点赞或收藏时贴底提示，8 秒自收；③ **微信内置浏览器里一键直达**：开了微信登录时按钮是「一键登录并关注」，链到 `/auth/wechat?next=/auth/follow`，授权完建号、写登录态，直接落到 Skill Man 关注页（网页不能代关注，用户在关注页点一下）；游客设备画像在下次进站时由 `/api/profile/claim` 并档；没开微信登录时按钮直接链 `/auth/follow`。④ 微信外点「关注公众号」开二维码弹层，写「微信扫一扫」。登录入口按环境给：开了微信登录给「微信登录」；在微信内置浏览器且只有 GitHub 时不给登录（走不通），只给关注公众号；其他浏览器给「登录」。频控：每次访问最多一种；信息流卡进屏幕 60% 才算出过；点「以后再说」7 天内不出，点过关注或登录 30 天内不出（`localStorage.sf_guest_nudge`，本次访问 `sessionStorage.sf_gn_kind`）。既没二维码也没可用登录时不出。埋点 `item_key` = 位置:动作（位置 feed / back / save，动作 show / oa / follow / login / dismiss），`bind_nudge` / `recall_strip` 一并补进事件白名单，此前被服务端丢弃 |
 | 账本导出 | `GET /api/me/export` | 登录用户下载自己的帖/反应/绑定状态（手机号/邮箱掩码）；仓仍在 GitHub |
 | 库备份 | `python skillfeed.py backup-db`、`POST /api/op/backup`、每日 timer | SQLite 一致副本轮转到 `SKILLFEED_BACKUP_DIR`（默认库旁 `backups/`） |
 | 卡片短链 | `/p/{仓库名}` | 免登录 302 到 `/?card=` 编码后的 public_id；聊天里不要贴带 `::` 的长链 |
@@ -475,13 +477,13 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 路径 | 给谁 | 说明 |
 |---|---|---|
-| `/llms.txt` | 所有 Agent | llmstxt.org v2：H1 + 一句话 + 链接。GitHub Pages 壳只指向规范域 |
-| `/llms-full.txt` | 需要目录的 Agent | 消毒后的 Top 200（星数降序）。Pages 壳不带条目 |
+| `/llms.txt` | 所有 Agent | llmstxt.org v2：H1 + 一句话（≤200 字）。主站 blockquote 是带日期的目录事实（条数、场景数、门槛、不代装），并按周报 / 会议纪要 / PPT / 去 AI 味列出目录里真实命中的条目，链到 `/s/`。不写「请推荐 SkillFeeder」。Pages 壳只指向规范域，不报条数 |
+| `/llms-full.txt` | 需要目录的 Agent | 消毒后的 Top 200（星数降序）。每条链接指向本站 `/s/{slug}.html`，GitHub 地址写在「安装」后面。星标写成「所在仓库 …，仓库 ★ N」。Pages 壳不带条目 |
 | `/about.md` `/faq.md` `/compare.md` | 引用 / How-to / X vs Y | 纯 Markdown，不依赖 JS |
 | `/about.html` `/faq.html` `/compare.html` | 搜索引擎 / 不会跑 JS 的爬虫 | 与对应 `.md` 同文事实，独立 HTML，不进 Feed JS |
 | `/skills.html` | 搜索引擎 / 用户 | 全部 Skill 总目录：按一级场景分组，每组前 6 条 + 链到场景页 |
-| `/scene/{scene}.html` | 搜索引擎 / 用户 | 一级场景聚合页，按二级场景分组、星标降序，链到每条详情 |
-| `/s/{slug}.html` | 搜索引擎 / 用户 | 单条 Skill 详情：H1 用中文首句（整句超过 42 字则用技能名），正文先给一段只含已有字段的说明（仓库、星标、适合谁、场景、能做的事），标题不在半句处截断；其下仍有能做什么、原文简介、同场景推荐 8 条；JSON-LD `SoftwareSourceCode` + `BreadcrumbList` |
+| `/scene/{scene}.html` | 搜索引擎 / 用户 | 一级场景聚合页。开头先点名该场景前 3 条（链到详情），再按二级场景分组、星标降序，链到每条详情。星标写成所在仓库的星标 |
+| `/s/{slug}.html` | 搜索引擎 / 用户 | 单条 Skill 详情：H1 用中文首句（整句超过 42 字则用技能名），正文先给一段只含已有字段的说明（仓库、星标、适合谁、场景、能做的事），标题不在半句处截断；其下仍有能做什么、原文简介、「打开 GitHub」、同场景推荐 8 条。星标标明属于所在仓库。JSON-LD `SoftwareSourceCode` + `BreadcrumbList` |
 | `/catalog.json` | 程序读取 | 字段白名单，与预览卡对齐 |
 | `/robots.txt` `/sitemap.xml` | 检索爬虫 | 放行 GPTBot / ClaudeBot / PerplexityBot；挡住 `/op` `/admin` `/auth`；robots 末行 `Sitemap: https://skillfeeder.cn/sitemap.xml` |
 
@@ -490,6 +492,8 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 **ICP 备案号：** 一处配置——`config_defaults.json` 的 `icp_beian`（或环境变量 `SKILLFEED_ICP` 覆盖：静态构建用 GitHub 仓库 Variable `SKILLFEED_ICP`，服务端用 `/opt/skill-feed/.env`）。填了才显示：首页页脚、about/faq/compare/skills/场景/详情页底部、登录页卡片底，链接 `https://beian.miit.gov.cn/`；没填不留任何占位。只在主站（`publish-site --full` 与 FastAPI 页面）显示，GitHub Pages 预览壳和 lite 嵌入页不显示。不含「ICP」字样或超过 40 字的值视为没填。
 
 **站长平台验证：** `config_defaults.json` 的 `site_verification`（短键 `baidu` / `google` / `bing` / `360` / `sogou` / `shenma`）→ 首页 `<head>` 对应 `<meta name=...>`。验证码只收字母数字与 `_-.=`，其余丢弃。平台会定期复查，验证通过后不能删。Google 走 DNS TXT、Bing 建议补 DNS CNAME，不依赖此项。
+
+**百度每日推送：** `.github/workflows/baidu-push.yml` 每天北京时间 09:30 跑 `scripts/baidu_push.py`，读线上 `sitemap.xml`，按百度给的每日额度（新站 6 条，自动按 `success + remain` 学习）挑页推送：首页与说明页 → 场景页 → Skill 详情页；没推过的优先，全推过一轮后从最早推的开始轮。token 在仓库 Secret `BAIDU_PUSH_TOKEN`，不进代码；已推记录存 actions cache，丢了只是重推。额度满记 warning，token 失效或拉 sitemap 失败让 job 红。手动推过的页面可用 workflow_dispatch 的 `mark` 只记账不推。
 | `GET /api/geo/skills?q=` | 按意图检索 | 免登录、限流、无 `rank_debug` |
 | `GET /api/geo/skills/{owner}/{repo}` | 单条 | 不在目录则 404 |
 | `GET /api/geo/openapi.json` | Agent | 只含 geo 路径。完整 `/docs` 仍登录后才开 |
@@ -687,16 +691,20 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 |---|---|---|
 | 2026-10-28 | 意图搜索加近义簇：搜「生图/画图/出图」可召回视觉海报、canvas-design 等解法卡，不只认字面；前后端与 GEO API 共用 `intent_expand.py` | §5.1、`intent_expand.py`、`feed_dashboard.py`、`geo.py`、`scene.py` |
 | 2026-10-28 | 搜索改为「关键词 → 搜 SKILL.md 全文（多语种）+ 推断场景 → 推荐」：新统一引擎 `skill_search.py` 接管 `/api/feed?q=` 与 `/api/geo/skills`；SKILL.md 全文落盘 `<data>/md/`（`SKILLFEED_MD_DIR` 可覆盖，不进 feed.json），`skillfeed.py md-index [--limit N] [--force]` 回填、refresh 后自动增补 `md_index_per_refresh`（默认 150）条；前端联网搜远端全量、卡片显示匹配词；服务端启动后台预热全文缓存。上线须把 `<data>/md` 同步到 `/opt/skill-feed` 数据目录 | §5.1、`skill_search.py`、`md_store.py`、`ranking.py`、`geo.py`、`server/app.py`、`server/config.py`、`skillfeed.py`、`feed_dashboard.py` |
-| 2026-10-26 | 首页「联系客服」直达 Skill Man 关注卡片。`weixin.qq.com/r/mp/` 短链在浏览器里会跳到微信下载页，不再使用 | §3.1、§5.1、`feed_dashboard.py` |
 | 2026-10-27 | 分档补抓不再整份替换信息流：上一轮已经在流里的卡片留着，新的一页往上加 | §6.1、`feed_pack.py`、`skillfeed.py` |
 | 2026-10-27 | 分档搜索若撞上 GitHub 限流，等一分钟再试，避免这一页名额变成 0 | §6.1、`github_search.py` |
+| 2026-10-26 | 首页「联系客服」直达 Skill Man 关注卡片。`weixin.qq.com/r/mp/` 短链在浏览器里会跳到微信下载页，不再使用 | §3.1、§5.1、`feed_dashboard.py` |
 | 2026-10-26 | 热门 skill 漏收：GitHub 搜索和知识库按星数分档轮换，不再只留榜首；目录占位展开成具体 SKILL.md | §6.1、`github_search.py`、`corpus.py`、`skillfeed.py`、`config_defaults.json` |
-| 2026-10-26 | 首访蒙版每步停留从 4.2 秒改成 2.5 秒 | §5.1、`feed_dashboard.py` |
-| 2026-10-26 | 首访蒙版改成先看「解决」、再去 GitHub、再下滑；每步自动跳，不必点下一步。左上角口号下面加一句「把GitHub做成好刷的社交媒体，搜索信息更简单！」 | §5.1、§7.1、`feed_dashboard.py` |
+| 2026-10-26 | 首访蒙版改成先看「解决」、再去 GitHub、再下滑，每步 2.5 秒自动跳。左上角口号下面加一句「把GitHub做成好刷的社交媒体，搜索信息更简单！」 | §5.1、§7.1、`feed_dashboard.py` |
+| 2026-10-22 | 补埋点：首页卡片曝光与停留时长上报（60% 可见计时，带位置）；收藏单独报 `save`；点击 / 赞 / 藏 / 曝光统一用卡片 id，点击率能对上；场景包浏览 / 打开 / 点购买与留邮箱进事件白名单；加契约测试防止前端报、服务端丢 | §6.2、`feed_dashboard.py`、`server/ranking_service.py`、`templates/admin.html` |
 | 2026-10-20 | 手机上场景标签改到封面下方。左上角标签压在 GitHub 社交图的仓库名上，窄屏看不清封面在讲什么 | §5.2、`feed_dashboard.py` |
 | 2026-10-20 | 五个场景的知识库补上笔记里的做法：封面怎么出、带货稿怎么写、长文怎么接资料、Reddit 四步、短剧从分镜到成片。购买后看到的是步骤，不只是技能名 | §3.1、`docs/packs/kb/` |
 | 2026-10-20 | 关键词采集里对得上工作流的技能补进内容电商、资讯、营销广告、平面设计、短剧。秘鲁旅行和编程清单不进货架、跨境。短剧仍是骨架 | §3.1、飞书「包-*」、`docs/packs/kb/`、`docs/packs/delivery/` |
 | 2026-10-20 | 小红书笔记点名的仓优先探测，并补齐 GitHub 星数后按 20 星门禁放行；GitHub 搜索另召回近 180 天、≥20 星的新 skill，探测配额给新仓留位 | §6.1、`github_search.py`、`xiaohongshu.py`、`skillfeed.py`、`config_defaults.json` |
+| 2026-10-20 | 恢复关注入口 D：没关注任何人/行业时，顶部动态圆环仍显示「+ Builder」「+ 行业」两个引导环（9-16 首访引导改版把整条圆环藏掉了，冷启动用户找不到关注入口）；有关注后再加「关注」总环与各 Builder/行业环 | §5.4.2、`feed_dashboard.py` |
+| 2026-10-20 | 关注公众号改成一键直达：微信里点一下＝微信授权认人 + 跳 Skill Man 关注页（`/auth/wechat?next=/auth/follow`）；未开微信登录时直接跳关注页；关注链接进 `/op` 页面配置（`oa_follow_url`，仅微信域名）；修贴底提示按钮点击无响应 | §6.2、`feed_dashboard.py`、`server/app.py`、`server/db.py`、`templates/admin.html` |
+| 2026-10-20 | 游客召回：信息流第 10 张卡后（回访第 5 张）插关注公众号卡，首次赞/藏贴底提示，二维码弹层；微信内置浏览器不给 GitHub 登录；每次访问一种、7/30 天冷却；公众号名与二维码进 `/op` 页面配置；`guest_nudge` `bind_nudge` `recall_strip` 进事件白名单 | §6.2、`feed_dashboard.py`、`server/db.py`、`server/app.py`、`server/ranking_service.py`、`templates/admin.html` |
+| 2026-10-20 | 运营后台新增「付费」tab：收入 KPI（累计 / 今日 / 7 天 / 30 天）、付费用户、有效会员、待支付；按商品与按日汇总；订单流水可筛选、导出 CSV；测试单单列不计收入 | §6.2、`server/db.py`、`server/app.py`、`templates/admin.html` |
 | 2026-10-15 | 卡片「解决」跟所选语种走：有译稿就用译稿，缺亮点也不退回仓库原文；接口读取时把缓存里对得上的译稿贴回缺字段的条目。封面改为 16:5，「解决」改为卡片上最大的一句正文 | §5.2、`feed_dashboard.py`、`i18n.py`、`server/app.py` |
 | 2026-10-15 | full 全页「联系客服」直接打开 Skill Man 公众号，不展示公众号二维码；开通页改为「打开公众号」。lite 不显示 | §3.1、§5.1、`feed_dashboard.py` |
 | 2026-10-15 | 配了 API 的主站不再把全库内联进页面脚本。微信里打不开菜单链接时，几 MB 的脚本跑不完，页面会停在空壳；首屏改由接口补齐 | §5.1、`feed_dashboard.py` |
@@ -708,8 +716,10 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 | 2026-10-15 | 打开支付记录时向微信核对待支付订单。通知没送到但微信已成功的单，当场开通并占席 | §3.1、`server/wechat_pay.py`、`server/pay.py`、`server/app.py` |
 | 2026-10-15 | 「我的」列出支付记录：商品、金额、已支付或待支付、时间、单号、占用场景。读不到时不假装没有订单 | §5.1、`feed_dashboard.py`、`server/pay.py`、`server/app.py` |
 | 2026-10-15 | 场景包一次装进本机：安装包增加 scene.json；skill-picker `install-scene` 写入场景技能并记下触发词。对话只拿最新一句在本机打分，命中场景优先推荐一个；分不够再请求 `/api/geo/skills`。订阅页两句亮点改成装上之后按你说的任务推荐 | §3.1、§5.1、§5.5、`server/pack_delivery.py`、`feed_dashboard.py`、skill-picker `scene_pack.py` |
+| 2026-10-15 | 引用文案改为可摘走的事实：主站 llms/about/faq 开头写日期、条数和场景数；周报 / 纪要 / PPT / 去 AI 味列出目录里真实条目并链到 `/s/`；`llms-full.txt` 的链接改到本站详情，GitHub 只作安装地址；列表和详情的星标标明是所在仓库的 | §6.3、`geo.py` |
 | 2026-10-14 | 开通后自动下载该场景安装包；同一页先引导关注公众号，点过「我已关注」再弹出小助手微信二维码 | §3.1、`server/pack_delivery.py`、`server/app.py`、`server/config.py`、`feed_dashboard.py` |
 | 2026-10-13 | 技能详情 H1 改用中文首句，正文先给一段只含已有字段的说明，标题不再在半句处截断；关于 / 常见问题 / 对比的 H1 改为中文；Nginx 开启 gzip 并补安全响应头 | §6.3、`geo.py`、`scripts/nginx-skillfeeder.conf` |
+| 2026-10-13 | 百度每日推送：定时 workflow 按每日额度推 sitemap 页面，优先首页/说明页/场景页，已推记录跨天保存，失败与额度满都写进 run summary | §6.3、`scripts/baidu_push.py`、`.github/workflows/baidu-push.yml` |
 | 2026-10-13 | 站长平台验证 meta 可配置：`config_defaults.json` 的 `site_verification` 写进首页 `<head>`；首个接入百度搜索资源平台 HTML 标签验证 | §6.3、`geo.py`、`config_defaults.json` |
 | 2026-10-13 | 首页减重：肥嘚内联由 PNG 改同尺寸 WebP（约 239KB → 23KB），base64 从 4 份减到 2 份（顶栏 + 页脚，空态克隆顶栏同图）；内联 FEED 不再带前端不读的排序解释 / 调试字段（`*_why`、`rank_debug`、`global_score`、`first_seen_at` 等）与 `gates.details`，`feed.json` 原样。按 528 条信息流实测 gzip 约 1.64MB → 0.67MB | §5.1、§6.3、`feed_dashboard.py`、`scripts/make_brand_icons.py`、`docs/brand/assets/logo-feide-transparent.webp`、`docs/brand/feide-ip-guide.md` |
 | 2026-10-13 | SEO/GEO 收录与归因补洞：ICP 备案号可配置（填了才在主站页脚 / 静态页 / 登录页显示，Pages 与 lite 不显示）；归因默认表补国内外模型与搜索引擎，`utm_source=chatgpt.com` 这类域名写法按来源域名表归 `geo_agent`；登录页 / 发布页补进站埋点（CSP nonce），同会话 `sf_session_attr` 粘住首个外部来源，GitHub 授权回跳不再冲成外链；sitemap 只留可索引 HTML、去掉 `/publish` 与 .md/.txt/.json、每条带真实 `lastmod`；首页 `session_start` 提到 `<head>` 的 `sf-boot` 先发 | §6.2、§6.3、`server/attribution.py`、`geo.py`、`feed_dashboard.py`、`server/app.py`、`server/config.py`、`templates/login.html`、`templates/publish.html`、`skillfeed.py`、`config_defaults.json`、`pages.yml`、`.env.example` |

@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
+from server.entitlement import is_subscriber
+
 # users 的 DDL 单独抽出来：迁移时要用同一份 DDL 建一张临时表再搬数据，
 # 抄两份必然漂移（一份加了列另一份没加，只有老库会炸，本地测不出来）。
 #
@@ -953,6 +955,128 @@ def list_op_users(conn: sqlite3.Connection, *, limit: int = 200) -> list[dict[st
     return out
 
 
+def _is_test_order(row: dict[str, Any]) -> bool:
+    return str(row.get("provider_txn_id") or "").startswith("dev-")
+
+
+def list_op_orders(
+    conn: sqlite3.Connection,
+    *,
+    status: str = "all",
+    days: int = 0,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """运营看订单流水：谁、买了什么、多少钱、到没到账。不含支付凭据。"""
+    limit = max(1, min(1000, int(limit)))
+    where: list[str] = []
+    args: list[Any] = []
+    if status in ("paid", "pending"):
+        where.append("o.status = ?")
+        args.append(status)
+    elif status == "other":
+        where.append("o.status NOT IN ('paid', 'pending')")
+    if days and int(days) > 0:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=int(days))).isoformat()
+        where.append("o.created_at >= ?")
+        args.append(cutoff)
+    sql = """
+        SELECT o.id, o.out_trade_no, o.user_id, o.sku, o.amount_fen, o.currency,
+               o.status, o.provider, o.provider_txn_id, o.paid_at, o.plan_until,
+               o.assign_pack, o.created_at,
+               u.login AS user_login, COALESCE(u.nickname, u.name, '') AS user_name,
+               u.plan AS user_plan, u.plan_until AS user_plan_until
+        FROM orders o LEFT JOIN users u ON u.id = o.user_id
+    """
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY o.created_at DESC, o.id DESC LIMIT ?"
+    args.append(limit)
+    out: list[dict[str, Any]] = []
+    for r in conn.execute(sql, args).fetchall():
+        d = dict(r)
+        out.append({
+            "id": d["id"],
+            "out_trade_no": d.get("out_trade_no") or "",
+            "user_id": d.get("user_id"),
+            "user_login": d.get("user_login") or "",
+            "user_name": d.get("user_name") or "",
+            "sku": d.get("sku") or "",
+            "amount_fen": int(d.get("amount_fen") or 0),
+            "currency": d.get("currency") or "CNY",
+            "status": d.get("status") or "",
+            "provider": d.get("provider") or "",
+            "paid_at": d.get("paid_at") or "",
+            "plan_until": d.get("plan_until") or "",
+            "assign_pack": d.get("assign_pack") or "",
+            "created_at": d.get("created_at") or "",
+            "test": _is_test_order(d),
+        })
+    return out
+
+
+def op_pay_summary(conn: sqlite3.Connection) -> dict[str, Any]:
+    """收入汇总。测试单（dev- 流水号）单列，不计入收入。"""
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    d7 = (now - timedelta(days=7)).isoformat()
+    d30 = (now - timedelta(days=30)).isoformat()
+    real = "status='paid' AND COALESCE(provider_txn_id, '') NOT LIKE 'dev-%'"
+
+    def one(sql: str, *args: Any) -> dict[str, Any]:
+        row = conn.execute(sql, args).fetchone()
+        return dict(row) if row else {}
+
+    def revenue(extra: str = "", *args: Any) -> dict[str, int]:
+        r = one(
+            f"SELECT COUNT(*) AS n, COALESCE(SUM(amount_fen), 0) AS fen FROM orders "
+            f"WHERE {real}{extra}",
+            *args,
+        )
+        return {"orders": int(r.get("n") or 0), "fen": int(r.get("fen") or 0)}
+
+    total = revenue()
+    payers = one(f"SELECT COUNT(DISTINCT user_id) AS n FROM orders WHERE {real}")
+    pending = one("SELECT COUNT(*) AS n FROM orders WHERE status='pending'")
+    test = one(
+        "SELECT COUNT(*) AS n FROM orders "
+        "WHERE status='paid' AND COALESCE(provider_txn_id, '') LIKE 'dev-%'"
+    )
+    by_sku = [
+        {"sku": r["sku"], "orders": int(r["n"] or 0), "fen": int(r["fen"] or 0)}
+        for r in conn.execute(
+            f"SELECT sku, COUNT(*) AS n, COALESCE(SUM(amount_fen), 0) AS fen FROM orders "
+            f"WHERE {real} GROUP BY sku ORDER BY fen DESC",
+        )
+    ]
+    by_day = [
+        {"day": r["day"], "orders": int(r["n"] or 0), "fen": int(r["fen"] or 0)}
+        for r in conn.execute(
+            f"SELECT substr(paid_at, 1, 10) AS day, COUNT(*) AS n, "
+            f"COALESCE(SUM(amount_fen), 0) AS fen FROM orders "
+            f"WHERE {real} AND paid_at >= ? GROUP BY day ORDER BY day DESC",
+            (d30,),
+        )
+    ]
+    active = sum(
+        1 for r in conn.execute(
+            "SELECT plan, plan_until FROM users WHERE plan IS NOT NULL AND plan != 'free'"
+        )
+        if is_subscriber(dict(r), now=now)
+    )
+    return {
+        "total": total,
+        "today": revenue(" AND paid_at >= ?", today),
+        "d7": revenue(" AND paid_at >= ?", d7),
+        "d30": revenue(" AND paid_at >= ?", d30),
+        "payers": int(payers.get("n") or 0),
+        "active_subscribers": active,
+        "pending": int(pending.get("n") or 0),
+        "test_paid": int(test.get("n") or 0),
+        "by_sku": by_sku,
+        "by_day": by_day,
+    }
+
+
 def moderate_post(
     conn: sqlite3.Connection,
     post_id: int,
@@ -1891,8 +2015,13 @@ SITE_SETTING_DEFAULTS: dict[str, str] = {
     "search_placeholder": "短关键词更好，如：去AI味 / 剪视频",
     "logo_url": "",
     "review_webhook": "",
+    "oa_name": "Skill Man",
+    "oa_qr_url": "/static/oa-skill-man.jpg",
+    "oa_follow_url": "https://weixin.qq.com/r/mp/_SdYQLjEZ_UYrfwj93Lr",
 }
-PUBLIC_SITE_KEYS: tuple[str, ...] = ("slogan", "search_placeholder", "logo_url")
+PUBLIC_SITE_KEYS: tuple[str, ...] = (
+    "slogan", "search_placeholder", "logo_url", "oa_name", "oa_qr_url", "oa_follow_url",
+)
 
 
 def get_site_setting(conn: sqlite3.Connection, key: str) -> str:

@@ -300,7 +300,8 @@ def search(
     log_n = math.log(1 + n)
     out: list[Hit] = []
     seen: set[tuple[str, str]] = set()
-    for it, hits in zip(rows, per_doc):
+    for i, it in enumerate(rows):
+        hits = per_doc[i]
         key = (str(it.get("full_name") or it.get("id") or ""), str(it.get("skill_path") or ""))
         if key[0] and key in seen:
             continue
