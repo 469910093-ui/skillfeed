@@ -218,7 +218,7 @@ Pills   = 我正在逛发现流时 · 怎么收窄（会话内筛选）
 | 信息流卡片 | 见 5.2 | P0 |
 | 底栏五入口 | **发现 / 主题分类 / 一站式配齐 / 发布 / 我的**；`role=tablist` + `aria-selected`，左右键/Home/End 可走，激活态除颜色外另有指示条 + 字重 | P0 |
 | **主题分类** | 一级场景各自成块（条目数 + 二级场景 chips + 按栏目浏览）；点进去落到发现流的对应筛选 | P0 |
-| **一站式配齐** | 货架顶部是场景订阅入口：两句亮点（装到本机后，你说任务时会从这套场景里推荐一个技能；按指定主题持续更新）+ 连续月/季/年（2 / 3 / 5 个场景）与单独买同周期。下方再选场景占席。未登录去登录再 `POST /api/pay/checkout`。生产弹出微信扫码：手机贴底，电脑居中成卡片并盖住底栏。付完同一页解锁手册。lite 隐藏 | P0 |
+| **一站式配齐** | 货架顶部是场景订阅入口：两句亮点（装到本机后，你说任务时会从这套场景里推荐一个技能；按指定主题持续更新）+ 按月/季/年分三行：每行先列权益（2 / 3 / 5 个场景），下面并排连续包价与单买价，底部注明同周期两种买法权益相同、连续包更便宜。下方再选场景占席。未登录去登录再 `POST /api/pay/checkout`。生产弹出微信扫码：手机贴底，电脑居中成卡片并盖住底栏。付完同一页解锁手册。lite 隐藏 | P0 |
 | 发布 | **接 `server/` 的 `POST /api/posts`**：同源时页内表单直接提交；跨源只给整页跳 `api_base/publish`；无 `api_base` 时：github.io 只出说明，**skillfeeder.cn 同源回退到本域**（防定时构建漏写环境变量） | P0 |
 | 我的 | 真实登录态（`/auth/me`）+ 我发布的（`/api/posts/me`，点开跳发现流卡片或审核中预览）+ **支付记录**（`GET /api/pay/orders`，最近 50 笔：商品、金额、已支付/待支付、北京时间、单号、占用场景）+ 赞藏（`/api/profile/reactions`，读不到则退回本机）+ **关注管理**（Builder / 行业列表）。**不再放「发现站」说明行** | P0 |
 | 发布者主页 | Feed 内作品 + GitHub 仓库 + **关注/取消关注 Builder** | P0 |
@@ -689,6 +689,7 @@ Agent 文案必须同时覆盖两类场景，不能只写「这是发现站、�
 
 | 日期 | 摘要 | 影响 |
 |---|---|---|
+| 2026-10-29 | 订阅价格区改为按周期分行：每行先写权益（月度 2 / 季度 3 / 年度 5 个场景），下面并排「连续包 ¥X」「单买 ¥Y」，底部一句「同一周期两种买法权益相同，连续包更便宜」；去掉「连续续费 / 单独买」两段分轨，消除权益歧义 | §5.1、`feed_dashboard.py` |
 | 2026-10-28 | 意图搜索加近义簇：搜「生图/画图/出图」可召回视觉海报、canvas-design 等解法卡，不只认字面；前后端与 GEO API 共用 `intent_expand.py` | §5.1、`intent_expand.py`、`feed_dashboard.py`、`geo.py`、`scene.py` |
 | 2026-10-28 | 搜索改为「关键词 → 搜 SKILL.md 全文（多语种）+ 推断场景 → 推荐」：新统一引擎 `skill_search.py` 接管 `/api/feed?q=` 与 `/api/geo/skills`；SKILL.md 全文落盘 `<data>/md/`（`SKILLFEED_MD_DIR` 可覆盖，不进 feed.json），`skillfeed.py md-index [--limit N] [--force]` 回填、refresh 后自动增补 `md_index_per_refresh`（默认 150）条；前端联网搜远端全量、卡片显示匹配词；服务端启动后台预热全文缓存。上线须把 `<data>/md` 同步到 `/opt/skill-feed` 数据目录 | §5.1、`skill_search.py`、`md_store.py`、`ranking.py`、`geo.py`、`server/app.py`、`server/config.py`、`skillfeed.py`、`feed_dashboard.py` |
 | 2026-10-27 | 分档补抓不再整份替换信息流：上一轮已经在流里的卡片留着，新的一页往上加 | §6.1、`feed_pack.py`、`skillfeed.py` |

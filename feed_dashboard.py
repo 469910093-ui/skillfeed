@@ -1410,17 +1410,14 @@ def build_feed_html(feed: dict, *, variant: str | None = None) -> str:
   .sub-kicker {{
     margin: 8px 0 6px; font-size: .68rem; font-weight: 750; color: var(--muted);
   }}
-  .sub-plans {{ display: grid; gap: 6px; }}
+  .sub-plans {{ display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }}
   .sub-plans button {{
-    appearance: none; width: 100%; text-align: left; cursor: pointer;
+    appearance: none; width: 100%; text-align: center; cursor: pointer;
     border: 1px solid var(--ink); background: var(--ink); color: #fff;
-    border-radius: 10px; padding: 10px 12px; font: inherit; font-size: .82rem; font-weight: 750;
+    border-radius: 10px; padding: 9px 6px; font: inherit; font-size: .8rem; font-weight: 750;
   }}
-  .sub-plans.once {{ grid-template-columns: 1fr 1fr 1fr; }}
-  .sub-plans.once button {{
-    background: #fff; color: var(--ink); font-weight: 650; text-align: center; padding: 8px 4px;
-    font-size: .72rem;
-  }}
+  .sub-plans button.once {{ background: #fff; color: var(--ink); font-weight: 650; }}
+  .sub-note {{ margin: 10px 0 0; font-size: .7rem; color: var(--muted); }}
   .packs-groups {{
     display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px;
   }}
@@ -2512,14 +2509,16 @@ const I18N = {{
     subPlanTitle: '场景订阅',
     subHero1: '装好后，你说任务时会从这套场景里推荐一个技能',
     subHero2: '按照你指定的主题，持续更新内容，让你永远快人一步',
-    subTrackCont: '连续续费',
-    subTrackOnce: '单独买',
-    subMonthCont: '连续包月 ¥29 · 2 个场景',
-    subQuarterCont: '连续包季 ¥78 · 3 个场景',
-    subYearCont: '连续包年 ¥228 · 5 个场景',
-    subMonthOnce: '月 ¥39',
-    subQuarterOnce: '季 ¥105',
-    subYearOnce: '年 ¥299',
+    subSameRights: '同一周期两种买法权益相同，连续包更便宜',
+    subMonthRights: '月度 · 2 个场景',
+    subQuarterRights: '季度 · 3 个场景',
+    subYearRights: '年度 · 5 个场景',
+    subMonthCont: '连续包月 ¥29',
+    subQuarterCont: '连续包季 ¥78',
+    subYearCont: '连续包年 ¥228',
+    subMonthOnce: '单买一个月 ¥39',
+    subQuarterOnce: '单买一季 ¥105',
+    subYearOnce: '单买一年 ¥299',
     subPlanActive: '有效至 {{d}} · {{n}} 个席位',
     subPlanFree: '未订阅',
     subUpgradeQuarter: '升到连续包季 ¥78',
@@ -2869,14 +2868,16 @@ const I18N = {{
     subPlanTitle: 'Scene subscription',
     subHero1: 'After you install it, the next task you mention gets one skill from this scene',
     subHero2: 'The topics you pick keep updating, so you stay ahead',
-    subTrackCont: 'Auto-renew',
-    subTrackOnce: 'One period',
-    subMonthCont: 'Monthly ¥29 · 2 scenes',
-    subQuarterCont: 'Quarterly ¥78 · 3 scenes',
-    subYearCont: 'Yearly ¥228 · 5 scenes',
-    subMonthOnce: 'Month ¥39',
-    subQuarterOnce: 'Quarter ¥105',
-    subYearOnce: 'Year ¥299',
+    subSameRights: 'Same benefits either way; auto-renew costs less',
+    subMonthRights: 'Monthly · 2 scenes',
+    subQuarterRights: 'Quarterly · 3 scenes',
+    subYearRights: 'Yearly · 5 scenes',
+    subMonthCont: 'Auto-renew ¥29',
+    subQuarterCont: 'Auto-renew ¥78',
+    subYearCont: 'Auto-renew ¥228',
+    subMonthOnce: 'One month ¥39',
+    subQuarterOnce: 'One quarter ¥105',
+    subYearOnce: 'One year ¥299',
     subPlanActive: 'Active until {{d}} · {{n}} seats',
     subPlanFree: 'Not subscribed',
     subUpgradeQuarter: 'Upgrade to quarterly ¥78',
@@ -5075,18 +5076,19 @@ function packsSubHeroHtml() {{
     const until = String((ACCT.user && ACCT.user.plan_until) || '').slice(0, 10);
     status = `<p class="lead">${{escapeHtml(trn('subPlanActive', {{ d: until || '—', n: seatLimit() }}))}}</p>`;
   }}
-  const planBtn = (sku, key) =>
-    `<button type="button" class="js-sub-plan" data-sku="${{sku}}">${{escapeHtml(tr(key))}}</button>`;
-  const cont = [
-    ['subscriber_month_cont', 'subMonthCont'],
-    ['subscriber_quarter_cont', 'subQuarterCont'],
-    ['subscriber_year_cont', 'subYearCont'],
-  ].map(([sku, key]) => planBtn(sku, key)).join('');
-  const once = [
-    ['subscriber_month_once', 'subMonthOnce'],
-    ['subscriber_quarter_once', 'subQuarterOnce'],
-    ['subscriber_year_once', 'subYearOnce'],
-  ].map(([sku, key]) => planBtn(sku, key)).join('');
+  const planBtn = (sku, key, cls) =>
+    `<button type="button" class="js-sub-plan ${{cls}}" data-sku="${{sku}}">${{escapeHtml(tr(key))}}</button>`;
+  const rows = [
+    ['month', 'subMonthRights', 'subMonthCont', 'subMonthOnce'],
+    ['quarter', 'subQuarterRights', 'subQuarterCont', 'subQuarterOnce'],
+    ['year', 'subYearRights', 'subYearCont', 'subYearOnce'],
+  ].map(([period, rights, contKey, onceKey]) => `<div class="sub-row">
+      <p class="sub-kicker">${{escapeHtml(tr(rights))}}</p>
+      <div class="sub-plans">
+        ${{planBtn(`subscriber_${{period}}_cont`, contKey, 'cont')}}
+        ${{planBtn(`subscriber_${{period}}_once`, onceKey, 'once')}}
+      </div>
+    </div>`).join('');
   return `<section class="sub-hero" aria-label="${{escapeHtml(tr('subPlanTitle'))}}">
     <div class="sub-hero-top">
       <b>${{escapeHtml(tr('subPlanTitle'))}}</b>
@@ -5094,10 +5096,8 @@ function packsSubHeroHtml() {{
     </div>
     <ul class="sub-points">${{points}}</ul>
     ${{status}}
-    <p class="sub-kicker">${{escapeHtml(tr('subTrackCont'))}}</p>
-    <div class="sub-plans">${{cont}}</div>
-    <p class="sub-kicker">${{escapeHtml(tr('subTrackOnce'))}}</p>
-    <div class="sub-plans once">${{once}}</div>
+    ${{rows}}
+    <p class="sub-note">${{escapeHtml(tr('subSameRights'))}}</p>
   </section>`;
 }}
 

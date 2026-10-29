@@ -2554,7 +2554,8 @@ NEW_I18N_KEYS = (
     "acctOrderPaid", "acctOrderPending", "acctOrderNo",
     "orderSkuMonthCont", "orderSkuQuarterCont", "orderSkuYearCont",
     "orderSkuMonthOnce", "orderSkuQuarterOnce", "orderSkuYearOnce",
-    "subPlanTitle", "subHero1", "subHero2", "subTrackCont", "subTrackOnce",
+    "subPlanTitle", "subHero1", "subHero2", "subSameRights",
+    "subMonthRights", "subQuarterRights", "subYearRights",
     "subMonthCont", "subQuarterCont", "subYearCont",
     "subMonthOnce", "subQuarterOnce", "subYearOnce",
     "subPlanActive", "subPlanFree",
@@ -2663,9 +2664,13 @@ class TestFourEntryPointsSkeleton(unittest.TestCase):
         self.assertNotIn("发现流仍全量免费", self.full)
         self.assertIn("packs: 'packs'", js)
         self.assertNotIn('"priceFen"', js)
-        self.assertIn("连续包月 ¥29 · 2 个场景", self.full)
-        self.assertIn("连续包季 ¥78 · 3 个场景", self.full)
-        self.assertIn("连续包年 ¥228 · 5 个场景", self.full)
+        self.assertIn("月度 · 2 个场景", self.full)
+        self.assertIn("季度 · 3 个场景", self.full)
+        self.assertIn("年度 · 5 个场景", self.full)
+        self.assertIn("连续包月 ¥29", self.full)
+        self.assertIn("单买一个月 ¥39", self.full)
+        self.assertIn("同一周期两种买法权益相同", self.full)
+        self.assertNotIn("subTrackOnce", self.full)
         self.assertIn("按照你指定的主题，持续更新内容，让你永远快人一步", self.full)
         self.assertIn("function packsSubHeroHtml", js)
         self.assertIn("subscriber_month_cont", js)
